@@ -52,6 +52,10 @@ export class TTag extends EventEmitter {
 	value: number | boolean;
 }
 
+export function compile_layout_data(root: Record<string, any>, origin?: string): {
+	layouts: Record<string, Layout>;
+	fragments: Record<string, Record<string, any>[]>;
+};
 export function compile_layout(yaml_path: string): {
 	layouts: Record<string, Layout>;
 	fragments: Record<string, Record<string, any>[]>;

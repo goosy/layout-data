@@ -4,7 +4,7 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test, { describe } from "node:test";
-import { compile_layout } from "../src/layout.js";
+import { compile_layout, compile_layout_data } from "../src/layout.js";
 import { TData } from "../src/TData.js";
 
 const dir = mkdtempSync(join(tmpdir(), "tlms-layout-"));
@@ -134,5 +134,20 @@ layouts:
 
 	test("a file without the layouts key is rejected", () => {
 		assert.deepEqual(errors_of("x: []\n"), ["the root key `layouts` must map layout names to item lists"]);
+	});
+});
+
+describe("parsed layout description", () => {
+	test("compile_layout_data compiles the same structure as a file", () => {
+		const { layouts, fragments } = compile_layout_data({
+			layouts: { T: [{ name: "a", type: "UInt", offset: 0, init_value: 3 }, { includes: "tail", offset: 16 }] },
+			tail: [{ name: "b", type: "UInt", offset: 0, init_value: 4 }],
+		});
+		assert.equal(new TData(layouts.T, "t").b, 4);
+		assert.equal(fragments.tail.length, 1);
+	});
+
+	test("errors name the origin", () => {
+		assert.throws(() => compile_layout_data({ x: [] }, "my.yaml"), /invalid layout file my.yaml/);
 	});
 });

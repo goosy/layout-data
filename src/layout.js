@@ -142,7 +142,7 @@ function resolve_items(list, fragments, stack, where, errors) {
 }
 
 /**
- * Reads the layout description file (doc/design.md 3.2) and compiles
+ * Reads the layout description file (doc/design.md 3) and compiles
  * every layout in it. The root key `layouts` maps layout names to item
  * lists; every other root key is a fragment referenced by name.
  *
@@ -151,14 +151,31 @@ function resolve_items(list, fragments, stack, where, errors) {
  * @throws {Error} With `errors`, every violation found, when the file is not valid.
  */
 export function compile_layout(yaml_path) {
-	const fail = (errors) => {
-		const error = new Error(`invalid layout file ${yaml_path}:\n${errors.join("\n")}`);
-		error.errors = errors;
-		throw error;
-	};
 	const doc = parseDocument(readFileSync(yaml_path, "utf8"), { version: "1.2" });
-	if (doc.errors.length > 0) fail(doc.errors.map((e) => e.message));
-	const root = doc.toJS();
+	if (doc.errors.length > 0) throw layout_error(yaml_path, doc.errors.map((e) => e.message));
+	return compile_layout_data(doc.toJS(), yaml_path);
+}
+
+function layout_error(origin, errors) {
+	const error = new Error(`invalid layout file ${origin}:\n${errors.join("\n")}`);
+	error.errors = errors;
+	return error;
+}
+
+/**
+ * Compiles a layout description that is already parsed: the same structure as
+ * the layout file (compile_layout), for a user whose own file carries the
+ * layouts among other data.
+ *
+ * @param {Object} root - The parsed description: `layouts` and the fragments.
+ * @param {string} [origin] - Names the source in errors.
+ * @return {{layouts: Object<string, Object>, fragments: Object<string, Object[]>}}
+ * @throws {Error} With `errors`, every violation found, when the description is not valid.
+ */
+export function compile_layout_data(root, origin = "layout description") {
+	const fail = (errors) => {
+		throw layout_error(origin, errors);
+	};
 	if (root === null || typeof root !== "object" || Array.isArray(root)) fail(["the root must be a mapping"]);
 	const { layouts: layout_defs, ...fragment_defs } = root;
 	if (layout_defs === null || typeof layout_defs !== "object" || Array.isArray(layout_defs)) {
