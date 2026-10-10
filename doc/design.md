@@ -1,0 +1,124 @@
+# tagged-data 设计
+
+> 需求见 [spec.md](spec.md)，编程接口见 [spec-data-api.md](spec-data-api.md)。本文说明实现。
+
+## 1. 源文件
+
+| 文件 | 职责 |
+| --- | --- |
+| `src/index.js` | 包的公开接口 |
+| `src/TData.js` / `src/TTag.js` | 数据对象与 tag 句柄 |
+| `src/layout.js` | 布局描述文件的读取与编译、Layout、原型访问器 |
+| `src/structure.js` | 结构展开（`build_structure`）与布局校验（`validate_structure`） |
+| `src/codecs.js` | 各类型在大端缓冲区上的编解码 |
+| `src/observer.js` | 快照比对，变化事件 |
+| `src/endian.js` | 按条目的设备字节序转换 |
+| `src/types.js` | 由布局生成 TypeScript 类型声明 |
+| `src/index.d.ts` | 公开接口的类型声明（手写） |
+
+## 2. 组成
+
+| 部分 | 职责 | 实例数 | 可变性 |
+| --- | --- | --- | --- |
+| Layout | 由布局描述编译而来：各 tag 的字节位置、编解码、字节到 tag 的反查表、原型访问器 | 每种结构一个 | 不可变 |
+| TData | 值缓冲区 `buffer`（大端）、按名访问、原始写入方法、`get(name)` 返回的 TTag | 每个 tdata 一个 | 可变 |
+| Observer | 快照比对，发出变化事件，提供上一次扫描结束时的值 | 每个 tdata 一个 | 可变 |
+
+依赖方向：Observer 依赖 TData 与 Layout，TData 只依赖 Layout，Layout 只依赖布局描述。使用方的调度和 IO 在包之外，包只通过使用方传入的回调（`on_write`）通知它们。
+
+### 2.1 组件边界
+
+- 包代码不依赖使用方的配置、业务和日志器；
+- 出错时抛出异常，不写日志、不调用 `process.exit`；
+- 布局描述对包是外部输入，由使用方提供文件路径。
+
+## 3. 布局定义
+
+- 布局描述是一个 YAML 1.2 文件：根键 `layouts` 映射布局名到条目列表；其余根键都是片段，由条目按名称引用。
+- 每个条目包含 `{ name, type, offset, init_value }`，可选 `length`、`comment`；`offset` 和 `length` 的单位都是位（bit），`length` 省略时由类型决定。
+- 组合字与组成位只由一方给出 `init_value`：`build_structure` 展开时，组合字未给出则由组成位合成（未给出的位为 false），组合字给出则组成位的值从整字拆出；双方都给出时保留给出的值，由校验报告。
+- `type` 取值（大小写不敏感）：`Bool`、`Byte`、`SInt`、`USInt`、`Int`、`UInt`、`Word`、`DInt`、`UDInt`、`DWord`、`Real`。
+- `Word` 条目带 `coupling`（片段名或内联列表）时，表示由若干 Bool 组成的状态字或命令字；`is_combined: true` 表示整字与各位双向联动。coupling 内各项的 `offset` 相对于该字的起点。
+- `{ includes: <片段名或内联列表>, offset }` 把一组公共条目整体偏移后拼接进来，可加 `name_prefix`。
+- `compile_layout(yaml_path)` 同步读取文件，解析片段引用（不存在或循环引用时报错），补全省略的 `length`，再对每个布局调用 `build_structure` 展开为扁平的 `items`（计算结构总长 `length`，把 coupling 规范为名称数组）并校验，返回 `{ layouts, fragments }`。
+- 每个布局编译为一个 Layout（`layout_of`）：除展开后的 `name`、`length`、`items` 外，还有按名称索引的条目表 `entries`（字节偏移、位掩码、编解码）、字节到 tag 的反查表 `tags_at_byte` 和该结构专用的 TData 子类 `Data_Class`。
+- Bool 的定位规则：`byte = offset >> 3`，`bit = offset % 8`。内部缓冲按大端存放，一个字的第一个字节是寄存器的高字节，所以 coupling 中偏移 8–15 对应寄存器的 bit0–7，偏移 0–7 对应 bit8–15。布局文件按 8–15、0–7 的顺序列出，就是按寄存器 bit0 到 bit15 的顺序排列。
+
+### 3.1 布局校验
+
+布局规则在布局阶段集中校验，不分散到 TData 和 TTag 的运行时：
+
+- `validate_structure(data_struct)` 对 `build_structure` 展开后的扁平 `items` 做校验，返回违规描述的数组（空数组表示合法），不在发现第一个错误时退出。
+- 校验内容：
+  - 名称：`items` 中名称重复；名称与 TData 的成员（`TData.prototype` 上的方法、getter，以及 `name` 等实例字段）冲突。
+  - 类型与长度：`type` 不在支持的类型中；`length` 与类型不符（Bool 1，Byte / SInt / USInt 8，Int / UInt / Word 16，DInt / UDInt / DWord / Real 32）。
+  - 对齐：非 Bool 的 `offset` 必须是 8 的倍数；多字节类型的字节偏移必须是偶数。
+  - 重叠：把非 Bool 条目按字节区间排序后检查相邻区间是否相交；Bool 按 `offset` 检查是否重复占用同一位；Bool 落在某个非 Bool 区间内时，要求该 Bool 的 `coupling` 包含这个非 Bool 条目的名称。
+  - 组合字：带 `coupling` 的条目，其每个组成位的 `offset` 都在 `[offset, offset + length)` 内。
+  - 总长：`length % 16 === 0`。
+  - `init_value` 的类型与取值范围与 `type` 相符。
+  - 组合字与它的组成位都给出了 `init_value`。
+- `build_structure` 遇到重名时保留条目，交给校验报告。
+- `compile_layout` 对文件中的全部布局调用校验，有违规时抛出包含全部违规项的错误（`error.errors`）。
+- 校验通过后，TData 和 TTag 不重复做这些检查；`layout_of` 只保留防御性断言。
+
+## 4. 编解码与原型访问器
+
+- 编解码表 `codecs.js` 中每种类型有一项，`get(buffer, byte, mask)` 从大端缓冲区解码，`set(buffer, byte, mask, value)` 编码写入；设备字节序不在表中处理。
+- `layout_of` 为每种结构生成一个 TData 子类 `Data_Class`，在其原型上为每个条目定义一次访问器，同一结构的实例共用：
+  - getter 每次用编解码表从 `buffer` 解码，不缓存值；
+  - setter 用编解码表写入 `buffer`，再调用 `after_write`。
+- 组合字与它的组成位共用同一块字节，写任何一方，另一方读到的自然是新值，不需要额外联动。
+- tag 名不得与 TData 的成员同名（访问器会遮蔽成员），由 `validate_structure` 检查，`layout_of` 另有防御性检查。
+- `set_access_tracer(tracer | null)`：设置后，访问器每次读写 tag 都调用 `tracer(tdata, name, "read" | "write")`，供使用方的依赖追踪使用；未设置时访问器只多一次判断。
+- `render_types(layouts, { source, tdata_module })` 由布局生成类型声明（每个布局一个接口，tag 为属性，`comment` 作为注释），为按名访问提供编辑器补全。
+
+## 5. TData
+
+- `new TData(struct, name, { detection, on_write })` 返回该结构的 `Data_Class` 的实例：分配 `buffer`（`layout.size` 字节），按条目的 `init_value` 依次编码写入。`detection` 为 `"immediate"`（默认）或 `"deferred"`。
+- `name` 可写；`layout`、`size`、`buffer` 只读（只有 getter，赋值抛出 `TypeError`），`buffer` 的内容可以读写。`buffer` 统一按大端存放。
+- 写 `buffer` 有两种途径，都经过 TData，任何时候都允许：
+
+  | 途径 | 使用者 |
+  | --- | --- |
+  | 按名赋值（`data[name] = v` 或 `tag.value = v`） | 任何代码 |
+  | 原始写入方法 `write_register(offset, value)`、`write_bit(offset, mask, value)`、`write_bytes(offset, source)`，以字节偏移定位 | 与寄存器地址打交道的代码，如 Modbus 服务端 |
+
+- TData 出错时抛出异常（布局冲突、值越界），不写日志、不退出。
+- `data.get(name)` 返回该 tag 的 `TTag`，首次访问时创建并缓存，名称不存在时返回 `undefined`。TTag 不持有值：读 `value` 从 TData 的 `buffer` 解码，写 `value` 与 `data[name] = v` 完全等价；`name`、`type`、`length` 来自 Layout 条目；`change` 事件由 Observer 发出。
+
+### 5.1 检测模式与 Observer
+
+所有写入路径最后都汇到 TData 的同一个私有方法，两种检测模式只决定写入之后由谁、何时调用 `diff()`：
+
+```js
+#written() {
+    if (this.#detection === "immediate") this.#observer.diff();  // detect right now
+    this.#on_write?.(this);                                       // then notify the user
+}
+```
+
+- 立即模式：在写入语句内部同步调用 `diff()`，再调用 `on_write`；延迟模式：只调用 `on_write`，检测由使用方调用 `detect()` 完成。
+- 直接写 `buffer` 的内容后，需调用 `detect()`。
+
+**快照比对。** Observer 持有与 `buffer` 等长的快照，创建时复制 `buffer`。`diff()` 逐字节比较 `buffer` 与快照，只对不同的字节经反查表 `tags_at_byte` 找到相关 tag，从快照解码旧值、从 `buffer` 解码新值，值不同（两个 NaN 视为相同）的记为变化；比对完成后更新快照，再统一报告：
+
+- 按布局顺序报告（组合字在其组成位之前），每个变化先由 TData 发出 `change(tagname, old, new)`，再由该 tag 的 TTag 发出 `change(old, new)`；事件总在新值生效之后发出；
+- 两次检测之间同一 tag 的多次写入合并为一个事件，值改变后又恢复的不发事件；
+- 事件处理器中再写 tag 时，嵌套的比对只登记，等当前这一轮变化报告完再比对一轮；连续 16 轮仍有新变化时抛出异常，防止振荡；
+- 旧值从快照解码，不缓存任何值。
+
+**上一次扫描的值。** `observer.previous(name)` 返回上一次扫描结束时的值，从扫描快照解码；使用方的调度器在每次扫描结束时调用 `take_scan_snapshot()` 更新它。立即模式下检测快照在写入之间不断刷新，所以扫描快照单独保存。
+
+## 6. 字节序转换
+
+`endian.js` 按布局条目实现设备字节序与内部大端之间的转换（`load_entry` / `store_entry` / `io_index` / `io_range`），不检测变化：
+
+- 2 字节：`BE` 原样复制；`LE` / `little` / `BEBS` 交换两个字节；
+- 4 字节：支持 `BE`、`LE` / `little`、`BEBS`、`LEBS` 四种排列；
+- Bool 和单字节类型（Byte、SInt、USInt）只读写一个字节，不做字节内转换；它在 IO 缓冲区中的下标按 16 位寄存器换算：`LE` / `little` / `BEBS` 时为 `byte ^ 1`，`BE` / `LEBS` 时为 `byte`。Bool 按位掩码只改自己的位。
+
+## 7. 构建与测试
+
+- `pnpm build`：rolldown 把 `src/index.js` 打包为 `dist/tagged-data.js`（`yaml` 打进库）；
+- `pnpm test`：先构建，再 `node --test`；`pnpm lint`：ESLint。

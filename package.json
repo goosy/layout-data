@@ -1,0 +1,43 @@
+{
+	"name": "tagged-data",
+	"version": "0.1.0",
+	"description": "Structured, reactive, buffer-based data blocks with named, typed tags",
+	"type": "module",
+	"exports": {
+		".": {
+			"types": "./src/index.d.ts",
+			"default": "./dist/tagged-data.js"
+		}
+	},
+	"files": [
+		"dist",
+		"src/index.d.ts"
+	],
+	"engines": {
+		"node": ">=20.11"
+	},
+	"devDependencies": {
+		"@eslint/js": "10.0.1",
+		"@stylistic/eslint-plugin": "5.10.0",
+		"eslint": "10.12.0",
+		"globals": "17.13.0",
+		"rolldown": "^1.2.12",
+		"yaml": "^2.9.1"
+	},
+	"scripts": {
+		"build": "rolldown -c",
+		"test": "pnpm build && node --test",
+		"lint": "eslint .",
+		"prepare": "pnpm build"
+	},
+	"keywords": [
+		"buffer",
+		"struct",
+		"tag",
+		"PLC",
+		"layout"
+	],
+	"author": "",
+	"license": "ISC",
+	"packageManager": "pnpm@12.5.1"
+}
