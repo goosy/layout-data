@@ -4,6 +4,8 @@ import { TTag } from "./TTag.js";
 import { Observer } from "./observer.js";
 import { layout_of } from "./layout.js";
 
+/** @import { Data_Struct, Layout, Layout_Entry, TData_Options } from "./typedefs.js" */
+
 export class TData extends EventEmitter {
 	/**
 	 * @type {Buffer}
@@ -28,20 +30,27 @@ export class TData extends EventEmitter {
 	 */
 	name;
 
+	/** @type {Layout} */
 	#layout;
 	/**
 	 * The compiled layout of this data block (doc/design.md 3.2), read-only.
 	 * The tag accessors are defined once on the prototype of layout.Data_Class.
+	 *
+	 * @returns {Layout}
 	 */
 	get layout() { return this.#layout; }
 
 	/** @type {Observer} */
 	#observer;
-	/** "immediate" or "deferred" (doc/spec-data-api.md 4) */
+	/** @type {"immediate" | "deferred"} (doc/spec-data-api.md 4) */
 	#detection;
-	/** called after each write, after its detection in the immediate mode */
+	/** @type {((tdata: TData) => void) | undefined} called after each write, after its detection in the immediate mode */
 	#on_write;
-	/** The change detector of this data block (doc/design.md 3.5). */
+	/**
+	 * The change detector of this data block (doc/design.md 3.5).
+	 *
+	 * @returns {Observer}
+	 */
 	get observer() { return this.#observer; }
 
 	/**
@@ -76,20 +85,34 @@ export class TData extends EventEmitter {
 	/**
 	 * Writes a 16-bit register (big-endian) at a byte offset
 	 * (doc/spec-data-api.md 2.5).
+	 *
+	 * @param {number} offset - Byte offset.
+	 * @param {number} value
 	 */
 	write_register(offset, value) {
 		this.#buffer.writeUInt16BE(value, offset);
 		this.#written();
 	}
 
-	/** Writes the bits selected by mask of the byte at offset. */
+	/**
+	 * Writes the bits selected by mask of the byte at offset.
+	 *
+	 * @param {number} offset - Byte offset.
+	 * @param {number} mask
+	 * @param {boolean} value
+	 */
 	write_bit(offset, mask, value) {
 		const buffer = this.#buffer;
 		buffer[offset] = value ? buffer[offset] | mask : buffer[offset] & ~mask;
 		this.#written();
 	}
 
-	/** Writes the bytes of source from a byte offset. */
+	/**
+	 * Writes the bytes of source from a byte offset.
+	 *
+	 * @param {number} offset - Byte offset.
+	 * @param {Buffer} source
+	 */
 	write_bytes(offset, source) {
 		source.copy(this.#buffer, offset);
 		this.#written();
@@ -109,7 +132,7 @@ export class TData extends EventEmitter {
 	 * detects the change at once in the immediate mode, then notifies the
 	 * user in both modes (doc/spec-data-api.md 4.2).
 	 *
-	 * @param {{name: string}} _entry - The layout entry of the tag.
+	 * @param {Layout_Entry} _entry - The layout entry of the tag.
 	 */
 	after_write(_entry) {
 		this.#written();
@@ -121,13 +144,9 @@ export class TData extends EventEmitter {
 	 * `new TData(struct, name)` returns an instance of the class compiled for
 	 * the struct (layout.Data_Class), whose prototype holds the tag accessors.
 	 *
-	 * @param {Object} data_struct - The expanded structure or its compiled layout.
-	 * @param {string} data_struct.name - the name of data_struct.
-	 * @param {Array} data_struct.items - Array of data items to initialize.
+	 * @param {Data_Struct | Layout} data_struct - The expanded structure or its compiled layout.
 	 * @param {string} name - The name of the TData instance.
-	 * @param {Object} [options]
-	 * @param {"immediate"|"deferred"} [options.detection="immediate"] - When changes are detected.
-	 * @param {(tdata: TData) => void} [options.on_write] - Called after each write, after its detection in the immediate mode.
+	 * @param {TData_Options} [options]
 	 */
 	constructor(data_struct, name, options = {}) {
 		if (new.target === TData) {

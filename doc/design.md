@@ -14,7 +14,9 @@
 | `src/observer.js` | 快照比对，变化事件 |
 | `src/endian.js` | 按条目的设备字节序转换 |
 | `src/types.js` | 由布局生成 TypeScript 类型声明 |
-| `src/index.d.ts` | 公开接口的类型声明（手写） |
+| `src/typedefs.js` | 公开类型的 JSDoc 定义（类型的唯一来源，无运行时内容） |
+| `dist/types/` | 构建时由 `rolldown.config.js` 中的插件调用 `tsc` 从 JSDoc 生成的声明文件（`tsconfig.json`），不入库 |
+| `type_check/consumer.ts` | 类型测试：以包名导入生成的声明，用 `Equal` 断言和 `@ts-expect-error` 检查公开接口（`pnpm test:types`，已包含在 `pnpm test` 中） |
 
 ## 2. 组成
 

@@ -2,6 +2,8 @@
 // doc/design.md 3.2). Part of the data layer: no dependency on the controller.
 import { TData } from "./TData.js";
 
+/** @import { Data_Struct, Layout_Item } from "./typedefs.js" */
+
 function add_item(data_struct, item, base_offset, name_prefix) {
 	const items = data_struct.items;
 	// duplicated names are kept and reported by validate_structure
@@ -76,6 +78,14 @@ function share_init_value(word, bits) {
 	}
 }
 
+/**
+ * Expands a list of items (resolving `includes` and `coupling`, making offsets
+ * absolute) into the given structure.
+ *
+ * @param {{name: string}} data_struct - The structure to fill in; only the name is given.
+ * @param {Layout_Item[]} items
+ * @returns {Data_Struct} The same object, now complete.
+ */
 export function build_structure(data_struct, items) {
 	data_struct.length = 0;
 	data_struct.items = [];
@@ -86,7 +96,11 @@ export function build_structure(data_struct, items) {
 	return data_struct;
 }
 
-// bit length of each tag type
+/**
+ * Bit length of each tag type (lower case names).
+ *
+ * @type {Record<string, number>}
+ */
 export const TYPE_BITS = {
 	bool: 1,
 	byte: 8, sint: 8, usint: 8,
@@ -121,7 +135,7 @@ function check_init_value(item, type) {
  * Validates a structure built by build_structure against the layout rules
  * (doc/spec.md section 3.6, doc/design.md section 3.2).
  *
- * @param {{name: string, length: number, items: Object[]}} data_struct
+ * @param {Data_Struct} data_struct
  * @returns {string[]} descriptions of all violations, empty when the layout is valid
  */
 export function validate_structure(data_struct) {

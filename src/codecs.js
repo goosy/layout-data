@@ -11,6 +11,8 @@ const write_bool = (buffer, byte, mask, value) => {
  * Codec of each tag type (lower case): its size in bytes, `get(buffer, byte, mask)`
  * and `set(buffer, byte, mask, value)`. Out-of-range integers throw RangeError
  * before anything is written.
+ *
+ * @type {Record<string, import("./typedefs.js").Codec>}
  */
 export const CODECS = {
 	bool: { size: 1, get: read_bool, set: write_bool },

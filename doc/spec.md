@@ -45,4 +45,5 @@ tagged-data 是一个结构化数据块库：提供基于 `Buffer`、面向数�
 ## 5. 发布形态
 
 - 以 ES 模块库发布，入口 `tagged-data`，`yaml` 打包进库，使用者无需安装；
+- 类型声明由源码的 JSDoc 生成（`src/typedefs.js` 与各函数的注释是唯一来源），随构建输出到 `dist/types`，不手写 `.d.ts`；
 - Node.js >= 20.11。

@@ -1,7 +1,12 @@
 // Renders TypeScript declarations of compiled layouts, for editor completion
 // of the tag accessors (doc/design.md 3.3).
 
-/** `NODE` -> `Node`, `my_block` -> `My_Block` */
+/**
+ * `NODE` -> `Node`, `my_block` -> `My_Block`
+ *
+ * @param {string} layout_name
+ * @returns {string}
+ */
 function type_name(layout_name) {
 	return layout_name
 		.split("_")
@@ -13,15 +18,15 @@ function type_name(layout_name) {
  * Renders a declaration file with one interface per layout (`<Name>_Data`,
  * one property per tag) and the data block type (`<Name>_TData`).
  *
- * @param {Object<string, {items: Object[]}>} layouts - Compiled layouts by name.
- * @param {Object} options
+ * @param {Record<string, import("./typedefs.js").Layout>} layouts - Compiled layouts by name.
+ * @param {object} options
  * @param {string} options.source - The layout file, named in the header.
  * @param {string} options.tdata_module - Module specifier of TData, relative to the output file.
- * @return {string}
+ * @returns {string}
  */
 export function render_types(layouts, { source, tdata_module }) {
 	const lines = [
-		`// Generated from ${source} by \`pnpm gen:types\`. Do not edit.`,
+		`// Generated from ${source}. Do not edit.`,
 		`import type { TData } from "${tdata_module}";`,
 	];
 	for (const [name, layout] of Object.entries(layouts)) {

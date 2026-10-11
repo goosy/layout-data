@@ -5,13 +5,12 @@
 	"type": "module",
 	"exports": {
 		".": {
-			"types": "./src/index.d.ts",
+			"types": "./dist/types/index.d.ts",
 			"default": "./dist/tagged-data.js"
 		}
 	},
 	"files": [
-		"dist",
-		"src/index.d.ts"
+		"dist"
 	],
 	"engines": {
 		"node": ">=20.11"
@@ -19,14 +18,18 @@
 	"devDependencies": {
 		"@eslint/js": "10.0.1",
 		"@stylistic/eslint-plugin": "5.10.0",
+		"@types/node": "^20.19.43",
 		"eslint": "10.12.0",
 		"globals": "17.13.0",
 		"rolldown": "^1.2.12",
+		"typescript": "^5.9.3",
 		"yaml": "^2.9.1"
 	},
 	"scripts": {
 		"build": "rolldown -c",
-		"test": "pnpm build && node --test",
+		"typecheck": "tsc -p tsconfig.json --noEmit false --emitDeclarationOnly --outDir .local/types",
+		"test": "pnpm build && pnpm test:types && node --test",
+		"test:types": "tsc -p type_check",
 		"lint": "eslint .",
 		"prepare": "pnpm build"
 	},

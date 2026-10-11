@@ -1,5 +1,7 @@
 import { Buffer } from "node:buffer";
 
+/** @import { Layout, Layout_Entry } from "./typedefs.js" */
+
 // a change made by a change handler is detected in a further round
 const MAX_DIFF_ROUNDS = 16;
 
@@ -15,20 +17,26 @@ const same_value = (a, b) => a === b || (Number.isNaN(a) && Number.isNaN(b));
  * round once the current changes are reported.
  */
 export class Observer {
+	/** @type {Buffer} */
 	#buffer;
+	/** @type {Layout} */
 	#layout;
+	/** @type {Buffer} */
 	#snapshot;
+	/** @type {Buffer} */
 	#scan_snapshot;
+	/** @type {(entry: Layout_Entry, old_value: any, new_value: any) => void} */
 	#report;
 	#diffing = false;
 	#pending = false;
+	/** @type {Uint32Array} */
 	#seen;
 	#mark = 0;
 
 	/**
 	 * @param {Buffer} buffer - The buffer of the TData.
-	 * @param {Object} layout - The compiled layout of the TData.
-	 * @param {(entry: Object, old_value: *, new_value: *) => void} report - Called for each change.
+	 * @param {Layout} layout - The compiled layout of the TData.
+	 * @param {(entry: Layout_Entry, old_value: any, new_value: any) => void} report - Called for each change.
 	 */
 	constructor(buffer, layout, report) {
 		this.#buffer = buffer;
@@ -39,7 +47,12 @@ export class Observer {
 		this.#seen = new Uint32Array(layout.entries.size);
 	}
 
-	/** The value of a tag at the end of the last scan (doc/design.md 3.5). */
+	/**
+	 * The value of a tag at the end of the last scan (doc/design.md 3.5).
+	 *
+	 * @param {string} name - Tag name.
+	 * @returns {number | boolean}
+	 */
 	previous(name) {
 		const entry = this.#layout.entries.get(name);
 		return entry.codec.get(this.#scan_snapshot, entry.byte, entry.mask);

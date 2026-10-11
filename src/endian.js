@@ -3,6 +3,8 @@
 // per 16-bit register and per 32-bit value; the IO buffer is indexed like the
 // TData buffer.
 
+/** @import { Layout_Entry } from "./typedefs.js" */
+
 // Endians that swap the two bytes of a 16-bit register.
 const BYTE_SWAP_ENDIANS = ["LE", "little", "BEBS"];
 
@@ -84,12 +86,22 @@ function convert_endian_4bytes(buffer_from, buffer_to, index, endian) {
  * Index in a device-ordered IO buffer of the byte of a single-byte entry
  * (Bool, Byte, SInt, USInt): when the endian swaps the register bytes, the
  * byte sits in the other half of its register.
+ *
+ * @param {number} byte - Byte offset of the entry.
+ * @param {string} endian - Device byte order.
+ * @returns {number}
  */
 export function io_index(byte, endian) {
 	return BYTE_SWAP_ENDIANS.includes(endian) ? byte ^ 1 : byte;
 }
 
-/** Byte range [start, end) an entry occupies in a device-ordered IO buffer. */
+/**
+ * Byte range [start, end) an entry occupies in a device-ordered IO buffer.
+ *
+ * @param {Layout_Entry} entry
+ * @param {string} endian - Device byte order.
+ * @returns {{start: number, end: number}}
+ */
 export function io_range(entry, endian) {
 	const start = entry.size === 1 ? io_index(entry.byte, endian) : entry.byte;
 	return { start, end: start + entry.size };
@@ -98,6 +110,11 @@ export function io_range(entry, endian) {
 /**
  * Copies an entry from a device-ordered IO buffer into a big-endian buffer.
  * A Bool only changes its own bit. No change is detected here.
+ *
+ * @param {Layout_Entry} entry
+ * @param {Buffer} io_buffer - The device-ordered source.
+ * @param {Buffer} buffer - The big-endian destination.
+ * @param {string} endian - Device byte order.
  */
 export function load_entry(entry, io_buffer, buffer, endian) {
 	const { byte, size, mask } = entry;
@@ -113,7 +130,14 @@ export function load_entry(entry, io_buffer, buffer, endian) {
 	}
 }
 
-/** Copies an entry from a big-endian buffer into a device-ordered IO buffer. */
+/**
+ * Copies an entry from a big-endian buffer into a device-ordered IO buffer.
+ *
+ * @param {Layout_Entry} entry
+ * @param {Buffer} buffer - The big-endian source.
+ * @param {Buffer} io_buffer - The device-ordered destination.
+ * @param {string} endian - Device byte order.
+ */
 export function store_entry(entry, buffer, io_buffer, endian) {
 	const { byte, size, mask } = entry;
 	if (entry.type === "bool") {

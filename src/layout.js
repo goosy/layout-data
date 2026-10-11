@@ -4,17 +4,25 @@ import { CODECS } from "./codecs.js";
 import { TData } from "./TData.js";
 import { build_structure, validate_structure, TYPE_BITS } from "./structure.js";
 
+/** @import { Access_Tracer, Compiled_Layouts, Data_Struct, Layout } from "./typedefs.js" */
+
 /** Compiled layouts, keyed by the expanded structure they were compiled from. */
 const layout_cache = new WeakMap();
 const EMPTY_STRUCT = Object.freeze({ name: "EMPTY", length: 0, items: Object.freeze([]) });
 
-/** Called on every tag access while set (doc/design.md 6.5). */
+/**
+ * Called on every tag access while set (doc/design.md 6.5).
+ *
+ * @type {Access_Tracer | null}
+ */
 let access_tracer = null;
 
 /**
  * Sets a function called on every tag access through the accessors, as
  * tracer(tdata, name, "read" | "write"), or clears it with null. For tests
  * that check declared dependencies; the data layer knows nothing else of it.
+ *
+ * @param {Access_Tracer | null} tracer
  */
 export function set_access_tracer(tracer) {
 	access_tracer = tracer;
@@ -33,8 +41,8 @@ function is_reserved_name(name) {
  * Throws on an unknown type, a duplicated name or a name colliding with a
  * TData member; the other layout rules are checked by validate_structure.
  *
- * @param {{name: string, length: number, items: Object[]}} data_struct
- * @return {Object} The Layout: name, length, items, size, entries, tags_at_byte, Data_Class.
+ * @param {Data_Struct} data_struct
+ * @returns {Layout}
  */
 export function layout_of(data_struct) {
 	const cached = layout_cache.get(data_struct);
@@ -147,7 +155,7 @@ function resolve_items(list, fragments, stack, where, errors) {
  * lists; every other root key is a fragment referenced by name.
  *
  * @param {string} yaml_path - Path of the YAML layout file.
- * @return {{layouts: Object<string, Object>, fragments: Object<string, Object[]>}}
+ * @returns {Compiled_Layouts}
  * @throws {Error} With `errors`, every violation found, when the file is not valid.
  */
 export function compile_layout(yaml_path) {
@@ -167,9 +175,9 @@ function layout_error(origin, errors) {
  * the layout file (compile_layout), for a user whose own file carries the
  * layouts among other data.
  *
- * @param {Object} root - The parsed description: `layouts` and the fragments.
+ * @param {Record<string, any>} root - The parsed description: `layouts` and the fragments.
  * @param {string} [origin] - Names the source in errors.
- * @return {{layouts: Object<string, Object>, fragments: Object<string, Object[]>}}
+ * @returns {Compiled_Layouts}
  * @throws {Error} With `errors`, every violation found, when the description is not valid.
  */
 export function compile_layout_data(root, origin = "layout description") {
