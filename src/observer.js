@@ -9,9 +9,9 @@ const same_value = (a, b) => a === b || (Number.isNaN(a) && Number.isNaN(b));
 
 /**
  * Detects the changes of a TData buffer by comparing it with a snapshot
- * (doc/design.md 3.5) and reports each changed tag once.
+ * (doc/design.md §5.1) and reports each changed tag once.
  *
- * Immediate mode (doc/design.md 3.5): the TData calls diff() after
+ * Immediate mode (doc/design.md §5.1): the TData calls diff() after
  * every write. A diff() called while the changes are being reported, by a
  * handler writing a tag, is only recorded; the outer diff() runs another
  * round once the current changes are reported.
@@ -48,7 +48,7 @@ export class Observer {
 	}
 
 	/**
-	 * The value of a tag at the end of the last scan (doc/design.md 3.5).
+	 * The value of a tag at the end of the last scan (doc/design.md §5.1).
 	 *
 	 * @param {string} name - Tag name.
 	 * @returns {number | boolean}

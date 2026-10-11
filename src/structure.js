@@ -1,5 +1,5 @@
-// Expansion and validation of data block structures (doc/spec.md 3.6,
-// doc/design.md 3.2). Part of the data layer: no dependency on the controller.
+// Expansion and validation of data block structures (doc/spec.md §3,
+// doc/design.md §3.1). Part of the data layer.
 import { TData } from "./TData.js";
 
 /** @import { Data_Struct, Layout_Item } from "./typedefs.js" */
@@ -43,7 +43,7 @@ function add_item(data_struct, item, base_offset, name_prefix) {
 const init_conflicts = new WeakMap();
 
 /**
- * Only one side of a combined word gives the init values (doc/spec.md 3.6):
+ * Only one side of a combined word gives the init values (doc/spec.md §3):
  * either the word, whose bits then take theirs from it, or the bits, from
  * which the word is composed (a bit without init_value is false).
  */
@@ -133,7 +133,7 @@ function check_init_value(item, type) {
 
 /**
  * Validates a structure built by build_structure against the layout rules
- * (doc/spec.md section 3.6, doc/design.md section 3.2).
+ * (doc/spec.md §3, doc/design.md §3.1).
  *
  * @param {Data_Struct} data_struct
  * @returns {string[]} descriptions of all violations, empty when the layout is valid

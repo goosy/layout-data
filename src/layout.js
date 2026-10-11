@@ -11,7 +11,7 @@ const layout_cache = new WeakMap();
 const EMPTY_STRUCT = Object.freeze({ name: "EMPTY", length: 0, items: Object.freeze([]) });
 
 /**
- * Called on every tag access while set (doc/design.md 6.5).
+ * Called on every tag access while set (doc/design.md §4).
  *
  * @type {Access_Tracer | null}
  */
@@ -37,7 +37,7 @@ function is_reserved_name(name) {
 
 /**
  * Compiles an expanded structure (the result of build_structure) into a Layout
- * (doc/design.md 3.2). The same structure object is compiled only once.
+ * (doc/design.md §3). The same structure object is compiled only once.
  * Throws on an unknown type, a duplicated name or a name colliding with a
  * TData member; the other layout rules are checked by validate_structure.
  *
@@ -150,7 +150,7 @@ function resolve_items(list, fragments, stack, where, errors) {
 }
 
 /**
- * Reads the layout description file (doc/design.md 3) and compiles
+ * Reads the layout description file (doc/design.md §3) and compiles
  * every layout in it. The root key `layouts` maps layout names to item
  * lists; every other root key is a fragment referenced by name.
  *

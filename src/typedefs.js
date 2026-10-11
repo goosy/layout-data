@@ -3,7 +3,7 @@
 
 /**
  * One item of a layout description, as written by the user and as expanded by
- * build_structure (doc/spec-data-api.md 6).
+ * build_structure (doc/spec-data-api.md §6).
  *
  * @typedef {object} Layout_Item
  * @property {string} [name] - Tag name.
@@ -27,7 +27,7 @@
  */
 
 /**
- * Codec of one tag type on a big-endian buffer (doc/design.md 3.3).
+ * Codec of one tag type on a big-endian buffer (doc/design.md §4).
  *
  * @typedef {object} Codec
  * @property {number} size - Size in bytes.
@@ -51,7 +51,7 @@
  */
 
 /**
- * A compiled layout (doc/design.md 3.2), immutable.
+ * A compiled layout (doc/design.md §3), immutable.
  *
  * @typedef {object} Layout
  * @property {string} name

@@ -33,7 +33,7 @@ export class TData extends EventEmitter {
 	/** @type {Layout} */
 	#layout;
 	/**
-	 * The compiled layout of this data block (doc/design.md 3.2), read-only.
+	 * The compiled layout of this data block (doc/design.md §3), read-only.
 	 * The tag accessors are defined once on the prototype of layout.Data_Class.
 	 *
 	 * @returns {Layout}
@@ -42,12 +42,12 @@ export class TData extends EventEmitter {
 
 	/** @type {Observer} */
 	#observer;
-	/** @type {"immediate" | "deferred"} (doc/spec-data-api.md 4) */
+	/** @type {"immediate" | "deferred"} (doc/spec-data-api.md §4) */
 	#detection;
 	/** @type {((tdata: TData) => void) | undefined} called after each write, after its detection in the immediate mode */
 	#on_write;
 	/**
-	 * The change detector of this data block (doc/design.md 3.5).
+	 * The change detector of this data block (doc/design.md §5.1).
 	 *
 	 * @returns {Observer}
 	 */
@@ -75,7 +75,7 @@ export class TData extends EventEmitter {
 
 	/**
 	 * Detects every change since the last detection and emits its events
-	 * (doc/spec-data-api.md 2.6). Needed after writing the buffer directly,
+	 * (doc/spec-data-api.md §2.6). Needed after writing the buffer directly,
 	 * and in the deferred mode whenever the user chooses.
 	 */
 	detect() {
@@ -84,7 +84,7 @@ export class TData extends EventEmitter {
 
 	/**
 	 * Writes a 16-bit register (big-endian) at a byte offset
-	 * (doc/spec-data-api.md 2.5).
+	 * (doc/spec-data-api.md §2.5).
 	 *
 	 * @param {number} offset - Byte offset.
 	 * @param {number} value
@@ -120,7 +120,7 @@ export class TData extends EventEmitter {
 
 	/**
 	 * After a write: detects the change at once in the immediate mode, then
-	 * notifies the user in both modes (doc/spec-data-api.md 4.2).
+	 * notifies the user in both modes (doc/spec-data-api.md §4.2).
 	 */
 	#written() {
 		if (this.#detection === "immediate") this.#observer.diff();
@@ -130,7 +130,7 @@ export class TData extends EventEmitter {
 	/**
 	 * Called by a tag setter after the value is written into the buffer:
 	 * detects the change at once in the immediate mode, then notifies the
-	 * user in both modes (doc/spec-data-api.md 4.2).
+	 * user in both modes (doc/spec-data-api.md §4.2).
 	 *
 	 * @param {Layout_Entry} _entry - The layout entry of the tag.
 	 */

@@ -3,7 +3,7 @@ import { EventEmitter } from "node:events";
 /** @import { Layout_Entry } from "./typedefs.js" */
 
 /**
- * The interface of one tag of a TData (doc/spec-data-api.md 3). It holds no
+ * The interface of one tag of a TData (doc/spec-data-api.md §3). It holds no
  * value: reading `value` decodes it from the buffer of the TData, writing it
  * is the same as `tdata[name] = value`. `change` events (old_value, new_value)
  * are emitted by the Observer of the TData.

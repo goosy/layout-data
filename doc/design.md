@@ -1,98 +1,100 @@
-# tagged-data 设计
+# tagged-data Design
 
-> 需求见 [spec.md](spec.md)，编程接口见 [spec-data-api.md](spec-data-api.md)。本文说明实现。
+> English version of [design.zh-cn.md](design.zh-cn.md), the primary Chinese version. When the two differ, update both.
+>
+> Requirements are in [spec.md](spec.md), the programming interface in [spec-data-api.md](spec-data-api.md). This document describes the implementation.
 
-## 1. 源文件
+## 1. Source files
 
-| 文件 | 职责 |
+| File | Responsibility |
 | --- | --- |
-| `src/index.js` | 包的公开接口 |
-| `src/TData.js` / `src/TTag.js` | 数据对象与 tag 句柄 |
-| `src/layout.js` | 布局描述文件的读取与编译、Layout、原型访问器 |
-| `src/structure.js` | 结构展开（`build_structure`）与布局校验（`validate_structure`） |
-| `src/codecs.js` | 各类型在大端缓冲区上的编解码 |
-| `src/observer.js` | 快照比对，变化事件 |
-| `src/endian.js` | 按条目的设备字节序转换 |
-| `src/types.js` | 由布局生成 TypeScript 类型声明 |
-| `src/typedefs.js` | 公开类型的 JSDoc 定义（类型的唯一来源，无运行时内容） |
-| `dist/types/` | 构建时由 `rolldown.config.js` 中的插件调用 `tsc` 从 JSDoc 生成的声明文件（`tsconfig.json`），不入库 |
-| `type_check/consumer.ts` | 类型测试：以包名导入生成的声明，用 `Equal` 断言和 `@ts-expect-error` 检查公开接口（`pnpm test:types`，已包含在 `pnpm test` 中） |
+| `src/index.js` | The public interface of the package |
+| `src/TData.js` / `src/TTag.js` | The data object and the tag handle |
+| `src/layout.js` | Reading and compiling layout description files, Layout, prototype accessors |
+| `src/structure.js` | Structure expansion (`build_structure`) and layout validation (`validate_structure`) |
+| `src/codecs.js` | Encoding and decoding of each type on a big-endian buffer |
+| `src/observer.js` | Snapshot comparison, change events |
+| `src/endian.js` | Per-entry device byte order conversion |
+| `src/types.js` | TypeScript declaration generation from layouts (`render_types`) |
+| `src/typedefs.js` | JSDoc definitions of the public types (the only source of the types, no run-time content) |
+| `dist/types/` | Declaration files generated from the JSDoc by `tsc`, called from a plugin in `rolldown.config.js` during the build (`tsconfig.json`); not committed |
+| `type_check/consumer.ts` | Type test: imports the generated declarations by package name and checks the public interface with `Equal` assertions and `@ts-expect-error` (`pnpm test:types`, included in `pnpm test`) |
 
-## 2. 组成
+## 2. Parts
 
-| 部分 | 职责 | 实例数 | 可变性 |
+| Part | Responsibility | Instances | Mutability |
 | --- | --- | --- | --- |
-| Layout | 由布局描述编译而来：各 tag 的字节位置、编解码、字节到 tag 的反查表、原型访问器 | 每种结构一个 | 不可变 |
-| TData | 值缓冲区 `buffer`（大端）、按名访问、原始写入方法、`get(name)` 返回的 TTag | 每个 tdata 一个 | 可变 |
-| Observer | 快照比对，发出变化事件，提供上一次扫描结束时的值 | 每个 tdata 一个 | 可变 |
+| Layout | Compiled from a layout description: byte position and codec of every tag, a byte-to-tag lookup table, prototype accessors | One per structure | Immutable |
+| TData | The value buffer `buffer` (big-endian), access by name, raw write methods, the TTag returned by `get(name)` | One per tdata | Mutable |
+| Observer | Snapshot comparison, emits change events, provides the values at the end of the last scan | One per tdata | Mutable |
 
-依赖方向：Observer 依赖 TData 与 Layout，TData 只依赖 Layout，Layout 只依赖布局描述。使用方的调度和 IO 在包之外，包只通过使用方传入的回调（`on_write`）通知它们。
+Dependency direction: Observer depends on TData and Layout, TData depends only on Layout, Layout depends only on the layout description. The user's scheduling and IO are outside the package; the package notifies them only through a callback passed by the user (`on_write`).
 
-### 2.1 组件边界
+### 2.1 Component boundary
 
-- 包代码不依赖使用方的配置、业务和日志器；
-- 出错时抛出异常，不写日志、不调用 `process.exit`；
-- 布局描述对包是外部输入，由使用方提供文件路径。
+- The package code does not depend on the user's configuration, business logic or logger;
+- Errors are thrown as exceptions; nothing is logged and `process.exit` is never called;
+- The layout description is external input to the package, and the user provides the file path.
 
-## 3. 布局定义
+## 3. Layout definition
 
-- 布局描述是一个 YAML 1.2 文件：根键 `layouts` 映射布局名到条目列表；其余根键都是片段，由条目按名称引用。
-- 每个条目包含 `{ name, type, offset, init_value }`，可选 `length`、`comment`；`offset` 和 `length` 的单位都是位（bit），`length` 省略时由类型决定。
-- 组合字与组成位只由一方给出 `init_value`：`build_structure` 展开时，组合字未给出则由组成位合成（未给出的位为 false），组合字给出则组成位的值从整字拆出；双方都给出时保留给出的值，由校验报告。
-- `type` 取值（大小写不敏感）：`Bool`、`Byte`、`SInt`、`USInt`、`Int`、`UInt`、`Word`、`DInt`、`UDInt`、`DWord`、`Real`。
-- `Word` 条目带 `coupling`（片段名或内联列表）时，表示由若干 Bool 组成的状态字或命令字；`is_combined: true` 表示整字与各位双向联动。coupling 内各项的 `offset` 相对于该字的起点。
-- `{ includes: <片段名或内联列表>, offset }` 把一组公共条目整体偏移后拼接进来，可加 `name_prefix`。
-- `compile_layout(yaml_path)` 同步读取文件，解析片段引用（不存在或循环引用时报错），补全省略的 `length`，再对每个布局调用 `build_structure` 展开为扁平的 `items`（计算结构总长 `length`，把 coupling 规范为名称数组）并校验，返回 `{ layouts, fragments }`。
-- `compile_layout_data(root, origin)` 编译已解析的描述（与文件同结构），供在自己的文件中携带布局的使用方；`compile_layout` 读文件后调用它。
-- 每个布局编译为一个 Layout（`layout_of`）：除展开后的 `name`、`length`、`items` 外，还有按名称索引的条目表 `entries`（字节偏移、位掩码、编解码）、字节到 tag 的反查表 `tags_at_byte` 和该结构专用的 TData 子类 `Data_Class`。
-- Bool 的定位规则：`byte = offset >> 3`，`bit = offset % 8`。内部缓冲按大端存放，一个字的第一个字节是寄存器的高字节，所以 coupling 中偏移 8–15 对应寄存器的 bit0–7，偏移 0–7 对应 bit8–15。布局文件按 8–15、0–7 的顺序列出，就是按寄存器 bit0 到 bit15 的顺序排列。
+- A layout description is a YAML 1.2 file: the root key `layouts` maps layout names to entry lists; every other root key is a fragment, referenced by name from entries.
+- Every entry has `{ name, type, offset, init_value }` and optionally `length` and `comment`. `offset` and `length` are in bits; when `length` is omitted the type decides it.
+- Only one side of a combined word and its bits gives `init_value`. When `build_structure` expands them, a word without a value is composed from its bits (a bit without a value is false), and a word with a value passes its bits' values down. If both sides give values, the given values are kept and validation reports the conflict.
+- `type` values (case-insensitive): `Bool`, `Byte`, `SInt`, `USInt`, `Int`, `UInt`, `Word`, `DInt`, `UDInt`, `DWord`, `Real`.
+- A `Word` entry with `coupling` (a fragment name or an inline list) is a status or command word made of several Bools. `is_combined: true` is a descriptive mark only: the word and its bits share the same bytes, so the linkage does not depend on it. The `offset` of each item in `coupling` is relative to the start of the word.
+- `{ includes: <fragment name or inline list>, offset }` splices in a group of common entries shifted as a whole; `name_prefix` may be added.
+- `compile_layout(yaml_path)` reads the file synchronously, resolves fragment references (an unknown or circular reference is an error), fills in omitted `length`s, then calls `build_structure` for every layout to expand it into flat `items` (computing the total `length` of the structure and normalizing `coupling` to an array of names), validates it, and returns `{ layouts, fragments }`.
+- `compile_layout_data(root, origin)` compiles an already parsed description (same structure as the file), for users who carry layouts in their own files; `compile_layout` calls it after reading the file.
+- Every layout is compiled to a Layout (`layout_of`). Besides the expanded `name`, `length` and `items`, it has the table `entries` indexed by name (byte offset, bit mask, codec), the byte-to-tag lookup table `tags_at_byte`, and the TData subclass `Data_Class` specific to this structure.
+- Bool placement: `byte = offset >> 3`, `bit = offset % 8`. The internal buffer is big-endian and the first byte of a word is the high byte of the register, so offsets 8-15 in `coupling` are register bit 0-7 and offsets 0-7 are register bit 8-15. Listing the bits in the order 8-15, 0-7 in the layout file therefore lists them from register bit 0 to bit 15.
 
-### 3.1 布局校验
+### 3.1 Layout validation
 
-布局规则在布局阶段集中校验，不分散到 TData 和 TTag 的运行时：
+The layout rules are validated centrally at the layout stage, not spread over the run time of TData and TTag:
 
-- `validate_structure(data_struct)` 对 `build_structure` 展开后的扁平 `items` 做校验，返回违规描述的数组（空数组表示合法），不在发现第一个错误时退出。
-- 校验内容：
-  - 名称：`items` 中名称重复；名称与 TData 的成员（`TData.prototype` 上的方法、getter，以及 `name` 等实例字段）冲突。
-  - 类型与长度：`type` 不在支持的类型中；`length` 与类型不符（Bool 1，Byte / SInt / USInt 8，Int / UInt / Word 16，DInt / UDInt / DWord / Real 32）。
-  - 对齐：非 Bool 的 `offset` 必须是 8 的倍数；多字节类型的字节偏移必须是偶数。
-  - 重叠：把非 Bool 条目按字节区间排序后检查相邻区间是否相交；Bool 按 `offset` 检查是否重复占用同一位；Bool 落在某个非 Bool 区间内时，要求该 Bool 的 `coupling` 包含这个非 Bool 条目的名称。
-  - 组合字：带 `coupling` 的条目，其每个组成位的 `offset` 都在 `[offset, offset + length)` 内。
-  - 总长：`length % 16 === 0`。
-  - `init_value` 的类型与取值范围与 `type` 相符。
-  - 组合字与它的组成位都给出了 `init_value`。
-- `build_structure` 遇到重名时保留条目，交给校验报告。
-- `compile_layout` 对文件中的全部布局调用校验，有违规时抛出包含全部违规项的错误（`error.errors`）。
-- 校验通过后，TData 和 TTag 不重复做这些检查；`layout_of` 只保留防御性断言。
+- `validate_structure(data_struct)` validates the flat `items` produced by `build_structure` and returns an array of violation descriptions (an empty array means valid). It does not stop at the first error.
+- What it checks:
+  - Names: duplicate names in `items`; names colliding with a member of TData (methods and getters on `TData.prototype`, and instance fields such as `name`).
+  - Type and length: `type` is not a supported type; `length` does not match the type (Bool 1, Byte / SInt / USInt 8, Int / UInt / Word 16, DInt / UDInt / DWord / Real 32).
+  - Alignment: the `offset` of a non-Bool must be a multiple of 8; the byte offset of a multi-byte type must be even.
+  - Overlap: non-Bool entries are sorted by byte range and neighbouring ranges are checked for intersection; Bools are checked by `offset` for a bit occupied twice; a Bool inside the range of a non-Bool requires the `coupling` of that Bool entry (after expansion, the array of names of the combined words it belongs to) to contain the name of the non-Bool entry.
+  - Combined words: every bit named in the `coupling` of an entry must exist, be a Bool, and have an `offset` within `[offset, offset + length)`.
+  - Total length: `length % 16 === 0`.
+  - The type and range of `init_value` match `type`.
+  - A combined word and its bits do not both give `init_value` (the conflict is recorded during expansion and reported by validation).
+- `build_structure` keeps entries with duplicate names and leaves them to validation.
+- `compile_layout` validates all layouts in the file and, on violations, throws an error that contains all of them (`error.errors`).
+- After validation passes, TData and TTag do not repeat these checks; `layout_of` keeps only defensive assertions.
 
-## 4. 编解码与原型访问器
+## 4. Codecs and prototype accessors
 
-- 编解码表 `codecs.js` 中每种类型有一项，`get(buffer, byte, mask)` 从大端缓冲区解码，`set(buffer, byte, mask, value)` 编码写入；设备字节序不在表中处理。
-- `layout_of` 为每种结构生成一个 TData 子类 `Data_Class`，在其原型上为每个条目定义一次访问器，同一结构的实例共用：
-  - getter 每次用编解码表从 `buffer` 解码，不缓存值；
-  - setter 用编解码表写入 `buffer`，再调用 `after_write`。
-- 组合字与它的组成位共用同一块字节，写任何一方，另一方读到的自然是新值，不需要额外联动。
-- tag 名不得与 TData 的成员同名（访问器会遮蔽成员），由 `validate_structure` 检查，`layout_of` 另有防御性检查。
-- `set_access_tracer(tracer | null)`：设置后，访问器每次读写 tag 都调用 `tracer(tdata, name, "read" | "write")`，供使用方的依赖追踪使用；未设置时访问器只多一次判断。
-- `render_types(layouts, { source, tdata_module })` 由布局生成类型声明（每个布局一个接口，tag 为属性，`comment` 作为注释），为按名访问提供编辑器补全。
+- The codec table `codecs.js` has one entry per type: `get(buffer, byte, mask)` decodes from the big-endian buffer and `set(buffer, byte, mask, value)` encodes into it. Device byte order is not handled in the table.
+- `layout_of` generates a TData subclass `Data_Class` for each structure and defines the accessor of every entry once on its prototype, shared by all instances of the structure:
+  - the getter decodes from `buffer` with the codec on every read and caches nothing;
+  - the setter writes into `buffer` with the codec and then calls `after_write`.
+- A combined word and its bits share the same bytes, so writing either one makes the other read the new value; no extra linkage is needed.
+- A tag name must not equal a TData member name (the accessor would shadow the member). `validate_structure` checks this and `layout_of` has a defensive check too.
+- `set_access_tracer(tracer | null)`: once set, the accessors call `tracer(tdata, name, "read" | "write")` on every read or write of a tag, for the user's dependency tracking. When unset, the accessors only pay one extra condition.
+- `render_types(layouts, { source, tdata_module })` generates type declarations from layouts (one interface per layout, tags as properties, `comment` as doc comment), to give editor completion for access by name.
 
 ## 5. TData
 
-- `new TData(struct, name, { detection, on_write })` 返回该结构的 `Data_Class` 的实例：分配 `buffer`（`layout.size` 字节），按条目的 `init_value` 依次编码写入。`detection` 为 `"immediate"`（默认）或 `"deferred"`。
-- `name` 可写；`layout`、`size`、`buffer` 只读（只有 getter，赋值抛出 `TypeError`），`buffer` 的内容可以读写。`buffer` 统一按大端存放。
-- 写 `buffer` 有两种途径，都经过 TData，任何时候都允许：
+- `new TData(struct, name, { detection, on_write })` returns an instance of the `Data_Class` of the structure: it allocates `buffer` (`layout.size` bytes) and encodes the `init_value` of the entries in order. `detection` is `"immediate"` (default) or `"deferred"`.
+- `name` is writable; `layout`, `size` and `buffer` are read-only (getter only, assignment throws `TypeError`), and the content of `buffer` can be read and written. `buffer` is always big-endian.
+- There are two ways to write `buffer`, both through TData and allowed at any time:
 
-  | 途径 | 使用者 |
+  | Way | Used by |
   | --- | --- |
-  | 按名赋值（`data[name] = v` 或 `tag.value = v`） | 任何代码 |
-  | 原始写入方法 `write_register(offset, value)`、`write_bit(offset, mask, value)`、`write_bytes(offset, source)`，以字节偏移定位 | 与寄存器地址打交道的代码，如 Modbus 服务端 |
+  | Assignment by name (`data[name] = v` or `tag.value = v`) | Any code |
+  | Raw write methods `write_register(offset, value)`, `write_bit(offset, mask, value)`, `write_bytes(offset, source)`, locating by byte offset | Code that deals with register addresses, such as a Modbus server |
 
-- TData 出错时抛出异常（布局冲突、值越界），不写日志、不退出。
-- `data.get(name)` 返回该 tag 的 `TTag`，首次访问时创建并缓存，名称不存在时返回 `undefined`。TTag 不持有值：读 `value` 从 TData 的 `buffer` 解码，写 `value` 与 `data[name] = v` 完全等价；`name`、`type`、`length` 来自 Layout 条目；`change` 事件由 Observer 发出。
+- TData throws exceptions on errors (layout conflicts, out-of-range values); it neither logs nor exits.
+- `data.get(name)` returns the `TTag` of the tag, created and cached on first access; for an unknown name it returns `undefined`. A TTag holds no value: reading `value` decodes from the `buffer` of the TData, writing `value` is exactly equivalent to `data[name] = v`; `name`, `type` and `length` come from the Layout entry; the `change` event is emitted by the Observer.
 
-### 5.1 检测模式与 Observer
+### 5.1 Detection modes and the Observer
 
-所有写入路径最后都汇到 TData 的同一个私有方法，两种检测模式只决定写入之后由谁、何时调用 `diff()`：
+Every write path ends in the same private method of TData. The two detection modes only decide who calls `diff()` after the write, and when:
 
 ```js
 #written() {
@@ -101,27 +103,27 @@
 }
 ```
 
-- 立即模式：在写入语句内部同步调用 `diff()`，再调用 `on_write`；延迟模式：只调用 `on_write`，检测由使用方调用 `detect()` 完成。
-- 直接写 `buffer` 的内容后，需调用 `detect()`。
+- Immediate mode: `diff()` is called synchronously inside the write statement, then `on_write`. Deferred mode: only `on_write` is called, and the user completes the detection by calling `detect()`.
+- After writing the content of `buffer` directly, call `detect()`.
 
-**快照比对。** Observer 持有与 `buffer` 等长的快照，创建时复制 `buffer`。`diff()` 逐字节比较 `buffer` 与快照，只对不同的字节经反查表 `tags_at_byte` 找到相关 tag，从快照解码旧值、从 `buffer` 解码新值，值不同（两个 NaN 视为相同）的记为变化；比对完成后更新快照，再统一报告：
+**Snapshot comparison.** The Observer holds a snapshot as long as `buffer`, copied from `buffer` at creation. `diff()` compares `buffer` with the snapshot byte by byte; for the bytes that differ it finds the related tags through the lookup table `tags_at_byte`, decodes the old value from the snapshot and the new value from `buffer`, and records a change when the values differ (two NaNs count as equal). It then updates the snapshot and reports all changes together:
 
-- 按布局顺序报告（组合字在其组成位之前），每个变化先由 TData 发出 `change(tagname, old, new)`，再由该 tag 的 TTag 发出 `change(old, new)`；事件总在新值生效之后发出；
-- 两次检测之间同一 tag 的多次写入合并为一个事件，值改变后又恢复的不发事件；
-- 事件处理器中再写 tag 时，嵌套的比对只登记，等当前这一轮变化报告完再比对一轮；连续 16 轮仍有新变化时抛出异常，防止振荡；
-- 旧值从快照解码，不缓存任何值。
+- Changes are reported in layout order (a combined word before its bits). For each change TData emits `change(tagname, old, new)` first, then the TTag of that tag emits `change(old, new)`. Events are always emitted after the new value has taken effect;
+- Several writes to the same tag between two detections are merged into one event; a value changed and restored emits none;
+- When a handler writes a tag again, the nested comparison is only registered; once the current round of changes is reported, another round of comparison runs. If new changes keep appearing for 16 rounds in a row, an exception is thrown to prevent oscillation;
+- Old values are decoded from the snapshot; no value is cached.
 
-**上一次扫描的值。** `observer.previous(name)` 返回上一次扫描结束时的值，从扫描快照解码；使用方的调度器在每次扫描结束时调用 `take_scan_snapshot()` 更新它。立即模式下检测快照在写入之间不断刷新，所以扫描快照单独保存。
+**Values at the last scan.** `observer.previous(name)` returns the value at the end of the last scan, decoded from the scan snapshot. The user's scheduler calls `take_scan_snapshot()` at the end of every scan to update it. In the immediate mode the detection snapshot is refreshed between writes, so the scan snapshot is kept separately.
 
-## 6. 字节序转换
+## 6. Byte order conversion
 
-`endian.js` 按布局条目实现设备字节序与内部大端之间的转换（`load_entry` / `store_entry` / `io_index` / `io_range`），不检测变化：
+`endian.js` converts between device byte order and the internal big-endian order per layout entry (`load_entry` / `store_entry` / `io_index` / `io_range`). It does not detect changes:
 
-- 2 字节：`BE` 原样复制；`LE` / `little` / `BEBS` 交换两个字节；
-- 4 字节：支持 `BE`、`LE` / `little`、`BEBS`、`LEBS` 四种排列；
-- Bool 和单字节类型（Byte、SInt、USInt）只读写一个字节，不做字节内转换；它在 IO 缓冲区中的下标按 16 位寄存器换算：`LE` / `little` / `BEBS` 时为 `byte ^ 1`，`BE` / `LEBS` 时为 `byte`。Bool 按位掩码只改自己的位。
+- 2 bytes: `BE` copies as is; `LE` / `little` / `BEBS` swap the two bytes;
+- 4 bytes: the four orders `BE`, `LE` / `little`, `BEBS` and `LEBS` are supported;
+- Bool and single-byte types (Byte, SInt, USInt) read and write one byte without any conversion inside the byte. Their index in the IO buffer is computed per 16-bit register: `byte ^ 1` for `LE` / `little` / `BEBS`, `byte` for `BE` / `LEBS`. A Bool changes only its own bit, by bit mask.
 
-## 7. 构建与测试
+## 7. Build and test
 
-- `pnpm build`：rolldown 把 `src/index.js` 打包为 `dist/tagged-data.js`（`yaml` 打进库）；
-- `pnpm test`：先构建，再 `node --test`；`pnpm lint`：ESLint。
+- `pnpm build`: rolldown bundles `src/index.js` into `dist/tagged-data.js` (`yaml` is bundled into the library);
+- `pnpm test`: builds first, then runs the type tests and `node --test`; `pnpm lint`: ESLint.

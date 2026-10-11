@@ -1,5 +1,5 @@
 // Conversion between the device byte order of an IO buffer and the big-endian
-// buffer of a TData, per layout entry (doc/spec.md 3.6). Device byte order acts
+// buffer of a TData, per layout entry (doc/spec.md §3). Device byte order acts
 // per 16-bit register and per 32-bit value; the IO buffer is indexed like the
 // TData buffer.
 

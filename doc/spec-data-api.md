@@ -1,148 +1,151 @@
-# 数据对象接口规范（TData / TTag）
+# Data Object Interface Specification (TData / TTag)
 
-> 本文规定 TData 和 TTag 对使用者承诺的编程接口，是 [spec.md](spec.md) 的细化。实现见 [design.md](design.md) 第 2 节。
-> TData 和 TTag 是面向程序员的通用数据对象：任何时候都可以读写值，值发生变化时发出事件。它们不依赖使用方的调度方式；扫描式的数据流只是使用它们的一种方式，不限制它们的能力。
+> English version of [spec-data-api.zh-cn.md](spec-data-api.zh-cn.md), the primary Chinese version. When the two differ, update both.
+>
+> This document defines the programming interface that TData and TTag promise to their users. It refines [spec.md](spec.md). The implementation is described in §2 of [design.md](design.md).
+> TData and TTag are general data objects for programmers: values can be read and written at any time, and a change event is emitted when a value changes. They do not depend on how the user schedules work; scan-style data flow is only one way to use them and does not limit what they can do.
 
-## 1. 概念
+## 1. Concepts
 
-| 名称 | 含义 |
+| Name | Meaning |
 | --- | --- |
-| 布局 | 一块数据的固定格式：每个 tag 的名称、类型、位偏移、初值，由布局描述（第 6 节）给出，编译后不可变 |
-| TData / tdata | TData 是数据对象的类，tdata 是它的实例：按某个布局分配的一块数据，内部按大端存放，提供按名读写和变化事件 |
-| TTag | tdata 中一个具名条目的操作接口，可读写其值、订阅其变化 |
+| Layout | The fixed format of a data block: name, type, bit offset and initial value of every tag, given by a layout description (§6) and immutable once compiled |
+| TData / tdata | TData is the class of data objects, a tdata is an instance: a block of data allocated for a layout, stored big-endian internally, with access by name and change events |
+| TTag | The interface of one named entry of a tdata: read and write its value, subscribe to its changes |
 
-TData、TTag 中的 T 指 Typed（有类型的）：tdata 按固定布局存放，每个 tag 有确定的类型和位置。
+The T in TData and TTag stands for Typed: a tdata is stored in a fixed layout and every tag has a definite type and position.
 
-tag 的类型：`Bool`、`Byte`、`SInt`、`USInt`、`Int`、`UInt`、`Word`、`DInt`、`UDInt`、`DWord`、`Real`。`Bool` 的值为 `true` / `false`，其余为数值。由若干 `Bool` 组成的 `Word` 称为组合字，它与各组成位共用同一块数据。
+Tag types: `Bool`, `Byte`, `SInt`, `USInt`, `Int`, `UInt`, `Word`, `DInt`, `UDInt`, `DWord`, `Real`. The value of a `Bool` is `true` / `false`, all others are numbers. A `Word` made of several `Bool`s is called a combined word; it shares its data with its bits.
 
 ## 2. TData
 
-### 2.1 创建
+### 2.1 Creating
 
 ```js
 const data = new TData(layout, name, options);
 ```
 
-- `layout`：由 `compile_layout` 编译得到的布局（第 6 节）；
-- `name`：tdata 的名称，用于日志和错误信息；
-- `options`（可选）：
-  - `detection`：检测模式，`"immediate"`（默认）或 `"deferred"`，见 4.2 节；
-  - `on_write(data)`：每次写入后调用，通知使用方有写入发生；立即模式下在本次写入的检测完成之后调用，延迟模式下用于安排检测（4.2 节）。
-- 创建后每个 tag 的值等于布局中的初值，此时不发出变化事件。
+- `layout`: a layout compiled by `compile_layout` (§6);
+- `name`: the name of the tdata, used in logs and error messages;
+- `options` (optional):
+  - `detection`: the detection mode, `"immediate"` (default) or `"deferred"`, see §4.2;
+  - `on_write(data)`: called after every write to tell the user that a write happened. In the immediate mode it is called after the detection of that write; in the deferred mode it is used to schedule a detection (§4.2).
+- After creation every tag equals its initial value from the layout, and no change event is emitted.
 
-### 2.2 属性
+### 2.2 Properties
 
-| 属性 | 读写 | 说明 |
+| Property | Access | Description |
 | --- | --- | --- |
-| `name` | 可写 | tdata 的名称 |
-| `layout` | 只读 | 所用的布局 |
-| `size` | 只读 | tdata 的字节数 |
-| `buffer` | 只读 | 内部缓冲区（大端）。属性只读，不能换成另一个缓冲区；缓冲区的内容可以读写，直接改写内容后须调用 `detect()`，否则变化不会被检测 |
+| `name` | read/write | The name of the tdata |
+| `layout` | read-only | The layout in use |
+| `size` | read-only | Size of the tdata in bytes |
+| `observer` | read-only | The change detector (Observer). `observer.previous(name)` returns the value at the end of the last scan, and `observer.take_scan_snapshot()` is called by the user's scheduler at the end of every scan. Ignore it when you do not scan |
+| `buffer` | read-only | The internal buffer (big-endian). The property cannot be replaced by another buffer, but its content can be read and written. After changing the content directly you must call `detect()`, otherwise the changes are not detected |
 
-对只读属性赋值时抛出 `TypeError`。
+Assigning to a read-only property throws `TypeError`.
 
-### 2.3 按名读写
+### 2.3 Access by name
 
 ```js
 data.pressure = 1.5;          // write
 const value = data.pressure;  // read
 ```
 
-- 每个 tag 名都是 tdata 的一个属性，可读可写，任何时候都可以进行；
-- 写入立即生效：写入后读到的就是新值，读取 TTag 的 `value` 也是新值；
-- 写组合字时，各组成位随之改变；写组成位时，组合字随之改变；
-- 写入超出类型取值范围的整数时抛出 `RangeError`，原值不变；写 `Bool` 时按真假值处理。
+- Every tag name is a property of the tdata, readable and writable at any time;
+- A write takes effect at once: after it, reading gives the new value, and so does the `value` of the TTag;
+- Writing a combined word changes its bits; writing a bit changes the combined word;
+- Writing an integer outside the range of the type throws `RangeError` and keeps the old value; a `Bool` is written by truthiness.
 
-### 2.4 取得 TTag
+### 2.4 Getting a TTag
 
 ```js
 const tag = data.get("pressure");
 ```
 
-返回该 tag 的 TTag；同一 tdata 对同一名称总是返回同一个 TTag。名称不存在时返回 `undefined`。
+Returns the TTag of the tag; the same tdata always returns the same TTag for the same name. Returns `undefined` if the name does not exist.
 
-### 2.5 原始写入
+### 2.5 Raw writes
 
-供不按 tag 名访问的写入方（如对上服务端）使用，以字节偏移定位，写入后的处理与按名写入相同：
+For writers that do not access by tag name (such as an upstream server). They locate the data by byte offset, and what happens after the write is the same as for a write by name:
 
-| 方法 | 说明 |
+| Method | Description |
 | --- | --- |
-| `write_register(offset, value)` | 写一个 16 位寄存器（大端），`offset` 为字节偏移 |
-| `write_bit(offset, mask, value)` | 写一个字节中由 `mask` 指定的位 |
-| `write_bytes(offset, source)` | 从 `offset` 起写一段字节 |
+| `write_register(offset, value)` | Write one 16-bit register (big-endian); `offset` is a byte offset |
+| `write_bit(offset, mask, value)` | Write the bits of a byte selected by `mask` |
+| `write_bytes(offset, source)` | Write a run of bytes starting at `offset` |
 
-### 2.6 检测
+### 2.6 Detection
 
-`detect()`：做一次检测（4.1 节），报告自上次检测以来的全部变化。立即模式下写入后会自动检测，通常只在直接改写 `buffer` 内容后需要调用；延迟模式下由使用方在合适的时机调用。
+`detect()`: performs one detection (§4.1) and reports all changes since the last detection. In the immediate mode a detection runs automatically after every write, so you usually need it only after changing `buffer` directly; in the deferred mode the user calls it at the right moment.
 
-### 2.7 事件
+### 2.7 Events
 
 ```js
 data.on("change", (name, old_value, new_value) => { /* ... */ });
 ```
 
-tdata 中任一 tag 的值变化时发出，参数为 tag 名、旧值、新值。
+Emitted when the value of any tag of the tdata changes. The arguments are the tag name, the old value and the new value.
 
 ## 3. TTag
 
-| 成员 | 说明 |
+| Member | Description |
 | --- | --- |
-| `name` | tag 名 |
-| `type` | 类型（小写） |
-| `length` | 占用的字节数 |
-| `value` | 当前值，可读可写；写入与 `data[name] = v` 完全等价 |
-| `on("change", (old_value, new_value) => ...)` | 订阅该 tag 的变化 |
+| `name` | The tag name |
+| `type` | The type (lower case) |
+| `length` | Number of bytes it occupies |
+| `value` | The current value, readable and writable; writing it is exactly equivalent to `data[name] = v` |
+| `on("change", (old_value, new_value) => ...)` | Subscribe to changes of this tag |
 
-TTag 不保存值，读写都直接作用于所属 tdata。
+A TTag stores no value; reads and writes act directly on the tdata it belongs to.
 
-## 4. 变化与事件
+## 4. Changes and events
 
-### 4.1 检测
+### 4.1 Detection
 
-**检测**是把 tdata 中每个 tag 的当前值，与上一次检测时的值比较，对值不同的 tag 发出 `change` 事件；检测完成后，当前值成为下一次检测的比较基准。tdata 创建时的初值是第一次检测的比较基准。
+A **detection** compares the current value of every tag of the tdata with its value at the previous detection, and emits a `change` event for every tag whose value differs. After the detection the current values become the baseline for the next one. The initial values at creation are the baseline of the first detection.
 
-两次检测之间，同一个 tag 被写入多少次都不影响检测：检测只比较前后两个时刻的值，所以多次写入合并为一个事件，旧值是上一次检测时的值；值改变后又恢复的，不发出事件。
+How many times a tag is written between two detections does not matter: a detection compares only the values at the two moments. Several writes are merged into one event whose old value is the value at the previous detection; a value that changed and was restored emits no event.
 
-### 4.2 检测模式
+### 4.2 Detection modes
 
-检测模式决定何时检测，由创建 tdata 时的 `detection` 选择。检测模式只影响 `change` 事件何时发出，不影响值：两种模式下写入都立即生效，任何时候读 tdata 的属性或 TTag 的 `value`，得到的都是当前值（2.3 节）。两种模式下 tdata 和 TTag 的读写能力、事件的内容和约定（4.3 节）完全相同。
+The detection mode decides when detection happens; it is chosen by `detection` when the tdata is created. It only affects when `change` events are emitted, not the values: in both modes a write takes effect at once, and reading a property of the tdata or the `value` of a TTag at any time gives the current value (§2.3). In both modes the read/write abilities of tdata and TTag, and the content and conventions of events (§4.3), are the same.
 
-| 模式 | 写入之后 | 何时发出事件 | `on_write` | 适合 |
+| Mode | After a write | When events are emitted | `on_write` | Suited to |
 | --- | --- | --- | --- | --- |
-| 立即（`"immediate"`，默认） | 立即检测 | 写入语句返回时，由它引起的事件已经发出 | 检测之后调用 | 普通程序、设备模拟 |
-| 延迟（`"deferred"`） | 不检测 | 使用方调用 `detect()` 时，统一发出自上次检测以来的全部事件 | 调用，用于安排检测 | 需要把一批输入作为整体处理的使用方 |
+| Immediate (`"immediate"`, default) | Detect at once | When the write statement returns, the events it caused have been emitted | Called after the detection | Ordinary programs, device simulation |
+| Deferred (`"deferred"`) | No detection | When the user calls `detect()`, all events since the last detection are emitted together | Called, to schedule a detection | Users that process a batch of inputs as a whole |
 
-- 两种模式都不会丢失变化：延迟模式下，只要使用方最终调用 `detect()`，自上次检测以来的全部变化都会报告。
-- 立即模式下每次写入都检测一次，所以多次写入分别发出事件；延迟模式下按 4.1 节合并。
+- Neither mode loses changes: in the deferred mode, as long as the user eventually calls `detect()`, all changes since the last detection are reported.
+- In the immediate mode every write is detected, so several writes emit separate events; in the deferred mode they are merged as in §4.1.
 
-### 4.3 共同约定
+### 4.3 Common conventions
 
-- 无论变化来自哪里（按名写入、TTag 写入、原始写入、直接改写 `buffer` 后的 `detect()`），都会发出事件，不会遗漏；
-- 事件在新值生效之后发出：处理器中读到的就是新值；
-- 只有值真正改变才发出事件：写入相同的值不发出；`NaN` 写成 `NaN` 视为未变；
-- 组合字与组成位各自发出事件：一次写入改变了组合字和其中某些位时，组合字和这些位都发出；
-- 一次检测中的多个变化按布局中的顺序发出（组合字在其组成位之前）；每个变化先发出 tdata 的 `change`，再发出该 TTag 的 `change`；
-- 事件处理器中可以写任何 tag：立即模式下，这次写入引起的变化在当前这批变化发出完之后发出；延迟模式下，这次写入调用 `on_write`，变化在下一次 `detect()` 时发出；
-- 如果处理器之间的写入互相触发，连续 16 轮仍有新变化，检测抛出异常，防止无限振荡；尚未发出的变化不会丢失，下一次检测时发出。
+- Wherever a change comes from (a write by name, a write through a TTag, a raw write, or `detect()` after a direct write to `buffer`) an event is emitted; none is missed;
+- Events are emitted after the new value has taken effect: handlers read the new value;
+- An event is emitted only when the value really changes: writing the same value emits none; writing `NaN` over `NaN` counts as unchanged;
+- A combined word and its bits emit their own events: when one write changes the word and some of its bits, the word and those bits all emit;
+- The changes of one detection are emitted in layout order (a combined word before its bits); for each change the `change` of the tdata is emitted first, then the `change` of the TTag;
+- Handlers may write any tag: in the immediate mode, the changes caused by that write are emitted after the current batch has been emitted; in the deferred mode, that write calls `on_write` and its changes are emitted at the next `detect()`;
+- If writes triggered by handlers keep causing new changes for 16 rounds in a row, the detection throws an exception to prevent endless oscillation; changes not yet emitted are not lost and are emitted at the next detection.
 
-## 5. 错误
+## 5. Errors
 
-接口出错时抛出异常，不写日志、不退出进程，由调用方决定如何处理：
+The interface throws exceptions on errors. It does not log or exit the process; the caller decides how to handle them:
 
-| 情况 | 异常 |
+| Case | Exception |
 | --- | --- |
-| 写入超出类型取值范围的整数 | `RangeError`，原值不变 |
-| 布局不合法、tag 名与 TData 的成员冲突 | 创建 tdata 时抛出 `Error` |
-| 处理器互相触发的写入不能平息 | 检测时抛出 `Error` |
+| Writing an integer outside the range of the type | `RangeError`, the old value is kept |
+| Invalid layout, or a tag name colliding with a TData member | `Error` thrown when the tdata is created |
+| Writes triggered by handlers that do not settle | `Error` thrown by the detection |
 
-## 6. 布局描述
+## 6. Layout description
 
-### 6.1 文件
+### 6.1 File
 
-布局描述是一个 YAML 1.2 文件，可以同时定义多个布局：
+A layout description is a YAML 1.2 file that can define several layouts at once:
 
-- 根键 `layouts`：映射，键为布局名（如 `NODE`），值为该布局的条目列表；
-- 其余根键都是片段：键为片段名，值为条目列表，供条目按名称引用。
+- The root key `layouts`: a mapping from layout names (such as `NODE`) to lists of entries;
+- Every other root key is a fragment: its key is the fragment name and its value a list of entries, which entries can reference by name.
 
 ```yaml
 node_commands:              # a fragment
@@ -159,45 +162,45 @@ layouts:
     - { includes: node_parameters, offset: 144 }
 ```
 
-目前一次只编译一个文件。以后支持多个文件（目录）时，再规定合并方式和键冲突的处理。
+Only one file is compiled at a time for now. When several files (a directory) are supported, the merge rules and the handling of key conflicts will be specified.
 
-### 6.2 条目
+### 6.2 Entries
 
-| 字段 | 说明 |
+| Field | Description |
 | --- | --- |
-| `name` | tag 名，同一布局内唯一，不得与 TData 的成员同名 |
-| `type` | 第 1 节所列类型之一，大小写不敏感 |
-| `offset` | 位偏移；非 Bool 必须在整字节上，多字节类型必须从偶数字节开始 |
-| `length` | 位长，可省略，省略时由类型决定；写出时须与类型一致 |
-| `init_value` | 初值，须是该类型可表示的值；组合字与组成位见下文 |
-| `comment` | 可选的说明文字，供生成点表、类型声明等使用 |
-| `coupling` | 组合字的组成位：片段名或内联条目列表，各位的 `offset` 相对于该字 |
-| `is_combined` | 可选，标记整字与各位双向联动的组合字 |
-| `includes` | 与 `offset`（可加 `name_prefix`）一起，把片段名或内联列表指定的条目整体偏移后拼接进来 |
+| `name` | The tag name, unique within a layout, not equal to a member name of TData |
+| `type` | One of the types listed in §1, case-insensitive |
+| `offset` | Bit offset; a non-Bool must be on a whole byte, a multi-byte type must start at an even byte |
+| `length` | Length in bits; may be omitted, in which case the type decides it; when written it must match the type |
+| `init_value` | Initial value, which must be representable by the type; see below for combined words and their bits |
+| `comment` | Optional description, used to generate point tables, type declarations and so on |
+| `coupling` | The bits of a combined word: a fragment name or an inline list of entries; the `offset` of each bit is relative to the word |
+| `is_combined` | Optional descriptive mark of a combined word whose word and bits are linked in both directions; the linkage is decided by `coupling` and does not depend on it |
+| `includes` | Together with `offset` (and optionally `name_prefix`), splices in the entries given by a fragment name or an inline list, shifted as a whole |
 
-片段中的条目也可以引用其他片段。
+Entries in a fragment may reference other fragments too.
 
-### 6.3 合法性
+### 6.3 Validity
 
-- 非 Bool 的 tag 之间字节范围互不重叠；每一位最多属于一个 Bool；
-- Bool 落在某个非 Bool tag 的字节范围内时，必须是该 tag（组合字）的组成位；组合字的每个组成位都必须落在该字的范围内；
-- 组合字与它的组成位只能由一方给出初值：组合字给出时，组成位的初值由整字决定；组合字不给出时，由各组成位给出（未给出的位为 `false`），整字的初值由它们合成；
-- 布局总长是整数个寄存器（16 位的整数倍）；
-- 引用的片段必须存在，片段之间不得循环引用。
+- The byte ranges of non-Bool tags do not overlap; each bit belongs to at most one Bool;
+- A Bool inside the byte range of a non-Bool tag must be a bit (`coupling`) of that tag; every bit of a combined word must lie inside the word;
+- Only one side of a combined word and its bits gives the initial value: if the word gives it, the initial values of the bits come from the whole word; otherwise they come from the bits (a bit without a value is `false`) and the word is composed from them;
+- The total length of a layout is a whole number of registers (a multiple of 16 bits);
+- Referenced fragments must exist, and fragments must not reference each other in a cycle.
 
-### 6.4 编译
+### 6.4 Compiling
 
 ```js
 const { layouts, fragments } = compile_layout(yaml_path);
 const node = new TData(layouts.NODE, "node_1");
 ```
 
-- `layouts`：按布局名索引的已编译布局，用于创建 TData；
-- `fragments`：按片段名索引的条目列表（展开引用后，偏移相对于片段起点），供使用方查询，例如取得参数块的全部 tag 名；
-- 文件中有任何违规时抛出 `Error`，其 `errors` 属性列出全部违规项；
-- `compile_layout_data(root, origin)` 编译已解析的描述（与文件同结构：`layouts` 加各片段），用于布局嵌在使用方自己文件中的情形，返回值和错误同上。
+- `layouts`: compiled layouts by layout name, used to create TData;
+- `fragments`: entry lists by fragment name (references expanded, offsets relative to the start of the fragment), for the user to query, for example to get all tag names of a parameter block;
+- Any violation in the file throws an `Error` whose `errors` property lists all violations;
+- `compile_layout_data(root, origin)` compiles an already parsed description (the same structure as the file: `layouts` plus the fragments), for layouts embedded in the user's own file. The result and the errors are the same.
 
-## 7. 不在本接口内
+## 7. Outside this interface
 
-- 与设备交换数据（字节序转换、分组读写、驱动绑定）由使用方的 IO 层负责，它通过本接口和 `buffer` 操作 tdata（包提供按条目的字节序转换函数，见 design.md 6 节）；
-- 调度、规则、计时不属于本接口。
+- Exchanging data with devices (byte order conversion, grouped reads and writes, driver binding) is the job of the user's IO layer, which operates the tdata through this interface and `buffer` (the package provides per-entry byte order conversion functions, see design.md §6);
+- Scheduling, rules and timing do not belong to this interface.

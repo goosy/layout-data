@@ -1,4 +1,4 @@
-// Public interface of the package (doc/spec.md 2).
+// Public interface of the package (doc/design.md §1).
 export { TData } from "./TData.js";
 export { TTag } from "./TTag.js";
 export { Observer } from "./observer.js";

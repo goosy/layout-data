@@ -1,5 +1,5 @@
 // Renders TypeScript declarations of compiled layouts, for editor completion
-// of the tag accessors (doc/design.md 3.3).
+// of the tag accessors (doc/design.md §4).
 
 /**
  * `NODE` -> `Node`, `my_block` -> `My_Block`
