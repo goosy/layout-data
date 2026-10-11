@@ -65,14 +65,4 @@ describe("Observer", () => {
 		data.b = 3;
 		assert.deepEqual(events, [["a", 16, 17], ["b", 0, 3]]);
 	});
-
-	test("previous() gives the value at the last scan snapshot", () => {
-		const data = create();
-		data.a = 4;
-		assert.equal(data.observer.previous("a"), 0);
-		data.observer.take_scan_snapshot();
-		data.a = 5;
-		assert.equal(data.observer.previous("a"), 4);
-		assert.equal(data.a, 5);
-	});
 });

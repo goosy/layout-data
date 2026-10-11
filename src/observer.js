@@ -23,8 +23,6 @@ export class Observer {
 	#layout;
 	/** @type {Buffer} */
 	#snapshot;
-	/** @type {Buffer} */
-	#scan_snapshot;
 	/** @type {(entry: Layout_Entry, old_value: any, new_value: any) => void} */
 	#report;
 	#diffing = false;
@@ -43,24 +41,7 @@ export class Observer {
 		this.#layout = layout;
 		this.#report = report;
 		this.#snapshot = Buffer.from(buffer);
-		this.#scan_snapshot = Buffer.from(buffer);
 		this.#seen = new Uint32Array(layout.entries.size);
-	}
-
-	/**
-	 * The value of a tag at the end of the last scan (doc/design.md §5.1).
-	 *
-	 * @param {string} name - Tag name.
-	 * @returns {number | boolean}
-	 */
-	previous(name) {
-		const entry = this.#layout.entries.get(name);
-		return entry.codec.get(this.#scan_snapshot, entry.byte, entry.mask);
-	}
-
-	/** Called at the end of a scan: the current values become the previous ones. */
-	take_scan_snapshot() {
-		this.#buffer.copy(this.#scan_snapshot);
 	}
 
 	/** Reports every tag changed since the last diff. */

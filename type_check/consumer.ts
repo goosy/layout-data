@@ -91,8 +91,6 @@ const codec: Codec = CODECS.word;
 const value: number | boolean = codec.get(tdata.buffer, 0, 0xff);
 const observer: Observer = tdata.observer;
 observer.diff();
-const previous: number | boolean = observer.previous("a");
-observer.take_scan_snapshot();
 
 // endian conversion
 const entry: Layout_Entry = layout.entries.get("a")!;
@@ -108,4 +106,4 @@ const text: string = render_types(compiled.layouts, { source: "layout.yaml", tda
 // @ts-expect-error the options are required
 render_types(compiled.layouts);
 
-export { bits, value, previous, index, range, text };
+export { bits, value, index, range, text };

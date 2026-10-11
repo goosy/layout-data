@@ -26,7 +26,7 @@
 | --- | --- | --- | --- |
 | Layout | Compiled from a layout description: byte position and codec of every tag, a byte-to-tag lookup table, prototype accessors | One per structure | Immutable |
 | TData | The value buffer `buffer` (big-endian), access by name, raw write methods, the TTag returned by `get(name)` | One per tdata | Mutable |
-| Observer | Snapshot comparison, emits change events, provides the values at the end of the last scan | One per tdata | Mutable |
+| Observer | Snapshot comparison, emits change events | One per tdata | Mutable |
 
 Dependency direction: Observer depends on TData and Layout, TData depends only on Layout, Layout depends only on the layout description. The user's scheduling and IO are outside the package; the package notifies them only through a callback passed by the user (`on_write`).
 
@@ -112,8 +112,6 @@ Every write path ends in the same private method of TData. The two detection mod
 - Several writes to the same tag between two detections are merged into one event; a value changed and restored emits none;
 - When a handler writes a tag again, the nested comparison is only registered; once the current round of changes is reported, another round of comparison runs. If new changes keep appearing for 16 rounds in a row, an exception is thrown to prevent oscillation;
 - Old values are decoded from the snapshot; no value is cached.
-
-**Values at the last scan.** `observer.previous(name)` returns the value at the end of the last scan, decoded from the scan snapshot. The user's scheduler calls `take_scan_snapshot()` at the end of every scan to update it. In the immediate mode the detection snapshot is refreshed between writes, so the scan snapshot is kept separately.
 
 ## 6. Byte order conversion
 

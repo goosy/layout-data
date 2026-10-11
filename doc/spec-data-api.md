@@ -39,7 +39,6 @@ const data = new TData(layout, name, options);
 | `name` | read/write | The name of the tdata |
 | `layout` | read-only | The layout in use |
 | `size` | read-only | Size of the tdata in bytes |
-| `observer` | read-only | The change detector (Observer). `observer.previous(name)` returns the value at the end of the last scan, and `observer.take_scan_snapshot()` is called by the user's scheduler at the end of every scan. Ignore it when you do not scan |
 | `buffer` | read-only | The internal buffer (big-endian). The property cannot be replaced by another buffer, but its content can be read and written. After changing the content directly you must call `detect()`, otherwise the changes are not detected |
 
 Assigning to a read-only property throws `TypeError`.

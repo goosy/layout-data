@@ -37,7 +37,6 @@ const data = new TData(layout, name, options);
 | `name` | 可写 | tdata 的名称 |
 | `layout` | 只读 | 所用的布局 |
 | `size` | 只读 | tdata 的字节数 |
-| `observer` | 只读 | 变化检测器（Observer）。`observer.previous(name)` 返回上一次扫描结束时的值，`observer.take_scan_snapshot()` 由使用方的调度器在每次扫描结束时调用；不使用扫描时可忽略 |
 | `buffer` | 只读 | 内部缓冲区（大端）。属性只读，不能换成另一个缓冲区；缓冲区的内容可以读写，直接改写内容后须调用 `detect()`，否则变化不会被检测 |
 
 对只读属性赋值时抛出 `TypeError`。
