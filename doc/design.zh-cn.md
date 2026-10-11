@@ -26,7 +26,7 @@
 | TData | 值缓冲区 `buffer`（大端）、按名访问、原始写入方法、`get(name)` 返回的 TTag | 每个 tdata 一个 | 可变 |
 | Observer | 快照比对，发出变化事件 | 每个 tdata 一个 | 可变 |
 
-依赖方向：Observer 依赖 TData 与 Layout，TData 只依赖 Layout，Layout 只依赖布局描述。使用方的调度和 IO 在包之外，包只通过使用方传入的回调（`on_write`）通知它们。
+依赖方向：Observer 依赖 TData 与 Layout，TData 只依赖 Layout，Layout 只依赖布局描述。使用方的调度和 IO 在包之外，包只通过 TData 的 `write` 事件通知它们，任何一方都可以监听。
 
 ### 2.1 组件边界
 
@@ -78,7 +78,7 @@
 
 ## 5. TData
 
-- `new TData(struct, name, { detection, on_write })` 返回该结构的 `Data_Class` 的实例：分配 `buffer`（`layout.size` 字节），按条目的 `init_value` 依次编码写入。`detection` 为 `"immediate"`（默认）或 `"deferred"`。
+- `new TData(struct, name, { detection })` 返回该结构的 `Data_Class` 的实例：分配 `buffer`（`layout.size` 字节），按条目的 `init_value` 依次编码写入。`detection` 为 `"immediate"`（默认）或 `"deferred"`。
 - `name` 可写；`layout`、`size`、`buffer` 只读（只有 getter，赋值抛出 `TypeError`），`buffer` 的内容可以读写。`buffer` 统一按大端存放。
 - 写 `buffer` 有两种途径，都经过 TData，任何时候都允许：
 
@@ -97,11 +97,11 @@
 ```js
 #written() {
     if (this.#detection === "immediate") this.#observer.diff();  // detect right now
-    this.#on_write?.(this);                                       // then notify the user
+    this.emit("write", this);                                    // then tell the listeners
 }
 ```
 
-- 立即模式：在写入语句内部同步调用 `diff()`，再调用 `on_write`；延迟模式：只调用 `on_write`，检测由使用方调用 `detect()` 完成。
+- 立即模式：在写入语句内部同步调用 `diff()`，再发出 `write`；延迟模式：只发出 `write`，检测由使用方调用 `detect()` 完成。
 - 直接写 `buffer` 的内容后，需调用 `detect()`。
 
 **快照比对。** Observer 持有与 `buffer` 等长的快照，创建时复制 `buffer`。`diff()` 逐字节比较 `buffer` 与快照，只对不同的字节经反查表 `tags_at_byte` 找到相关 tag，从快照解码旧值、从 `buffer` 解码新值，值不同（两个 NaN 视为相同）的记为变化；比对完成后更新快照，再统一报告：

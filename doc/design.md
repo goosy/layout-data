@@ -28,7 +28,7 @@
 | TData | The value buffer `buffer` (big-endian), access by name, raw write methods, the TTag returned by `get(name)` | One per tdata | Mutable |
 | Observer | Snapshot comparison, emits change events | One per tdata | Mutable |
 
-Dependency direction: Observer depends on TData and Layout, TData depends only on Layout, Layout depends only on the layout description. The user's scheduling and IO are outside the package; the package notifies them only through a callback passed by the user (`on_write`).
+Dependency direction: Observer depends on TData and Layout, TData depends only on Layout, Layout depends only on the layout description. The user's scheduling and IO are outside the package; the package notifies them only through the `write` event of a TData, which any party can listen to.
 
 ### 2.1 Component boundary
 
@@ -80,7 +80,7 @@ The layout rules are validated centrally at the layout stage, not spread over th
 
 ## 5. TData
 
-- `new TData(struct, name, { detection, on_write })` returns an instance of the `Data_Class` of the structure: it allocates `buffer` (`layout.size` bytes) and encodes the `init_value` of the entries in order. `detection` is `"immediate"` (default) or `"deferred"`.
+- `new TData(struct, name, { detection })` returns an instance of the `Data_Class` of the structure: it allocates `buffer` (`layout.size` bytes) and encodes the `init_value` of the entries in order. `detection` is `"immediate"` (default) or `"deferred"`.
 - `name` is writable; `layout`, `size` and `buffer` are read-only (getter only, assignment throws `TypeError`), and the content of `buffer` can be read and written. `buffer` is always big-endian.
 - There are two ways to write `buffer`, both through TData and allowed at any time:
 
@@ -99,11 +99,11 @@ Every write path ends in the same private method of TData. The two detection mod
 ```js
 #written() {
     if (this.#detection === "immediate") this.#observer.diff();  // detect right now
-    this.#on_write?.(this);                                       // then notify the user
+    this.emit("write", this);                                    // then tell the listeners
 }
 ```
 
-- Immediate mode: `diff()` is called synchronously inside the write statement, then `on_write`. Deferred mode: only `on_write` is called, and the user completes the detection by calling `detect()`.
+- Immediate mode: `diff()` is called synchronously inside the write statement, then emits `write`. Deferred mode: only `write` is emitted, and the user completes the detection by calling `detect()`.
 - After writing the content of `buffer` directly, call `detect()`.
 
 **Snapshot comparison.** The Observer holds a snapshot as long as `buffer`, copied from `buffer` at creation. `diff()` compares `buffer` with the snapshot byte by byte; for the bytes that differ it finds the related tags through the lookup table `tags_at_byte`, decodes the old value from the snapshot and the new value from `buffer`, and records a change when the values differ (two NaNs count as equal). It then updates the snapshot and reports all changes together:

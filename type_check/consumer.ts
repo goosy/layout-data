@@ -37,7 +37,7 @@ build_structure({ name: "s" }, [{ name: "a" }]);
 const bits: number = TYPE_BITS.bool;
 
 // TData
-const options: TData_Options = { detection: "deferred", on_write: (tdata) => void tdata.size };
+const options: TData_Options = { detection: "deferred" };
 const tdata = new TData(same_layout, "block", options);
 new TData(data_struct, "block");
 const tag: TTag | undefined = tdata.get("a");
@@ -47,6 +47,7 @@ assert_type<Equal<typeof tdata.layout, Layout>>();
 assert_type<Equal<typeof tdata.observer, Observer>>();
 tdata.name = "renamed";
 tdata.detect();
+tdata.on("write", (written: typeof tdata) => void written.size);
 tdata.write_register(0, 1);
 tdata.write_bit(0, 0x01, true);
 tdata.write_bytes(0, Buffer.alloc(2));

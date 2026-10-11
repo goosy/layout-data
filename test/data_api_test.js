@@ -193,9 +193,10 @@ describe("4.2 immediate mode", () => {
 		assert.deepEqual(events, [["pressure", 1.5, 3]]);
 	});
 
-	test("on_write is called after every write, once its events are emitted", () => {
+	test("write is emitted after every write, once its change events are emitted", () => {
 		const calls = [];
-		const data = new TData(LAYOUT, "d", { on_write: (d) => calls.push([d, d.pressure]) });
+		const data = new TData(LAYOUT, "d");
+		data.on("write", (d) => calls.push([d, d.pressure]));
 		data.on("change", (name) => calls.push(name));
 		data.pressure = 3;
 		data.pressure = 3; // unchanged: no event, but still a write
@@ -206,11 +207,12 @@ describe("4.2 immediate mode", () => {
 describe("4.2 deferred mode", () => {
 	const create = () => {
 		const writes = [];
-		const data = new TData(LAYOUT, "d", { detection: "deferred", on_write: (d) => writes.push(d) });
+		const data = new TData(LAYOUT, "d", { detection: "deferred" });
+		data.on("write", (d) => writes.push(d));
 		return { data, writes, events: record(data) };
 	};
 
-	test("a write takes effect, calls on_write and emits nothing until detect()", () => {
+	test("a write takes effect, emits write and no change until detect()", () => {
 		const { data, writes, events } = create();
 		data.id = 9;
 		data.get("pressure").value = 2;
@@ -238,7 +240,7 @@ describe("4.2 deferred mode", () => {
 		assert.deepEqual(events, []);
 	});
 
-	test("a write by a handler calls on_write and is reported by a later detection", () => {
+	test("a write by a handler emits write and is reported by a later detection", () => {
 		const { data, writes, events } = create();
 		data.get("id").on("change", () => { data.alarm = true; });
 		data.id = 8;
@@ -249,7 +251,7 @@ describe("4.2 deferred mode", () => {
 		assert.deepEqual(events.slice(1), [["status", 1, 0x0101], ["alarm", false, true]]);
 	});
 
-	test("without on_write, writes are still allowed and detected later", () => {
+	test("without a write listener, writes are still allowed and detected later", () => {
 		const data = new TData(LAYOUT, "d", { detection: "deferred" });
 		const events = record(data);
 		data.id = 5;

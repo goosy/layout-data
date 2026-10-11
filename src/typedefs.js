@@ -66,7 +66,6 @@
 /**
  * @typedef {object} TData_Options
  * @property {"immediate" | "deferred"} [detection="immediate"] - When changes are detected.
- * @property {(tdata: import("./TData.js").TData) => void} [on_write] - Called after each write, after its detection in the immediate mode.
  */
 
 /**

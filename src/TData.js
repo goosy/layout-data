@@ -44,8 +44,6 @@ export class TData extends EventEmitter {
 	#observer;
 	/** @type {"immediate" | "deferred"} (doc/spec-data-api.md §4) */
 	#detection;
-	/** @type {((tdata: TData) => void) | undefined} called after each write, after its detection in the immediate mode */
-	#on_write;
 	/**
 	 * The change detector of this data block (doc/design.md §5.1).
 	 *
@@ -120,11 +118,11 @@ export class TData extends EventEmitter {
 
 	/**
 	 * After a write: detects the change at once in the immediate mode, then
-	 * notifies the user in both modes (doc/spec-data-api.md §4.2).
+	 * emits `write` in both modes (doc/spec-data-api.md §4.2).
 	 */
 	#written() {
 		if (this.#detection === "immediate") this.#observer.diff();
-		this.#on_write?.(this);
+		this.emit("write", this);
 	}
 
 	/**
@@ -149,18 +147,17 @@ export class TData extends EventEmitter {
 	 * @param {TData_Options} [options]
 	 */
 	constructor(data_struct, name, options = {}) {
+		super();
 		if (new.target === TData) {
 			const { Data_Class } = data_struct.Data_Class ? data_struct : layout_of(data_struct);
 			// constructors may return an object: the instance of the compiled subclass
 			return new Data_Class(data_struct, name, options);
 		}
-		super();
-		const { detection = "immediate", on_write } = options;
+		const { detection = "immediate" } = options;
 		if (detection !== "immediate" && detection !== "deferred") {
 			throw new Error(`${name}: unknown detection mode ${detection}`);
 		}
 		this.#detection = detection;
-		this.#on_write = on_write;
 		this.name = name;
 		this.#layout = new.target.layout;
 		this.setMaxListeners(100);

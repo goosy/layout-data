@@ -29,7 +29,6 @@ const data = new TData(layout, name, options);
 - `name`: the name of the tdata, used in logs and error messages;
 - `options` (optional):
   - `detection`: the detection mode, `"immediate"` (default) or `"deferred"`, see §4.2;
-  - `on_write(data)`: called after every write to tell the user that a write happened. In the immediate mode it is called after the detection of that write; in the deferred mode it is used to schedule a detection (§4.2).
 - After creation every tag equals its initial value from the layout, and no change event is emitted.
 
 ### 2.2 Properties
@@ -85,6 +84,12 @@ data.on("change", (name, old_value, new_value) => { /* ... */ });
 
 Emitted when the value of any tag of the tdata changes. The arguments are the tag name, the old value and the new value.
 
+```js
+data.on("write", (data) => { /* ... */ });
+```
+
+Emitted after every write, whether or not it changed a value, and in both detection modes (§4.2). In the immediate mode it is emitted after the detection of that write and the `change` events it caused; in the deferred mode it is the place to schedule a detection. Any number of parties can listen, each with its own handler.
+
 ## 3. TTag
 
 | Member | Description |
@@ -109,10 +114,10 @@ How many times a tag is written between two detections does not matter: a detect
 
 The detection mode decides when detection happens; it is chosen by `detection` when the tdata is created. It only affects when `change` events are emitted, not the values: in both modes a write takes effect at once, and reading a property of the tdata or the `value` of a TTag at any time gives the current value (§2.3). In both modes the read/write abilities of tdata and TTag, and the content and conventions of events (§4.3), are the same.
 
-| Mode | After a write | When events are emitted | `on_write` | Suited to |
+| Mode | After a write | When events are emitted | `write` event | Suited to |
 | --- | --- | --- | --- | --- |
-| Immediate (`"immediate"`, default) | Detect at once | When the write statement returns, the events it caused have been emitted | Called after the detection | Ordinary programs, device simulation |
-| Deferred (`"deferred"`) | No detection | When the user calls `detect()`, all events since the last detection are emitted together | Called, to schedule a detection | Users that process a batch of inputs as a whole |
+| Immediate (`"immediate"`, default) | Detect at once | When the write statement returns, the events it caused have been emitted | Emitted after the detection | Ordinary programs, device simulation |
+| Deferred (`"deferred"`) | No detection | When the user calls `detect()`, all events since the last detection are emitted together | Emitted, to schedule a detection | Users that process a batch of inputs as a whole |
 
 - Neither mode loses changes: in the deferred mode, as long as the user eventually calls `detect()`, all changes since the last detection are reported.
 - In the immediate mode every write is detected, so several writes emit separate events; in the deferred mode they are merged as in §4.1.
@@ -124,7 +129,7 @@ The detection mode decides when detection happens; it is chosen by `detection` w
 - An event is emitted only when the value really changes: writing the same value emits none; writing `NaN` over `NaN` counts as unchanged;
 - A combined word and its bits emit their own events: when one write changes the word and some of its bits, the word and those bits all emit;
 - The changes of one detection are emitted in layout order (a combined word before its bits); for each change the `change` of the tdata is emitted first, then the `change` of the TTag;
-- Handlers may write any tag: in the immediate mode, the changes caused by that write are emitted after the current batch has been emitted; in the deferred mode, that write calls `on_write` and its changes are emitted at the next `detect()`;
+- Handlers may write any tag: in the immediate mode, the changes caused by that write are emitted after the current batch has been emitted; in the deferred mode, that write emits `write` and its changes are emitted at the next `detect()`;
 - If writes triggered by handlers keep causing new changes for 16 rounds in a row, the detection throws an exception to prevent endless oscillation; changes not yet emitted are not lost and are emitted at the next detection.
 
 ## 5. Errors
