@@ -59,7 +59,7 @@ The entry `tagged-data` exports:
 | `TData`, `TTag` | The data object and the tag handle (§2 and §3 of [spec-data-api.md](spec-data-api.md)) |
 | `compile_layout`, `compile_layout_data` | Compile a layout description (§6 of [spec-data-api.md](spec-data-api.md)) |
 | `render_types` | Generates TypeScript declarations from compiled layouts |
-| `load_entry`, `store_entry`, `io_index`, `io_range` | Per-entry device byte order conversion (§6 of [design.md](design.md)) |
+| `load_entry`, `store_entry`, `io_index`, `io_index_table`, `io_range` | Per-entry device byte order conversion (§6 of [design.md](design.md)) |
 | `build_structure`, `validate_structure`, `layout_of`, `TYPE_BITS`, `CODECS`, `Observer`, `set_access_tracer` | Lower-level parts, usually used indirectly through `compile_layout` |
 
 ## 7. Documents

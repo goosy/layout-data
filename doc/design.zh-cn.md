@@ -113,7 +113,7 @@
 
 ## 6. 字节序转换
 
-`endian.js` 按布局条目实现设备字节序与内部大端之间的转换（`load_entry` / `store_entry` / `io_index` / `io_range`），不检测变化：
+`endian.js` 按布局条目实现设备字节序与内部大端之间的转换（`load_entry` / `store_entry` / `io_index` / `io_range`），并为整个数据块生成字节下标表（`io_index_table`），与设备成组交换条目的使用方可以据此直接按字节复制。下标表与 `load_entry` / `store_entry` 对每个条目的结果一致（有测试保证）。它们都不检测变化：
 
 - 2 字节：`BE` 原样复制；`LE` / `little` / `BEBS` 交换两个字节；
 - 4 字节：支持 `BE`、`LE` / `little`、`BEBS`、`LEBS` 四种排列；

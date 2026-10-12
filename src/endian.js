@@ -3,7 +3,7 @@
 // per 16-bit register and per 32-bit value; the IO buffer is indexed like the
 // TData buffer.
 
-/** @import { Layout_Entry } from "./typedefs.js" */
+/** @import { Layout, Layout_Entry } from "./typedefs.js" */
 
 // Endians that swap the two bytes of a 16-bit register.
 const BYTE_SWAP_ENDIANS = ["LE", "little", "BEBS"];
@@ -93,6 +93,35 @@ function convert_endian_4bytes(buffer_from, buffer_to, index, endian) {
  */
 export function io_index(byte, endian) {
 	return BYTE_SWAP_ENDIANS.includes(endian) ? byte ^ 1 : byte;
+}
+
+/**
+ * The index in a device-ordered IO buffer of every byte of a data block: the
+ * byte `i` of the block is the byte `table[i]` of the IO buffer. The table
+ * makes loading and storing whole groups of entries a plain byte copy, and it
+ * agrees with `load_entry` / `store_entry` for every entry (a Bool or a
+ * single-byte entry maps as `io_index`, a multi-byte entry as its endian).
+ *
+ * @param {Layout} layout - The compiled layout of the data block.
+ * @param {string} endian - Device byte order: BE, LE (little), BEBS or LEBS.
+ * @returns {Int32Array}
+ */
+export function io_index_table(layout, endian) {
+	const table = new Int32Array(layout.size);
+	for (let i = 0; i < table.length; i++) table[i] = io_index(i, endian);
+	for (const { byte, size, type } of layout.entries.values()) {
+		if (size !== 4 || type === "bool") continue;
+		for (let k = 0; k < 4; k++) {
+			switch (endian) {
+				case "LE":
+				case "little": table[byte + k] = byte + 3 - k; break;
+				case "BEBS": table[byte + k] = byte + (k ^ 1); break;
+				case "LEBS": table[byte + k] = byte + ((k + 2) % 4); break;
+				default: table[byte + k] = byte + k;
+			}
+		}
+	}
+	return table;
 }
 
 /**

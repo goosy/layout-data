@@ -2,7 +2,9 @@ import { one_tag } from "./share.js";
 import assert from "node:assert/strict";
 import { Buffer } from "node:buffer";
 import test, { describe } from "node:test";
-import { io_index, io_range, load_entry, store_entry } from "../src/endian.js";
+import { io_index, io_index_table, io_range, load_entry, store_entry } from "../src/endian.js";
+import { TData } from "../src/TData.js";
+import { make_struct } from "./share.js";
 
 /** Loads a tag of a data block from an IO buffer and detects the change. */
 function load(data, io_buffer, endian) {
@@ -149,5 +151,53 @@ describe("single-byte device byte order", () => {
 		const out = Buffer.alloc(2);
 		store(data, out, "BE");
 		assert.deepEqual([...out], [0x00, 0xfe]);
+	});
+});
+
+describe("io_index_table", () => {
+	const ITEMS = [
+		{ name: "u", type: "UInt", offset: 0, length: 16, init_value: 0 },
+		{
+			name: "status", type: "Word", offset: 16, length: 16,
+			coupling: [
+				{ name: "run", type: "Bool", offset: 8, length: 1, init_value: false },
+				{ name: "alarm", type: "Bool", offset: 0, length: 1, init_value: false },
+			],
+		},
+		{ name: "r", type: "Real", offset: 32, length: 32, init_value: 0 },
+		{ name: "d", type: "DInt", offset: 64, length: 32, init_value: 0 },
+		{ name: "b", type: "SInt", offset: 96, length: 8, init_value: 0 },
+		{ name: "c", type: "USInt", offset: 104, length: 8, init_value: 0 },
+		{ name: "w", type: "Int", offset: 112, length: 16, init_value: 0 },
+	];
+
+	for (const endian of ["BE", "LE", "little", "BEBS", "LEBS"]) {
+		test(`${endian}: the table moves every byte as load_entry and store_entry do`, () => {
+			const layout = new TData(make_struct(ITEMS), "t").layout;
+			const table = io_index_table(layout, endian);
+			const io = Buffer.from(Array.from({ length: layout.size }, (_, i) => 0x10 + i));
+			const by_entry = new TData(layout, "e");
+			const by_table = Buffer.alloc(layout.size);
+			for (const entry of layout.entries.values()) {
+				if (entry.type !== "bool") load_entry(entry, io, by_entry.buffer, endian);
+			}
+			for (let i = 0; i < layout.size; i++) by_table[i] = io[table[i]];
+			assert.deepEqual(by_table.subarray(0, 4), by_entry.buffer.subarray(0, 4)); // u and the word
+			assert.deepEqual(by_table.subarray(4), by_entry.buffer.subarray(4));
+
+			const back_entry = Buffer.alloc(layout.size);
+			const back_table = Buffer.alloc(layout.size);
+			for (const entry of layout.entries.values()) {
+				if (entry.type !== "bool") store_entry(entry, by_entry.buffer, back_entry, endian);
+			}
+			for (let i = 0; i < layout.size; i++) back_table[table[i]] = by_entry.buffer[i];
+			assert.deepEqual(back_table, back_entry);
+		});
+	}
+
+	test("a single-byte tag maps as io_index", () => {
+		const layout = new TData(make_struct(ITEMS), "t").layout;
+		assert.equal(io_index_table(layout, "LE")[12], io_index(12, "LE"));
+		assert.equal(io_index_table(layout, "BE")[12], 12);
 	});
 });

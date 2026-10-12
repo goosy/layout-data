@@ -115,7 +115,7 @@ Every write path ends in the same private method of TData. The two detection mod
 
 ## 6. Byte order conversion
 
-`endian.js` converts between device byte order and the internal big-endian order per layout entry (`load_entry` / `store_entry` / `io_index` / `io_range`). It does not detect changes:
+`endian.js` converts between device byte order and the internal big-endian order per layout entry (`load_entry` / `store_entry` / `io_index` / `io_range`), and builds the byte index table of a whole data block (`io_index_table`), with which a user that exchanges groups of entries with a device copies the bytes of the group directly. The table agrees with `load_entry` / `store_entry` for every entry (covered by a test). It does not detect changes:
 
 - 2 bytes: `BE` copies as is; `LE` / `little` / `BEBS` swap the two bytes;
 - 4 bytes: the four orders `BE`, `LE` / `little`, `BEBS` and `LEBS` are supported;
