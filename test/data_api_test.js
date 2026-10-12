@@ -53,6 +53,24 @@ describe("2 TData", () => {
 		assert.equal(data.buffer.length, 8);
 	});
 
+	test("2.2 the tag accessors sit once on the prototype of the class of the layout", () => {
+		const data = new TData(LAYOUT, "a");
+		const other = new TData(LAYOUT, "b");
+		const proto = Object.getPrototypeOf(data);
+		assert.equal(Object.getPrototypeOf(other), proto);
+		assert.equal(data.constructor, other.constructor);
+		assert.ok(data instanceof TData);
+		for (const name of ["id", "status", "run", "alarm", "pressure"]) {
+			assert.equal(Object.hasOwn(data, name), false, name);
+			const desc = Object.getOwnPropertyDescriptor(proto, name);
+			assert.ok(desc?.get && desc.set, name);
+			assert.equal(desc.enumerable, true);
+			assert.equal(desc.configurable, false);
+		}
+		data.pressure = 2.5;
+		assert.equal(other.pressure, 1.5); // the buffers stay separate
+	});
+
 	test("2.2 name is writable; layout, size and buffer are read-only, the buffer contents writable", () => {
 		const data = new TData(LAYOUT, "d");
 		data.name = "renamed";
@@ -81,6 +99,16 @@ describe("2 TData", () => {
 		data.status = 0x0100;
 		assert.equal(data.run, false);
 		assert.equal(data.alarm, true);
+	});
+
+	test("2.3 coupling offset 8..15 is the low byte of the word, 0..7 the high byte", () => {
+		const data = new TData(LAYOUT, "d");
+		data.status = 0;
+		data.alarm = true; // offset 0: bit 8 of the word
+		assert.equal(data.status, 0x0100);
+		assert.deepEqual([...data.buffer.subarray(2, 4)], [0x01, 0x00]);
+		data.run = true; // offset 8: bit 0 of the word
+		assert.equal(data.status, 0x0101);
 	});
 
 	test("2.3 an out-of-range integer throws RangeError and keeps the value; a Bool takes truthiness", () => {
