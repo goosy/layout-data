@@ -31,6 +31,7 @@
 		"test": "pnpm build && pnpm test:types && node --test",
 		"test:types": "tsc -p type_check",
 		"lint": "eslint .",
+		"bench": "node bench/change_detection_bench.js",
 		"prepare": "pnpm build"
 	},
 	"keywords": [

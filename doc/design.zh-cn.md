@@ -123,4 +123,5 @@
 ## 7. 构建与测试
 
 - `pnpm build`：rolldown 把 `src/index.js` 打包为 `dist/tagged-data.js`（`yaml` 打进库）；
+- `pnpm bench`：`bench/change_detection_bench.js` 测量读取一个 86 个 tag、146 字节的数据块（逐条目从设备字节序缓冲装载，再检测并报告变化）的开销。开发机上每周期无变化约 2 µs，少量变化 2.5–3.5 µs，全部变化 7–8 µs；
 - `pnpm test`：先构建，再运行类型测试和 `node --test`；`pnpm lint`：ESLint。

@@ -125,4 +125,5 @@ Every write path ends in the same private method of TData. The two detection mod
 ## 7. Build and test
 
 - `pnpm build`: rolldown bundles `src/index.js` into `dist/tagged-data.js` (`yaml` is bundled into the library);
+- `pnpm bench`: `bench/change_detection_bench.js` measures reading a block of 86 tags and 146 bytes (loading every tag from a device-ordered buffer, then detecting and reporting the changes). On a development machine one cycle takes about 2 µs with no change, 2.5–3.5 µs with a few changes, and 7–8 µs with every tag changed;
 - `pnpm test`: builds first, then runs the type tests and `node --test`; `pnpm lint`: ESLint.
