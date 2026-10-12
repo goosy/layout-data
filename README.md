@@ -78,8 +78,9 @@ pump.detect();
 | `TData`, `TTag` | The data object and the tag handle |
 | `compile_layout(path)`, `compile_layout_data(root, origin)` | Compile a YAML layout file, or an already parsed description |
 | `render_types(layouts, { source, tdata_module })` | Generate TypeScript interfaces for layouts |
-| `load_entry`, `store_entry`, `io_index`, `io_index_table`, `io_range` | Per-entry device byte order conversion |
-| `build_structure`, `validate_structure`, `layout_of`, `TYPE_BITS`, `CODECS`, `Observer`, `set_access_tracer` | Lower-level parts |
+| `build_structure`, `validate_structure`, `layout_of` | Define a layout in code instead of a file |
+| `set_access_tracer` | Trace the reads and writes of tags |
+| `load_entry`, `store_entry`, `io_index_table` | Device byte order conversion |
 
 ## Documentation
 

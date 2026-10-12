@@ -90,6 +90,10 @@ data.on("write", (data) => { /* ... */ });
 
 Emitted after every write, whether or not it changed a value, and in both detection modes (§4.2). In the immediate mode it is emitted after the detection of that write and the `change` events it caused; in the deferred mode it is the place to schedule a detection. Any number of parties can listen, each with its own handler.
 
+### 2.8 Tracing accesses
+
+`set_access_tracer(tracer)` sets a function called on every read and write of a tag through the property accessors, as `tracer(tdata, name, "read" | "write")`; `set_access_tracer(null)` clears it. For tools that check which tags a piece of code touches. The tracer is global to the process and costs one check per access while unset.
+
 ## 3. TTag
 
 | Member | Description |
@@ -204,6 +208,10 @@ const node = new TData(layouts.NODE, "node_1");
 - Any violation in the file throws an `Error` whose `errors` property lists all violations;
 - A file with the same text as one compiled before gives the same result object and the same layouts, whatever its path (so several users of one layout file get identical `Layout` objects); do not modify the result;
 - `compile_layout_data(root, origin)` compiles an already parsed description (the same structure as the file: `layouts` plus the fragments), for layouts embedded in the user's own file. The result and the errors are the same.
+
+### 6.5 Defining a layout in code
+
+A layout needs no file. `build_structure({ name }, items)` expands a list of items (the same entries as in the file, with inline `coupling` lists and explicit `length`) into a structure, `validate_structure(structure)` returns the list of violations (§6.3; empty when valid), and `layout_of(structure)` compiles it into a layout. `new TData(structure, name)` also accepts the structure and compiles it. `build_structure` keeps what it is given, including violations, so check the result before use.
 
 ## 7. Outside this interface
 

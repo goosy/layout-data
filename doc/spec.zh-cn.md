@@ -54,11 +54,12 @@ tagged-data 是一个结构化数据块库：提供基于 `Buffer`、面向数�
 
 | 导出 | 说明 |
 | --- | --- |
-| `TData`、`TTag` | 数据对象与 tag 句柄（[spec-data-api.zh-cn.md](spec-data-api.zh-cn.md) §2、§3） |
+| `TData`、`TTag` | 数据对象和 tag 句柄（[spec-data-api.zh-cn.md](spec-data-api.zh-cn.md) §2 和 §3） |
 | `compile_layout`、`compile_layout_data` | 编译布局描述（[spec-data-api.zh-cn.md](spec-data-api.zh-cn.md) §6） |
-| `render_types` | 由已编译的布局生成 TypeScript 类型声明 |
-| `load_entry`、`store_entry`、`io_index`、`io_index_table`、`io_range` | 按条目的设备字节序转换（[design.zh-cn.md](design.zh-cn.md) §6） |
-| `build_structure`、`validate_structure`、`layout_of`、`TYPE_BITS`、`CODECS`、`Observer`、`set_access_tracer` | 底层构件，通常经由 `compile_layout` 间接使用 |
+| `build_structure`、`validate_structure`、`layout_of` | 在代码中定义布局，不用文件（[spec-data-api.zh-cn.md](spec-data-api.zh-cn.md) §6.5） |
+| `set_access_tracer` | 追踪 tag 的读写（[spec-data-api.zh-cn.md](spec-data-api.zh-cn.md) §2.8） |
+| `load_entry`、`store_entry`、`io_index_table` | 设备字节序转换（[design.zh-cn.md](design.zh-cn.md) §6） |
+| `render_types` | 由编译后的布局生成 TypeScript 类型声明 |
 
 ## 7. 文档
 

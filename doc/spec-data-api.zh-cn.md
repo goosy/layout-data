@@ -88,6 +88,10 @@ data.on("write", (data) => { /* ... */ });
 
 每次写入之后发出，不论值是否改变，两种检测模式下都发出（§4.2）。立即模式下在本次写入的检测和它引起的 `change` 事件之后发出；延迟模式下是安排检测的时机。可以有任意多方监听，各用各的处理器。
 
+### 2.8 追踪访问
+
+`set_access_tracer(tracer)` 设置一个函数，每次通过属性访问器读写 tag 时按 `tracer(tdata, name, "read" | "write")` 调用；`set_access_tracer(null)` 取消。供检查一段代码碰了哪些 tag 的工具使用。追踪器对整个进程全局有效，未设置时每次访问只多一次判断。
+
 ## 3. TTag
 
 | 成员 | 说明 |
@@ -202,6 +206,10 @@ const node = new TData(layouts.NODE, "node_1");
 - 文件中有任何违规时抛出 `Error`，其 `errors` 属性列出全部违规项；
 - 文本与此前编译过的文件相同的文件，不论路径是否相同，得到同一个结果对象和同样的布局（所以共用一个布局文件的多个使用方拿到同一批 `Layout` 对象）；不要修改结果；
 - `compile_layout_data(root, origin)` 编译已解析的描述（与文件同结构：`layouts` 加各片段），用于布局嵌在使用方自己文件中的情形，返回值和错误同上。
+
+### 6.5 在代码中定义布局
+
+布局不一定要有文件。`build_structure({ name }, items)` 把条目列表（与文件中的条目相同，可内联 `coupling` 列表并显式给出 `length`）展开为结构，`validate_structure(structure)` 返回违规描述的数组（§6.3，空数组表示合法），`layout_of(structure)` 把它编译为布局。`new TData(structure, name)` 也接受结构并自行编译。`build_structure` 保留收到的内容（包括违规），使用前须检查校验结果。
 
 ## 7. 不在本接口内
 

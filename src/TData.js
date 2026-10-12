@@ -45,13 +45,6 @@ export class TData extends EventEmitter {
 	/** @type {"immediate" | "deferred"} (doc/spec-data-api.md §4) */
 	#detection;
 	/**
-	 * The change detector of this data block (doc/design.md §5.1).
-	 *
-	 * @returns {Observer}
-	 */
-	get observer() { return this.#observer; }
-
-	/**
 	 * @type {Map<string, TTag>}
 	 * @description The tag handles created so far, by tag name.
 	 */

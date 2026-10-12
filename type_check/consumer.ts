@@ -3,12 +3,12 @@
 // is tested. A `@ts-expect-error` that no longer fails is an error too.
 import { Buffer } from "node:buffer";
 import {
-	TData, TTag, Observer,
+	TData, TTag,
 	compile_layout, compile_layout_data, layout_of, set_access_tracer,
-	build_structure, validate_structure, TYPE_BITS, CODECS,
-	io_index, io_range, load_entry, store_entry, render_types,
+	build_structure, validate_structure,
+	io_index_table, load_entry, store_entry, render_types,
 	type Layout, type Layout_Entry, type Layout_Item, type Data_Struct,
-	type TData_Options, type Compiled_Layouts, type Access_Tracer, type Codec,
+	type TData_Options, type Compiled_Layouts, type Access_Tracer,
 } from "tagged-data";
 
 type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends (<T>() => T extends B ? 1 : 2) ? true : false;
@@ -34,7 +34,6 @@ const same_layout: Layout = layout_of(data_struct);
 assert_type<Equal<typeof errors, string[]>>();
 // @ts-expect-error an item needs a type and an offset
 build_structure({ name: "s" }, [{ name: "a" }]);
-const bits: number = TYPE_BITS.bool;
 
 // TData
 const options: TData_Options = { detection: "deferred" };
@@ -44,7 +43,6 @@ const tag: TTag | undefined = tdata.get("a");
 assert_type<Equal<typeof tdata.buffer, Buffer>>();
 assert_type<Equal<typeof tdata.size, number>>();
 assert_type<Equal<typeof tdata.layout, Layout>>();
-assert_type<Equal<typeof tdata.observer, Observer>>();
 tdata.name = "renamed";
 tdata.detect();
 tdata.on("write", (written: typeof tdata) => void written.size);
@@ -87,24 +85,17 @@ set_access_tracer(null);
 // @ts-expect-error the kind is "read" or "write"
 set_access_tracer((_tdata: TData, _name: string, kind: "erase") => void kind);
 
-// codecs and observer
-const codec: Codec = CODECS.word;
-const value: number | boolean = codec.get(tdata.buffer, 0, 0xff);
-const observer: Observer = tdata.observer;
-observer.diff();
-
 // endian conversion
 const entry: Layout_Entry = layout.entries.get("a")!;
-const index: number = io_index(entry.byte, "LE");
-const range: { start: number, end: number } = io_range(entry, "BEBS");
+const table: Int32Array = io_index_table(layout, "BEBS");
 load_entry(entry, Buffer.alloc(2), tdata.buffer, "LE");
 store_entry(entry, tdata.buffer, Buffer.alloc(2), "LE");
 // @ts-expect-error the endian is a string
-io_index(0, 1);
+io_index_table(layout, 1);
 
 // type rendering
 const text: string = render_types(compiled.layouts, { source: "layout.yaml", tdata_module: "tagged-data" });
 // @ts-expect-error the options are required
 render_types(compiled.layouts);
 
-export { bits, value, index, range, text };
+export { table, text };
