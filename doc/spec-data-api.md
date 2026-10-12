@@ -202,6 +202,7 @@ const node = new TData(layouts.NODE, "node_1");
 - `layouts`: compiled layouts by layout name, used to create TData;
 - `fragments`: entry lists by fragment name (references expanded, offsets relative to the start of the fragment), for the user to query, for example to get all tag names of a parameter block;
 - Any violation in the file throws an `Error` whose `errors` property lists all violations;
+- A file with the same text as one compiled before gives the same result object and the same layouts, whatever its path (so several users of one layout file get identical `Layout` objects); do not modify the result;
 - `compile_layout_data(root, origin)` compiles an already parsed description (the same structure as the file: `layouts` plus the fragments), for layouts embedded in the user's own file. The result and the errors are the same.
 
 ## 7. Outside this interface

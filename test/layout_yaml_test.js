@@ -151,3 +151,26 @@ describe("parsed layout description", () => {
 		assert.throws(() => compile_layout_data({ x: [] }, "my.yaml"), /invalid layout file my.yaml/);
 	});
 });
+
+describe("compile cache", () => {
+	const SOURCE = "layouts:\n  T:\n    - { name: a, type: UInt, offset: 0, init_value: 1 }\n";
+
+	test("a file with the same text gives the same result, whatever its path", () => {
+		const first = compile(SOURCE);
+		const second = compile(SOURCE);
+		assert.equal(second, first);
+		assert.equal(second.layouts.T, first.layouts.T);
+	});
+
+	test("a file with another text is compiled again", () => {
+		const first = compile(SOURCE);
+		const other = compile(SOURCE.replace("init_value: 1", "init_value: 2"));
+		assert.notEqual(other.layouts.T, first.layouts.T);
+		assert.equal(new TData(other.layouts.T, "t").a, 2);
+	});
+
+	test("an invalid file is not cached", () => {
+		assert.throws(() => compile("x: []\n"));
+		assert.throws(() => compile("x: []\n"));
+	});
+});

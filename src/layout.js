@@ -149,19 +149,31 @@ function resolve_items(list, fragments, stack, where, errors) {
 	});
 }
 
+/** The results of compile_layout by the text of the file: the same text is compiled once. */
+const file_cache = new Map();
+
 /**
  * Reads the layout description file (doc/design.md §3) and compiles
  * every layout in it. The root key `layouts` maps layout names to item
  * lists; every other root key is a fragment referenced by name.
+ *
+ * A file with the same text as one compiled before gives the same result
+ * object (and so the same Layout objects), whatever its path: do not modify
+ * the result.
  *
  * @param {string} yaml_path - Path of the YAML layout file.
  * @returns {Compiled_Layouts}
  * @throws {Error} With `errors`, every violation found, when the file is not valid.
  */
 export function compile_layout(yaml_path) {
-	const doc = parseDocument(readFileSync(yaml_path, "utf8"), { version: "1.2" });
+	const text = readFileSync(yaml_path, "utf8");
+	const cached = file_cache.get(text);
+	if (cached) return cached;
+	const doc = parseDocument(text, { version: "1.2" });
 	if (doc.errors.length > 0) throw layout_error(yaml_path, doc.errors.map((e) => e.message));
-	return compile_layout_data(doc.toJS(), yaml_path);
+	const compiled = compile_layout_data(doc.toJS(), yaml_path);
+	file_cache.set(text, compiled);
+	return compiled;
 }
 
 function layout_error(origin, errors) {
