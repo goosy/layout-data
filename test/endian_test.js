@@ -4,6 +4,7 @@ import { Buffer } from "node:buffer";
 import test, { describe } from "node:test";
 import { io_index, io_index_table, io_range, load_entry, store_entry } from "../src/endian.js";
 import { TData } from "../src/TData.js";
+import { register_layout } from "../src/layout.js";
 import { make_struct } from "./share.js";
 
 /** Loads a tag of a data block from an IO buffer and detects the change. */
@@ -170,10 +171,11 @@ describe("io_index_table", () => {
 		{ name: "c", type: "USInt", offset: 104, length: 8, init_value: 0 },
 		{ name: "w", type: "Int", offset: 112, length: 16, init_value: 0 },
 	];
+	const LAYOUT = register_layout(make_struct(ITEMS, "IO_TABLE"));
 
 	for (const endian of ["BE", "LE", "little", "BEBS", "LEBS"]) {
 		test(`${endian}: the table moves every byte as load_entry and store_entry do`, () => {
-			const layout = new TData(make_struct(ITEMS), "t").layout;
+			const layout = LAYOUT;
 			const table = io_index_table(layout, endian);
 			const io = Buffer.from(Array.from({ length: layout.size }, (_, i) => 0x10 + i));
 			const by_entry = new TData(layout, "e");
@@ -196,7 +198,7 @@ describe("io_index_table", () => {
 	}
 
 	test("a single-byte tag maps as io_index", () => {
-		const layout = new TData(make_struct(ITEMS), "t").layout;
+		const layout = LAYOUT;
 		assert.equal(io_index_table(layout, "LE")[12], io_index(12, "LE"));
 		assert.equal(io_index_table(layout, "BE")[12], 12);
 	});

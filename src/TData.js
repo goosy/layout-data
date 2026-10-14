@@ -2,9 +2,99 @@ import { Buffer } from "node:buffer";
 import { EventEmitter } from "node:events";
 import { TTag } from "./TTag.js";
 import { Observer } from "./observer.js";
-import { layout_of } from "./layout.js";
+import { find_layout, layout_of } from "./registry.js";
 
-/** @import { Data_Struct, Layout, Layout_Entry, TData_Options } from "./typedefs.js" */
+/** @import { Access_Tracer, Layout, Layout_Entry, TData_Options } from "./typedefs.js" */
+
+/**
+ * Called on every tag access while set (doc/design.md §4).
+ *
+ * @type {Access_Tracer | null}
+ */
+let access_tracer = null;
+
+/**
+ * Sets a function called on every tag access through the accessors, as
+ * tracer(tdata, name, "read" | "write"), or clears it with null. For tests
+ * that check declared dependencies; the data layer knows nothing else of it.
+ *
+ * @param {Access_Tracer | null} tracer
+ */
+export function set_access_tracer(tracer) {
+	access_tracer = tracer;
+}
+
+/** The classes built so far, by layout name (doc/design.md §4). */
+const classes = new Map();
+
+/** The layout of the probe: a data block with no tag. */
+const EMPTY_LAYOUT = Object.freeze({
+	name: "EMPTY", length: 0, size: 0, items: Object.freeze([]),
+	entries: new Map(), tags_at_byte: [],
+});
+let probe = null;
+
+/**
+ * Builds the class of a layout: a subclass of TData whose prototype holds
+ * the accessor of every tag, shared by all instances of the layout.
+ *
+ * @param {Layout} layout
+ * @returns {typeof TData}
+ */
+function build_class(layout) {
+	const Layout_Data = class extends TData { };
+	Object.defineProperty(Layout_Data, "name", { value: `TData_${layout.name}` });
+	for (const entry of layout.entries.values()) {
+		const { name, codec, byte, mask } = entry;
+		if (TData.is_reserved_name(name)) {
+			throw new Error(`${layout.name}.${name}: tag name collides with a TData member`);
+		}
+		Object.defineProperty(Layout_Data.prototype, name, {
+			get() {
+				if (access_tracer) access_tracer(this, name, "read");
+				return codec.get(this.buffer, byte, mask);
+			},
+			set(value) {
+				if (access_tracer) access_tracer(this, name, "write");
+				codec.set(this.buffer, byte, mask, value);
+				this.after_write(entry);
+			},
+			enumerable: true,
+			configurable: false,
+		});
+	}
+	Layout_Data.layout = layout;
+	return Layout_Data;
+}
+
+/**
+ * The registered layout a TData argument stands for.
+ *
+ * @param {Layout | string} layout - A layout name, or the registered layout of its name.
+ * @returns {Layout}
+ * @throws {Error} For an unknown name, or a layout that is not the registered one.
+ */
+function resolve_layout(layout) {
+	if (typeof layout === "string") return layout_of(layout);
+	if (find_layout(layout?.name) !== layout) throw new Error(`${layout?.name} is not a registered layout`);
+	return layout;
+}
+
+/**
+ * The class of a layout, built on the first use of its name: the name tells
+ * the layouts apart, as the registry holds one layout per name.
+ *
+ * @param {Layout} layout - A registered layout.
+ * @returns {typeof TData}
+ */
+function class_of(layout) {
+	let Layout_Data = classes.get(layout.name);
+	if (!Layout_Data) {
+		Layout_Data = build_class(layout);
+		classes.set(layout.name, Layout_Data);
+	}
+	return Layout_Data;
+}
 
 export class TData extends EventEmitter {
 	/**
@@ -34,7 +124,7 @@ export class TData extends EventEmitter {
 	#layout;
 	/**
 	 * The compiled layout of this data block (doc/design.md §3), read-only.
-	 * The tag accessors are defined once on the prototype of layout.Data_Class.
+	 * The tag accessors are defined once on the prototype of the class built for the layout.
 	 *
 	 * @returns {Layout}
 	 */
@@ -130,21 +220,34 @@ export class TData extends EventEmitter {
 	}
 
 	/**
-	 * Creates a new TData instance.
+	 * Whether a tag name would shadow a member of a data block: its accessor
+	 * would hide the member.
 	 *
-	 * `new TData(struct, name)` returns an instance of the class compiled for
-	 * the struct (layout.Data_Class), whose prototype holds the tag accessors.
+	 * @param {string} name
+	 * @returns {boolean}
+	 */
+	static is_reserved_name(name) {
+		probe ??= new (class extends TData { static layout = EMPTY_LAYOUT; })(EMPTY_LAYOUT, "probe");
+		return name in probe;
+	}
+
+	/**
+	 * Creates a data block of a layout (doc/spec-data-api.md §2.1).
 	 *
-	 * @param {Data_Struct | Layout} data_struct - The expanded structure or its compiled layout.
+	 * `new TData(layout, name)` returns an instance of the class built for the
+	 * layout name (a subclass of TData whose prototype holds the tag
+	 * accessors), building the class on the first use of the name.
+	 *
+	 * @param {Layout | string} layout - A registered layout, or its name (layout_of).
 	 * @param {string} name - The name of the TData instance.
 	 * @param {TData_Options} [options]
+	 * @throws {Error} For an unknown layout name, or a layout that is not the registered one.
 	 */
-	constructor(data_struct, name, options = {}) {
+	constructor(layout, name, options = {}) {
 		super();
 		if (new.target === TData) {
-			const { Data_Class } = data_struct.Data_Class ? data_struct : layout_of(data_struct);
-			// constructors may return an object: the instance of the compiled subclass
-			return new Data_Class(data_struct, name, options);
+			const registered = resolve_layout(layout);
+			return new (class_of(registered))(registered, name, options);
 		}
 		const { detection = "immediate" } = options;
 		if (detection !== "immediate" && detection !== "deferred") {

@@ -44,8 +44,8 @@
 - `{ includes: <片段名或内联列表>, offset }` 把一组公共条目整体偏移后拼接进来，可加 `name_prefix`。
 - `compile_layout(yaml_path)` 同步读取文件，解析片段引用（不存在或循环引用时报错），补全省略的 `length`，再对每个布局调用 `build_structure` 展开为扁平的 `items`（计算结构总长 `length`，把 coupling 规范为名称数组）并校验，返回 `{ layouts, fragments }`。
 - `compile_layout_data(root, origin)` 编译已解析的描述（与文件同结构），供在自己的文件中携带布局的使用方；`compile_layout` 读文件后调用它。
-- `compile_layout` 按文件文本保存结果，相同文本只编译一次；不合法的文件不保存。
-- 每个布局编译为一个 Layout（`layout_of`）：除展开后的 `name`、`length`、`items` 外，还有按名称索引的条目表 `entries`（字节偏移、位掩码、编解码）、字节到 tag 的反查表 `tags_at_byte` 和该结构专用的 TData 子类 `Data_Class`。
+- 每个布局编译为一个 Layout（`register_layout`）：除展开后的 `name`、`length`、`items` 外，还有按名称索引的条目表 `entries`（字节偏移、位掩码、编解码）、字节到 tag 的反查表 `tags_at_byte`。布局是不可变的纯数据，不含类，`layout.js` 不依赖 `TData`。同一份布局描述内的布局名互不相同（它们是 `layouts` 的键）。
+- 已编译的布局按布局名保存在登记表中（`registry.js`，它不引用任何模块，所以 `layout.js` 写入、`TData` 读取而不成环）。`register_layout(struct)` 计算展开后结构的规范文本（`name`、`length`、`items`；对象键排序，不含 `comment`，类型名小写）。该名字已登记且文本相同，就返回已登记的 Layout，所以同一个布局描述两次（即使在两份不同的描述里）只编译一次；文本不同则抛出 `another layout is already named X`。`compile_layout_data` 在登记任何一个之前先检查描述里的每个布局有无这种冲突，所以一份描述要么全部登记，要么都不登记。`layout_of(name)` 返回已登记的布局，没有则抛出 `unknown layout X`。登记表不会清空：布局名在进程的整个生命期内有效。
 - Bool 的定位规则：`byte = offset >> 3`，`bit = offset % 8`。内部缓冲按大端存放，一个字的第一个字节是寄存器的高字节，所以 coupling 中偏移 8–15 对应寄存器的 bit0–7，偏移 0–7 对应 bit8–15。布局文件按 8–15、0–7 的顺序列出，就是按寄存器 bit0 到 bit15 的顺序排列。
 
 ### 3.1 布局校验
@@ -64,22 +64,22 @@
   - 组合字与它的组成位不同时给出 `init_value`（展开时记录冲突，由校验报告）。
 - `build_structure` 遇到重名时保留条目，交给校验报告。
 - `compile_layout` 对文件中的全部布局调用校验，有违规时抛出包含全部违规项的错误（`error.errors`）。
-- 校验通过后，TData 和 TTag 不重复做这些检查；`layout_of` 只保留防御性断言。
+- 校验通过后，TData 和 TTag 不重复做这些检查；`register_layout` 只保留防御性断言。
 
 ## 4. 编解码与原型访问器
 
 - 编解码表 `codecs.js` 中每种类型有一项，`get(buffer, byte, mask)` 从大端缓冲区解码，`set(buffer, byte, mask, value)` 编码写入；设备字节序不在表中处理。
-- `layout_of` 为每种结构生成一个 TData 子类 `Data_Class`，在其原型上为每个条目定义一次访问器，同一结构的实例共用：
+- `TData` 持有一张从布局名到该布局的 TData 子类的表。某个名字第一次 `new TData(layout, ...)` 时构建子类，在其原型上为每个条目定义一次访问器，同一布局的实例共用，之后直接复用；子类带有静态属性 `layout`。只靠名字就能区分布局，因为登记表中一个名字只对应一个布局：
   - getter 每次用编解码表从 `buffer` 解码，不缓存值；
   - setter 用编解码表写入 `buffer`，再调用 `after_write`。
 - 组合字与它的组成位共用同一块字节，写任何一方，另一方读到的自然是新值，不需要额外联动。
-- tag 名不得与 TData 的成员同名（访问器会遮蔽成员），由 `validate_structure` 检查，`layout_of` 另有防御性检查。
+- tag 名不得与 TData 的成员同名（访问器会遮蔽成员），由 `validate_structure` 检查（通过 `TData.is_reserved_name`），`TData` 构建子类时也会抛出错误。
 - `set_access_tracer(tracer | null)`：设置后，访问器每次读写 tag 都调用 `tracer(tdata, name, "read" | "write")`，供使用方的依赖追踪使用；未设置时访问器只多一次判断。
 - `render_types(layouts, { source, tdata_module })` 由布局生成类型声明（每个布局一个接口，tag 为属性，`comment` 作为注释），为按名访问提供编辑器补全。
 
 ## 5. TData
 
-- `new TData(struct, name, { detection })` 返回该结构的 `Data_Class` 的实例：分配 `buffer`（`layout.size` 字节），按条目的 `init_value` 依次编码写入。`detection` 为 `"immediate"`（默认）或 `"deferred"`。
+- `new TData(layout, name, { detection })` 接收已登记的布局或其名字（由 `layout_of` 解析），返回按布局名构建的子类（见 §4）的实例；构造函数先调用 `super()`，再返回该实例。传来的布局对象不是其名字下已登记的那个时抛出错误（只比较引用，不比较结构）。`TData` 本身不会是任何实例的直接类。该实例分配 `buffer`（`layout.size` 字节），按条目的 `init_value` 依次编码写入。`detection` 为 `"immediate"`（默认）或 `"deferred"`。
 - `name` 可写；`layout`、`size`、`buffer` 只读（只有 getter，赋值抛出 `TypeError`），`buffer` 的内容可以读写。`buffer` 统一按大端存放。
 - 写 `buffer` 有两种途径，都经过 TData，任何时候都允许：
 

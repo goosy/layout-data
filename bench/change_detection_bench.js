@@ -2,7 +2,7 @@
 // from a device-ordered IO buffer, then detecting and reporting the changes.
 // Not part of `pnpm test`. Run: pnpm bench
 import { Buffer } from "node:buffer";
-import { TData, build_structure, layout_of, load_entry } from "../src/index.js";
+import { TData, build_structure, load_entry, register_layout } from "../src/index.js";
 
 const ITER = 200_000;
 const TAG_COUNT = 65;
@@ -20,7 +20,7 @@ const items = [
 	{ name: "flowmeter", type: "Real", offset: 96, length: 32, init_value: 0 },
 ];
 for (let i = 0; i < TAG_COUNT; i++) items.push({ name: `word_${i}`, type: "UInt", offset: 128 + i * 16, length: 16, init_value: 0 });
-const layout = layout_of(build_structure({ name: "BENCH" }, items));
+const layout = register_layout(build_structure({ name: "BENCH" }, items));
 const size = layout.size;
 
 function make_reader(endian) {

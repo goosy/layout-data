@@ -1,53 +1,57 @@
 import { readFileSync } from "node:fs";
 import { parseDocument } from "yaml";
 import { CODECS } from "./codecs.js";
-import { TData } from "./TData.js";
+import { register, registered_of } from "./registry.js";
 import { build_structure, validate_structure, TYPE_BITS } from "./structure.js";
 
-/** @import { Access_Tracer, Compiled_Layouts, Data_Struct, Layout } from "./typedefs.js" */
-
-/** Compiled layouts, keyed by the expanded structure they were compiled from. */
-const layout_cache = new WeakMap();
-const EMPTY_STRUCT = Object.freeze({ name: "EMPTY", length: 0, items: Object.freeze([]) });
+/** @import { Compiled_Layouts, Data_Struct, Layout } from "./typedefs.js" */
 
 /**
- * Called on every tag access while set (doc/design.md §4).
- *
- * @type {Access_Tracer | null}
+ * The canonical text of a value: object keys sorted, `comment` left out (it
+ * does not change how a layout works) and the type names in lower case.
  */
-let access_tracer = null;
-
-/**
- * Sets a function called on every tag access through the accessors, as
- * tracer(tdata, name, "read" | "write"), or clears it with null. For tests
- * that check declared dependencies; the data layer knows nothing else of it.
- *
- * @param {Access_Tracer | null} tracer
- */
-export function set_access_tracer(tracer) {
-	access_tracer = tracer;
-}
-
-let tdata_probe = null;
-// a tag name must not shadow a member of TData: its accessor would hide the member
-function is_reserved_name(name) {
-	tdata_probe ??= new TData(EMPTY_STRUCT, "probe");
-	return name in tdata_probe;
+function canonical(value, key) {
+	if (Array.isArray(value)) return `[${value.map((v) => canonical(v)).join(",")}]`;
+	if (value !== null && typeof value === "object") {
+		const fields = Object.keys(value).filter((k) => k !== "comment" && value[k] !== undefined).sort();
+		return `{${fields.map((k) => `${JSON.stringify(k)}:${canonical(value[k], k)}`).join(",")}}`;
+	}
+	if (key === "type" && typeof value === "string") return JSON.stringify(value.toLowerCase());
+	return JSON.stringify(value) ?? "null";
 }
 
 /**
  * Compiles an expanded structure (the result of build_structure) into a Layout
- * (doc/design.md §3). The same structure object is compiled only once.
- * Throws on an unknown type, a duplicated name or a name colliding with a
- * TData member; the other layout rules are checked by validate_structure.
+ * (doc/design.md §3) and registers it under its name, the one source of the
+ * layouts a TData is created from. Registering a structure whose canonical
+ * text equals the registered one of that name gives the registered Layout, so
+ * the same layout described twice is compiled once; another structure under a
+ * used name throws. Throws on an unknown type or a duplicated tag name; the
+ * other layout rules are checked by validate_structure.
  *
  * @param {Data_Struct} data_struct
  * @returns {Layout}
+ * @throws {Error} When the name is used by another layout.
  */
-export function layout_of(data_struct) {
-	const cached = layout_cache.get(data_struct);
-	if (cached) return cached;
+export function register_layout(data_struct) {
+	const { name } = data_struct;
+	if (typeof name !== "string" || name === "") throw new Error("a layout needs a name");
+	const key = key_of(data_struct);
+	const known = registered_of(name);
+	if (known) {
+		if (known.key !== key) throw new Error(`another layout is already named ${name}`);
+		return known.layout;
+	}
+	const layout = compile_structure(data_struct);
+	register(name, { key, layout });
+	return layout;
+}
 
+function key_of(data_struct) {
+	return canonical({ name: data_struct.name, length: data_struct.length, items: data_struct.items });
+}
+
+function compile_structure(data_struct) {
 	const size = data_struct.length >> 3;
 	const entries = new Map();
 	const tags_at_byte = Array.from({ length: size }, () => []);
@@ -60,7 +64,6 @@ export function layout_of(data_struct) {
 		};
 		if (!codec) fail(`unknown tag type ${item.type}`);
 		if (entries.has(name)) fail("duplicated tag name");
-		if (is_reserved_name(name)) fail("tag name collides with a TData member");
 		// defensive checks of what a TData relies on; validate_structure reports them all
 		if (type !== "bool" && offset % 8 !== 0) fail(`bit offset ${offset % 8} on a ${item.type}`);
 		if (codec.size > 1 && (offset >> 3) % 2 !== 0) fail(`${item.type} at the odd byte ${offset >> 3}`);
@@ -79,26 +82,6 @@ export function layout_of(data_struct) {
 		for (let i = byte; i < byte + codec.size && i < size; i++) tags_at_byte[i].push(entry);
 	}
 
-	const Data_Class = class extends TData { };
-	Object.defineProperty(Data_Class, "name", { value: `TData_${data_struct.name}` });
-	for (const entry of entries.values()) {
-		const { codec, byte, mask } = entry;
-		const { name } = entry;
-		Object.defineProperty(Data_Class.prototype, name, {
-			get() {
-				if (access_tracer) access_tracer(this, name, "read");
-				return codec.get(this.buffer, byte, mask);
-			},
-			set(value) {
-				if (access_tracer) access_tracer(this, name, "write");
-				codec.set(this.buffer, byte, mask, value);
-				this.after_write(entry);
-			},
-			enumerable: true,
-			configurable: false,
-		});
-	}
-
 	const layout = Object.freeze({
 		name: data_struct.name,
 		length: data_struct.length,
@@ -106,10 +89,7 @@ export function layout_of(data_struct) {
 		size,
 		entries,
 		tags_at_byte,
-		Data_Class,
 	});
-	Data_Class.layout = layout;
-	layout_cache.set(data_struct, layout);
 	return layout;
 }
 
@@ -149,31 +129,23 @@ function resolve_items(list, fragments, stack, where, errors) {
 	});
 }
 
-/** The results of compile_layout by the text of the file: the same text is compiled once. */
-const file_cache = new Map();
-
 /**
  * Reads the layout description file (doc/design.md §3) and compiles
  * every layout in it. The root key `layouts` maps layout names to item
  * lists; every other root key is a fragment referenced by name.
  *
- * A file with the same text as one compiled before gives the same result
- * object (and so the same Layout objects), whatever its path: do not modify
- * the result.
+ * Every layout is registered under its name (register_layout): a file with the
+ * same layouts as one compiled before gives the same Layout objects, whatever
+ * its path, and a layout under a name used by another layout throws.
  *
  * @param {string} yaml_path - Path of the YAML layout file.
  * @returns {Compiled_Layouts}
  * @throws {Error} With `errors`, every violation found, when the file is not valid.
  */
 export function compile_layout(yaml_path) {
-	const text = readFileSync(yaml_path, "utf8");
-	const cached = file_cache.get(text);
-	if (cached) return cached;
-	const doc = parseDocument(text, { version: "1.2" });
+	const doc = parseDocument(readFileSync(yaml_path, "utf8"), { version: "1.2" });
 	if (doc.errors.length > 0) throw layout_error(yaml_path, doc.errors.map((e) => e.message));
-	const compiled = compile_layout_data(doc.toJS(), yaml_path);
-	file_cache.set(text, compiled);
-	return compiled;
+	return compile_layout_data(doc.toJS(), yaml_path);
 }
 
 function layout_error(origin, errors) {
@@ -185,7 +157,7 @@ function layout_error(origin, errors) {
 /**
  * Compiles a layout description that is already parsed: the same structure as
  * the layout file (compile_layout), for a user whose own file carries the
- * layouts among other data.
+ * layouts among other data. The layouts are registered as by compile_layout.
  *
  * @param {Record<string, any>} root - The parsed description: `layouts` and the fragments.
  * @param {string} [origin] - Names the source in errors.
@@ -215,9 +187,16 @@ export function compile_layout_data(root, origin = "layout description") {
 	if (errors.length === 0) {
 		for (const struct of Object.values(structs)) errors.push(...validate_structure(struct));
 	}
+	if (errors.length === 0) {
+		// all or none: a conflict is found before any of the layouts is registered
+		for (const [name, struct] of Object.entries(structs)) {
+			const known = registered_of(name);
+			if (known && known.key !== key_of(struct)) errors.push(`layout ${name}: another layout is already named ${name}`);
+		}
+	}
 	if (errors.length > 0) fail(errors);
 
 	const layouts = {};
-	for (const [name, struct] of Object.entries(structs)) layouts[name] = layout_of(struct);
+	for (const [name, struct] of Object.entries(structs)) layouts[name] = register_layout(struct);
 	return { layouts, fragments };
 }

@@ -45,9 +45,9 @@ Dependency direction: Observer depends on TData and Layout, TData depends only o
 - A `Word` entry with `coupling` (a fragment name or an inline list) is a status or command word made of several Bools. `is_combined: true` is a descriptive mark only: the word and its bits share the same bytes, so the linkage does not depend on it. The `offset` of each item in `coupling` is relative to the start of the word.
 - `{ includes: <fragment name or inline list>, offset }` splices in a group of common entries shifted as a whole; `name_prefix` may be added.
 - `compile_layout(yaml_path)` reads the file synchronously, resolves fragment references (an unknown or circular reference is an error), fills in omitted `length`s, then calls `build_structure` for every layout to expand it into flat `items` (computing the total `length` of the structure and normalizing `coupling` to an array of names), validates it, and returns `{ layouts, fragments }`.
-- `compile_layout` keeps the result by the text of the file, so the same text is compiled once; an invalid file is not kept.
 - `compile_layout_data(root, origin)` compiles an already parsed description (same structure as the file), for users who carry layouts in their own files; `compile_layout` calls it after reading the file.
-- Every layout is compiled to a Layout (`layout_of`). Besides the expanded `name`, `length` and `items`, it has the table `entries` indexed by name (byte offset, bit mask, codec), the byte-to-tag lookup table `tags_at_byte`, and the TData subclass `Data_Class` specific to this structure.
+- Every layout is compiled to a Layout (`register_layout`). Besides the expanded `name`, `length` and `items`, it has the table `entries` indexed by name (byte offset, bit mask, codec), and the byte-to-tag lookup table `tags_at_byte`. A layout is plain, immutable data: it holds no class and `layout.js` does not depend on `TData`. Within one layout description the layout names are distinct (they are the keys of `layouts`).
+- The compiled layouts are kept in a registry by layout name (`registry.js`, which imports nothing, so `layout.js` writes to it and `TData` reads it without a cycle). `register_layout(struct)` computes the canonical text of the expanded structure (`name`, `length`, `items`; object keys sorted, `comment` left out, type names in lower case). If the name is registered with the same text it returns the registered Layout, so a layout described twice, even in two different descriptions, is compiled once; with another text it throws `another layout is already named X`. `compile_layout_data` checks every layout of the description for such a conflict before registering any, so a description is registered all or none. `layout_of(name)` returns the registered layout and throws `unknown layout X` otherwise. The registry is never cleared: a layout name is used for the life of the process.
 - Bool placement: `byte = offset >> 3`, `bit = offset % 8`. The internal buffer is big-endian and the first byte of a word is the high byte of the register, so offsets 8-15 in `coupling` are register bit 0-7 and offsets 0-7 are register bit 8-15. Listing the bits in the order 8-15, 0-7 in the layout file therefore lists them from register bit 0 to bit 15.
 
 ### 3.1 Layout validation
@@ -66,22 +66,22 @@ The layout rules are validated centrally at the layout stage, not spread over th
   - A combined word and its bits do not both give `init_value` (the conflict is recorded during expansion and reported by validation).
 - `build_structure` keeps entries with duplicate names and leaves them to validation.
 - `compile_layout` validates all layouts in the file and, on violations, throws an error that contains all of them (`error.errors`).
-- After validation passes, TData and TTag do not repeat these checks; `layout_of` keeps only defensive assertions.
+- After validation passes, TData and TTag do not repeat these checks; `register_layout` keeps only defensive assertions.
 
 ## 4. Codecs and prototype accessors
 
 - The codec table `codecs.js` has one entry per type: `get(buffer, byte, mask)` decodes from the big-endian buffer and `set(buffer, byte, mask, value)` encodes into it. Device byte order is not handled in the table.
-- `layout_of` generates a TData subclass `Data_Class` for each structure and defines the accessor of every entry once on its prototype, shared by all instances of the structure:
+- `TData` keeps a map from layout name to the TData subclass built for that layout. The first `new TData(layout, ...)` of a name builds the subclass and defines the accessor of every entry once on its prototype, shared by all instances of the layout; later ones reuse it. The subclass has the static `layout`. The name alone tells the layouts apart, because the registry holds one layout per name:
   - the getter decodes from `buffer` with the codec on every read and caches nothing;
   - the setter writes into `buffer` with the codec and then calls `after_write`.
 - A combined word and its bits share the same bytes, so writing either one makes the other read the new value; no extra linkage is needed.
-- A tag name must not equal a TData member name (the accessor would shadow the member). `validate_structure` checks this and `layout_of` has a defensive check too.
+- A tag name must not equal a TData member name (the accessor would shadow the member). `validate_structure` checks this (through `TData.is_reserved_name`), and `TData` throws when it builds the subclass.
 - `set_access_tracer(tracer | null)`: once set, the accessors call `tracer(tdata, name, "read" | "write")` on every read or write of a tag, for the user's dependency tracking. When unset, the accessors only pay one extra condition.
 - `render_types(layouts, { source, tdata_module })` generates type declarations from layouts (one interface per layout, tags as properties, `comment` as doc comment), to give editor completion for access by name.
 
 ## 5. TData
 
-- `new TData(struct, name, { detection })` returns an instance of the `Data_Class` of the structure: it allocates `buffer` (`layout.size` bytes) and encodes the `init_value` of the entries in order. `detection` is `"immediate"` (default) or `"deferred"`.
+- `new TData(layout, name, { detection })` takes a registered layout, or the name of one (resolved by `layout_of`), and returns an instance of the subclass built for the layout name (see §4); the constructor calls `super()` first and then returns that instance. A layout object that is not the registered one of its name throws (an identity check, not a structural one). `TData` itself is never the direct class of an instance. The instance allocates `buffer` (`layout.size` bytes) and encodes the `init_value` of the entries in order. `detection` is `"immediate"` (default) or `"deferred"`.
 - `name` is writable; `layout`, `size` and `buffer` are read-only (getter only, assignment throws `TypeError`), and the content of `buffer` can be read and written. `buffer` is always big-endian.
 - There are two ways to write `buffer`, both through TData and allowed at any time:
 

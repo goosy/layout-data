@@ -6,7 +6,8 @@ import { Buffer } from "node:buffer";
 import test, { describe } from "node:test";
 import { TData } from "../src/TData.js";
 import { TTag } from "../src/TTag.js";
-import { layout_of } from "../src/layout.js";
+import { register_layout } from "../src/layout.js";
+import { layout_of } from "../src/registry.js";
 
 // the word gives no init value: it is composed from its bits
 const ITEMS = [
@@ -20,7 +21,7 @@ const ITEMS = [
 	},
 	{ name: "pressure", type: "Real", offset: 32, length: 32, init_value: 1.5 },
 ];
-const LAYOUT = layout_of(make_struct(ITEMS, "SAMPLE"));
+const LAYOUT = register_layout(make_struct(ITEMS, "SAMPLE"));
 
 const record = (data) => {
 	const events = [];
@@ -39,6 +40,34 @@ describe("2 TData", () => {
 		const events = record(data);
 		data.detect();
 		assert.deepEqual(events, []);
+	});
+
+	test("2.1 a data block is an instance of the class of its layout, a subclass of TData", () => {
+		const data = new TData(LAYOUT, "d");
+		assert.ok(data instanceof TData);
+		assert.notEqual(Object.getPrototypeOf(data), TData.prototype);
+		assert.equal(Object.getPrototypeOf(new TData(LAYOUT, "e")), Object.getPrototypeOf(data));
+	});
+
+	test("2.1 the same layout registered again is the registered one; another one under the name throws", () => {
+		assert.equal(register_layout(make_struct(ITEMS, "SAMPLE")), LAYOUT);
+		const changed = structuredClone(ITEMS);
+		changed[0].init_value = 8;
+		assert.throws(() => register_layout(make_struct(changed, "SAMPLE")), /another layout is already named SAMPLE/);
+	});
+
+	test("2.1 a layout name stands for the registered layout", () => {
+		const data = new TData("SAMPLE", "d");
+		assert.equal(data.layout, LAYOUT);
+		assert.equal(Object.getPrototypeOf(data), Object.getPrototypeOf(new TData(LAYOUT, "e")));
+		assert.equal(layout_of("SAMPLE"), LAYOUT);
+		assert.throws(() => new TData("NOPE", "d"), /unknown layout NOPE/);
+		assert.throws(() => layout_of("NOPE"), /unknown layout NOPE/);
+	});
+
+	test("2.1 a layout that is not the registered one throws", () => {
+		assert.throws(() => new TData({}, "d"), /is not a registered layout/);
+		assert.throws(() => new TData({ ...LAYOUT }, "d"), /SAMPLE is not a registered layout/);
 	});
 
 	test("2.1 an unknown detection mode throws", () => {
@@ -292,6 +321,6 @@ describe("4.2 deferred mode", () => {
 describe("5 errors", () => {
 	test("a tag name colliding with a data block member throws at creation", () => {
 		const struct = make_struct([{ name: "detect", type: "UInt", offset: 0, length: 16, init_value: 0 }], "BAD");
-		assert.throws(() => new TData(struct, "d"), /collides with a TData member/);
+		assert.throws(() => new TData(register_layout(struct), "d"), /collides with a TData member/);
 	});
 });

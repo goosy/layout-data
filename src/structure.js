@@ -115,13 +115,6 @@ const INTEGER_RANGES = {
 	dint: [-0x80000000, 0x7fffffff], udint: [0, 0xffffffff], dword: [0, 0xffffffff],
 };
 
-let tdata_probe = null;
-// A tag name must not shadow any member of a TData instance.
-function is_reserved_name(name) {
-	tdata_probe ??= new TData({ length: 0, items: [] }, "probe");
-	return name in tdata_probe;
-}
-
 function check_init_value(item, type) {
 	const value = item.init_value;
 	if (type === "bool") return typeof value === "boolean";
@@ -149,7 +142,7 @@ export function validate_structure(data_struct) {
 	for (const item of items) {
 		if (by_name.has(item.name)) report(item, "duplicated name");
 		else by_name.set(item.name, item);
-		if (is_reserved_name(item.name)) report(item, "name collides with a TData member");
+		if (TData.is_reserved_name(item.name)) report(item, "name collides with a TData member");
 	}
 
 	// type, length, alignment and init_value

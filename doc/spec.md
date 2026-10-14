@@ -58,7 +58,7 @@ The entry `tagged-data` exports:
 | --- | --- |
 | `TData`, `TTag` | The data object and the tag handle (§2 and §3 of [spec-data-api.md](spec-data-api.md)) |
 | `compile_layout`, `compile_layout_data` | Compile a layout description (§6 of [spec-data-api.md](spec-data-api.md)) |
-| `build_structure`, `validate_structure`, `layout_of` | Define a layout in code instead of a file (§6.5 of [spec-data-api.md](spec-data-api.md)) |
+| `build_structure`, `validate_structure`, `register_layout`, `layout_of` | Define a layout in code instead of a file (§6.5 of [spec-data-api.md](spec-data-api.md)) |
 | `set_access_tracer` | Trace the reads and writes of tags (§2.8 of [spec-data-api.md](spec-data-api.md)) |
 | `load_entry`, `store_entry`, `io_index_table` | Device byte order conversion (§6 of [design.md](design.md)) |
 | `render_types` | Generates TypeScript declarations from compiled layouts |

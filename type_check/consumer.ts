@@ -4,7 +4,7 @@
 import { Buffer } from "node:buffer";
 import {
 	TData, TTag,
-	compile_layout, compile_layout_data, layout_of, set_access_tracer,
+	compile_layout, compile_layout_data, layout_of, register_layout, set_access_tracer,
 	build_structure, validate_structure,
 	io_index_table, load_entry, store_entry, render_types,
 	type Layout, type Layout_Entry, type Layout_Item, type Data_Struct,
@@ -30,7 +30,7 @@ compile_layout(1);
 const items: Layout_Item[] = [{ name: "a", type: "word", offset: 0, init_value: 1 }];
 const data_struct: Data_Struct = build_structure({ name: "s" }, items);
 const errors: string[] = validate_structure(data_struct);
-const same_layout: Layout = layout_of(data_struct);
+const same_layout: Layout = register_layout(data_struct);
 assert_type<Equal<typeof errors, string[]>>();
 // @ts-expect-error an item needs a type and an offset
 build_structure({ name: "s" }, [{ name: "a" }]);
@@ -38,6 +38,7 @@ build_structure({ name: "s" }, [{ name: "a" }]);
 // TData
 const options: TData_Options = { detection: "deferred" };
 const tdata = new TData(same_layout, "block", options);
+// @ts-expect-error a structure is compiled by layout_of first: TData takes a layout
 new TData(data_struct, "block");
 const tag: TTag | undefined = tdata.get("a");
 assert_type<Equal<typeof tdata.buffer, Buffer>>();
@@ -61,7 +62,7 @@ tdata.write_register("0", 1);
 // @ts-expect-error a bit value is a boolean
 tdata.write_bit(0, 1, 1);
 // @ts-expect-error unknown detection mode
-new TData(data_struct, "block", { detection: "lazy" });
+new TData(same_layout, "block", { detection: "lazy" });
 
 // TTag
 if (tag) {

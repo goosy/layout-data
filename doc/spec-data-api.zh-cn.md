@@ -23,11 +23,12 @@ tag 的类型：`Bool`、`Byte`、`SInt`、`USInt`、`Int`、`UInt`、`Word`、`
 const data = new TData(layout, name, options);
 ```
 
-- `layout`：由 `compile_layout` 编译得到的布局（§6）；
+- `layout`：已登记的布局，来自 `compile_layout`（§6）或 `register_layout`（§6.5），或者是其名字，由 `layout_of(name)` 解析；不接受结构，名字未知或布局对象不是其名字下已登记的那个时抛出错误；
 - `name`：tdata 的名称，用于日志和错误信息；
 - `options`（可选）：
   - `detection`：检测模式，`"immediate"`（默认）或 `"deferred"`，见 §4.2；
-- 创建后每个 tag 的值等于布局中的初值，此时不发出变化事件。
+- 创建后每个 tag 的值等于布局中的初值，此时不发出变化事件；
+- 布局名在进程的整个生命期内标识唯一的布局：同一布局的数据块共用一个类（§6.4）。
 
 ### 2.2 属性
 
@@ -204,12 +205,13 @@ const node = new TData(layouts.NODE, "node_1");
 - `layouts`：按布局名索引的已编译布局，用于创建 TData；
 - `fragments`：按片段名索引的条目列表（展开引用后，偏移相对于片段起点），供使用方查询，例如取得参数块的全部 tag 名；
 - 文件中有任何违规时抛出 `Error`，其 `errors` 属性列出全部违规项；
-- 文本与此前编译过的文件相同的文件，不论路径是否相同，得到同一个结果对象和同样的布局（所以共用一个布局文件的多个使用方拿到同一批 `Layout` 对象）；不要修改结果；
+- 每个布局都按其名字登记（§6.4）；与某名字下已登记的布局相同的布局（文件，不论路径；或交给 `compile_layout_data` 的对象）就是同一个 `Layout` 对象，所以共用一份描述的多个使用方拿到同一批对象。不要修改布局；
+- 一个布局名只属于一个布局：与其名字下已登记的布局不同的布局（条目的 `comment` 和类型名的大小写不计）是错误，`another layout is already named X`。一份描述要么全部登记，要么都不登记：冲突在登记任何布局之前就写入 `errors` 报告。所以不同描述中的布局须使用不同的名字，除非它们完全相同。`layout_of(name)` 返回已登记的布局，名字未知时抛出 `unknown layout X`；
 - `compile_layout_data(root, origin)` 编译已解析的描述（与文件同结构：`layouts` 加各片段），用于布局嵌在使用方自己文件中的情形，返回值和错误同上。
 
 ### 6.5 在代码中定义布局
 
-布局不一定要有文件。`build_structure({ name }, items)` 把条目列表（与文件中的条目相同，可内联 `coupling` 列表并显式给出 `length`）展开为结构，`validate_structure(structure)` 返回违规描述的数组（§6.3，空数组表示合法），`layout_of(structure)` 把它编译为布局。`new TData(structure, name)` 也接受结构并自行编译。`build_structure` 保留收到的内容（包括违规），使用前须检查校验结果。
+布局不一定要有文件。`build_structure({ name }, items)` 把条目列表（与文件中的条目相同，可内联 `coupling` 列表并显式给出 `length`）展开为结构，`validate_structure(structure)` 返回违规描述的数组（§6.3，空数组表示合法），`register_layout(structure)` 把它编译为布局并登记（§6.4）。`layout_of(name)` 返回已登记的布局。`new TData(layout, name)` 接收该布局。`build_structure` 保留收到的内容（包括违规），使用前须检查校验结果。
 
 ## 7. 不在本接口内
 

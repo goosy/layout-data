@@ -56,7 +56,7 @@ tagged-data 是一个结构化数据块库：提供基于 `Buffer`、面向数�
 | --- | --- |
 | `TData`、`TTag` | 数据对象和 tag 句柄（[spec-data-api.zh-cn.md](spec-data-api.zh-cn.md) §2 和 §3） |
 | `compile_layout`、`compile_layout_data` | 编译布局描述（[spec-data-api.zh-cn.md](spec-data-api.zh-cn.md) §6） |
-| `build_structure`、`validate_structure`、`layout_of` | 在代码中定义布局，不用文件（[spec-data-api.zh-cn.md](spec-data-api.zh-cn.md) §6.5） |
+| `build_structure`、`validate_structure`、`register_layout`、`layout_of` | 在代码中定义布局，不用文件（[spec-data-api.zh-cn.md](spec-data-api.zh-cn.md) §6.5） |
 | `set_access_tracer` | 追踪 tag 的读写（[spec-data-api.zh-cn.md](spec-data-api.zh-cn.md) §2.8） |
 | `load_entry`、`store_entry`、`io_index_table` | 设备字节序转换（[design.zh-cn.md](design.zh-cn.md) §6） |
 | `render_types` | 由编译后的布局生成 TypeScript 类型声明 |

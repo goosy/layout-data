@@ -60,7 +60,6 @@
  * @property {Layout_Item[]} items
  * @property {Map<string, Layout_Entry>} entries
  * @property {Layout_Entry[][]} tags_at_byte - The entries covering each byte.
- * @property {new (data_struct: Data_Struct | Layout, name: string, options?: TData_Options) => import("./TData.js").TData} Data_Class
  */
 
 /**

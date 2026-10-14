@@ -15,7 +15,7 @@ function type_name(layout_name) {
 }
 
 /**
- * Renders a declaration file with one interface per layout (`<Name>_Data`,
+ * Renders a declaration file with one interface per layout (`<Name>_Tags`,
  * one property per tag) and the data block type (`<Name>_TData`).
  *
  * @param {Record<string, import("./typedefs.js").Layout>} layouts - Compiled layouts by name.
@@ -31,13 +31,13 @@ export function render_types(layouts, { source, tdata_module }) {
 	];
 	for (const [name, layout] of Object.entries(layouts)) {
 		const base = type_name(name);
-		lines.push("", `/** Tags of the ${name} data block. */`, `export interface ${base}_Data {`);
+		lines.push("", `/** Tags of the ${name} data block. */`, `export interface ${base}_Tags {`);
 		for (const item of layout.items) {
 			if (item.comment) lines.push(`\t/** ${item.comment} */`);
 			const ts_type = item.type.toLowerCase() === "bool" ? "boolean" : "number";
 			lines.push(`\t${item.name}: ${ts_type};`);
 		}
-		lines.push("}", `export type ${base}_TData = TData & ${base}_Data;`);
+		lines.push("}", `export type ${base}_TData = TData & ${base}_Tags;`);
 	}
 	return `${lines.join("\n")}\n`;
 }

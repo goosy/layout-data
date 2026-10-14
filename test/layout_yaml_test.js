@@ -6,6 +6,7 @@ import { join } from "node:path";
 import test, { describe } from "node:test";
 import { compile_layout, compile_layout_data } from "../src/layout.js";
 import { TData } from "../src/TData.js";
+import { layout_of } from "../src/registry.js";
 
 const dir = mkdtempSync(join(tmpdir(), "tlms-layout-"));
 let file_seq = 0;
@@ -140,10 +141,10 @@ layouts:
 describe("parsed layout description", () => {
 	test("compile_layout_data compiles the same structure as a file", () => {
 		const { layouts, fragments } = compile_layout_data({
-			layouts: { T: [{ name: "a", type: "UInt", offset: 0, init_value: 3 }, { includes: "tail", offset: 16 }] },
+			layouts: { PARSED: [{ name: "a", type: "UInt", offset: 0, init_value: 3 }, { includes: "tail", offset: 16 }] },
 			tail: [{ name: "b", type: "UInt", offset: 0, init_value: 4 }],
 		});
-		assert.equal(new TData(layouts.T, "t").b, 4);
+		assert.equal(new TData(layouts.PARSED, "t").b, 4);
 		assert.equal(fragments.tail.length, 1);
 	});
 
@@ -152,24 +153,54 @@ describe("parsed layout description", () => {
 	});
 });
 
-describe("compile cache", () => {
-	const SOURCE = "layouts:\n  T:\n    - { name: a, type: UInt, offset: 0, init_value: 1 }\n";
+describe("layout registry", () => {
+	const source = (name, init_value = 1, extra = "") =>
+		`layouts:
+  ${name}:
+    - { name: a, type: UInt, offset: 0, init_value: ${init_value}${extra} }
+`;
 
-	test("a file with the same text gives the same result, whatever its path", () => {
-		const first = compile(SOURCE);
-		const second = compile(SOURCE);
-		assert.equal(second, first);
-		assert.equal(second.layouts.T, first.layouts.T);
+	test("a file with the same layouts gives the same Layout objects, whatever its path", () => {
+		const first = compile(source("REG_SAME"));
+		const second = compile(source("REG_SAME"));
+		assert.equal(second.layouts.REG_SAME, first.layouts.REG_SAME);
+		assert.equal(layout_of("REG_SAME"), first.layouts.REG_SAME);
+		assert.equal(new TData("REG_SAME", "t").a, 1);
 	});
 
-	test("a file with another text is compiled again", () => {
-		const first = compile(SOURCE);
-		const other = compile(SOURCE.replace("init_value: 1", "init_value: 2"));
-		assert.notEqual(other.layouts.T, first.layouts.T);
-		assert.equal(new TData(other.layouts.T, "t").a, 2);
+	test("a layout shared by two descriptions is one Layout whatever else they hold", () => {
+		const first = compile_layout_data({ layouts: { REG_SHARED: [{ name: "a", type: "UInt", offset: 0, init_value: 1 }] } });
+		const second = compile_layout_data({
+			layouts: {
+				REG_SHARED: [{ name: "a", type: "UInt", offset: 0, init_value: 1 }],
+				REG_OTHER: [{ name: "b", type: "UInt", offset: 0, init_value: 2 }],
+			},
+		});
+		assert.equal(second.layouts.REG_SHARED, first.layouts.REG_SHARED);
 	});
 
-	test("an invalid file is not cached", () => {
+	test("the comment and the case of the type do not make another layout", () => {
+		const first = compile(source("REG_TEXT"));
+		const second = compile(`layouts:
+  REG_TEXT:
+    - { name: a, type: uint, offset: 0, init_value: 1, comment: described }
+`);
+		assert.equal(second.layouts.REG_TEXT, first.layouts.REG_TEXT);
+	});
+
+	test("another layout under a used name is an error, and nothing of the file is registered", () => {
+		compile(source("REG_USED"));
+		const errors = errors_of(`layouts:
+  REG_NEW:
+    - { name: a, type: UInt, offset: 0, init_value: 1 }
+  REG_USED:
+    - { name: a, type: UInt, offset: 0, init_value: 2 }
+`);
+		assert.deepEqual(errors, ["layout REG_USED: another layout is already named REG_USED"]);
+		assert.throws(() => layout_of("REG_NEW"), /unknown layout REG_NEW/);
+	});
+
+	test("an invalid file registers nothing", () => {
 		assert.throws(() => compile("x: []\n"));
 		assert.throws(() => compile("x: []\n"));
 	});

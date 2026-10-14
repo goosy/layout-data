@@ -25,11 +25,12 @@ Tag types: `Bool`, `Byte`, `SInt`, `USInt`, `Int`, `UInt`, `Word`, `DInt`, `UDIn
 const data = new TData(layout, name, options);
 ```
 
-- `layout`: a layout compiled by `compile_layout` (§6);
+- `layout`: a registered layout, from `compile_layout` (§6) or `register_layout` (§6.5), or the name of one, which `layout_of(name)` resolves; a structure is not accepted, and an unknown name or a layout object that is not the registered one of its name throws;
 - `name`: the name of the tdata, used in logs and error messages;
 - `options` (optional):
   - `detection`: the detection mode, `"immediate"` (default) or `"deferred"`, see §4.2;
-- After creation every tag equals its initial value from the layout, and no change event is emitted.
+- After creation every tag equals its initial value from the layout, and no change event is emitted;
+- A layout name identifies one layout for the life of the process: the data blocks of one layout share one class (§6.4).
 
 ### 2.2 Properties
 
@@ -206,12 +207,13 @@ const node = new TData(layouts.NODE, "node_1");
 - `layouts`: compiled layouts by layout name, used to create TData;
 - `fragments`: entry lists by fragment name (references expanded, offsets relative to the start of the fragment), for the user to query, for example to get all tag names of a parameter block;
 - Any violation in the file throws an `Error` whose `errors` property lists all violations;
-- A file with the same text as one compiled before gives the same result object and the same layouts, whatever its path (so several users of one layout file get identical `Layout` objects); do not modify the result;
+- Every layout is registered under its name (§6.4); a layout identical to a registered one of that name (a file, whatever its path, or an object given to `compile_layout_data`) is the same `Layout` object, so several users of one description get identical objects. Do not modify a layout;
+- A layout name is used by one layout only: a layout that differs from the registered one of its name (the `comment` of the items and the case of the type names do not count) is an error, `another layout is already named X`. A description is registered all or none: the conflicts are reported in `errors` before any layout is registered. Layouts of different descriptions therefore need distinct names unless they are identical. `layout_of(name)` returns the registered layout and throws `unknown layout X` for an unknown name;
 - `compile_layout_data(root, origin)` compiles an already parsed description (the same structure as the file: `layouts` plus the fragments), for layouts embedded in the user's own file. The result and the errors are the same.
 
 ### 6.5 Defining a layout in code
 
-A layout needs no file. `build_structure({ name }, items)` expands a list of items (the same entries as in the file, with inline `coupling` lists and explicit `length`) into a structure, `validate_structure(structure)` returns the list of violations (§6.3; empty when valid), and `layout_of(structure)` compiles it into a layout. `new TData(structure, name)` also accepts the structure and compiles it. `build_structure` keeps what it is given, including violations, so check the result before use.
+A layout needs no file. `build_structure({ name }, items)` expands a list of items (the same entries as in the file, with inline `coupling` lists and explicit `length`) into a structure, `validate_structure(structure)` returns the list of violations (§6.3; empty when valid), and `register_layout(structure)` compiles it into a layout and registers it (§6.4). `layout_of(name)` returns a registered layout. `new TData(layout, name)` takes that layout. `build_structure` keeps what it is given, including violations, so check the result before use.
 
 ## 7. Outside this interface
 
