@@ -79,7 +79,7 @@
 
 ## 5. TData
 
-- `new TData(layout, name, { detection })` 接收已登记的布局或其名字（由 `layout_of` 解析），返回按布局名构建的子类（见 §4）的实例；构造函数先调用 `super()`，再返回该实例。传来的布局对象不是其名字下已登记的那个时抛出错误（只比较引用，不比较结构）。`TData` 本身不会是任何实例的直接类。该实例分配 `buffer`（`layout.size` 字节），按条目的 `init_value` 依次编码写入。`detection` 为 `"immediate"`（默认）或 `"deferred"`。
+- `new TData(layout, name)` 接收已登记的布局或其名字（由 `layout_of` 解析），返回按布局名构建的子类（见 §4）的实例；构造函数先调用 `super()`，再返回该实例。传来的布局对象不是其名字下已登记的那个时抛出错误（只比较引用，不比较结构）。`TData` 本身不会是任何实例的直接类。该实例分配 `buffer`（`layout.size` 字节），按条目的 `init_value` 依次编码写入。
 - `name` 可写；`layout`、`size`、`buffer` 只读（只有 getter，赋值抛出 `TypeError`），`buffer` 的内容可以读写。`buffer` 统一按大端存放。
 - 写 `buffer` 有两种途径，都经过 TData，任何时候都允许：
 
@@ -91,19 +91,28 @@
 - TData 出错时抛出异常（布局冲突、值越界），不写日志、不退出。
 - `data.get(name)` 返回该 tag 的 `TTag`，首次访问时创建并缓存，名称不存在时返回 `undefined`。TTag 不持有值：读 `value` 从 TData 的 `buffer` 解码，写 `value` 与 `data[name] = v` 完全等价；`name`、`type`、`length` 来自 Layout 条目；`change` 事件由 Observer 发出。
 
-### 5.1 检测模式与 Observer
+### 5.1 检测、事务与 Observer
 
-所有写入路径最后都汇到 TData 的同一个私有方法，两种检测模式只决定写入之后由谁、何时调用 `diff()`：
+所有写入路径最后都汇到 TData 的同一个私有方法：
 
 ```js
 #written() {
-    if (this.#detection === "immediate") this.#observer.diff();  // detect right now
-    this.emit("write", this);                                    // then tell the listeners
+    if (this.#transaction) { this.#transaction.written = true; return; }  // in a transaction: only remember
+    this.#observer.diff();                                                // detect right now
+    this.emit("write", this);                                             // then tell the listeners
 }
 ```
 
-- 立即模式：在写入语句内部同步调用 `diff()`，再发出 `write`；延迟模式：只发出 `write`，检测由使用方调用 `detect()` 完成。
-- 直接写 `buffer` 的内容后，需调用 `detect()`。
+- 事务之外，在写入语句内部同步调用 `diff()`，再发出 `write`。
+- 直接写 `buffer` 的内容后，需调用 `detect()`；事务中调用 `detect()` 抛出 `Error`。
+
+**事务。** `transaction(fn)` 在已有事务时抛出 `Error`；否则复制一份 `buffer`，登记事务状态 `{ written: false }`，同步调用 `fn()`：
+
+- `fn` 正常返回：关闭事务，调用一次 `diff()`，`written` 为真时发出一次 `write`，返回 `fn` 的返回值（不检查它是否是 Promise）；
+- `fn` 抛出异常：关闭事务，把副本写回 `buffer`，不发出任何事件，重新抛出原异常；
+- Observer 的快照在事务中保持不动：提交时的 `diff()` 就是事务之前最近一次检测与现在之间的净变化；回滚后 `buffer` 回到事务开始时的内容，与快照的关系和事务之前一样，事务之前直接写 `buffer` 而未检测的变化仍留待下一次检测；
+- 事件在事务关闭之后发出，处理器中的写入和事务按普通情形处理；提交时处理器抛出的异常直接传出，不回滚；
+- 事务期间 Node.js 不运行别的 JS 代码，同一线程中没有其他代码能访问这个 tdata，所以事务不需要加锁或隔离；`written` 只是布尔标记，不计次数，因为 `write` 事件没有载荷之外的信息。
 
 **快照比对。** Observer 持有与 `buffer` 等长的快照，创建时复制 `buffer`。`diff()` 逐字节比较 `buffer` 与快照，只对不同的字节经反查表 `tags_at_byte` 找到相关 tag，从快照解码旧值、从 `buffer` 解码新值，值不同（两个 NaN 视为相同）的记为变化；比对完成后更新快照，再统一报告：
 

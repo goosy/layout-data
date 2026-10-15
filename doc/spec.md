@@ -37,6 +37,7 @@ Out of scope: device communication, scheduling, business rules and logging. The 
 - **Byte order**: data is stored big-endian internally. Device byte orders (`BE`, `LE`, `BEBS`, `LEBS`) are converted only at the boundary where data is exchanged with a device; the package provides per-entry conversion functions. For Bool and single-byte tags the device byte order acts per 16-bit register.
 - **Access by name**: a program reads and writes tag values by name, at any time. The programming interface is in [spec-data-api.md](spec-data-api.md).
 - **Change events**: when the value of a tag changes (from an assignment, a raw write, or a direct buffer write followed by detection) a change event is emitted, after the new value has taken effect.
+- **Transactions**: a group of writes can be made one whole: no event is emitted during the transaction, its events are emitted together at the end, and all its writes are undone if `fn` fails. A transaction acts on the buffer of a single tdata only; see §4.2 of [spec-data-api.md](spec-data-api.md).
 - **Combined word linkage**: a combined word and its bits are linked in both directions.
 - **Errors**: errors are thrown as exceptions; nothing is logged and the process is never exited.
 

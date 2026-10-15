@@ -81,7 +81,7 @@ The layout rules are validated centrally at the layout stage, not spread over th
 
 ## 5. TData
 
-- `new TData(layout, name, { detection })` takes a registered layout, or the name of one (resolved by `layout_of`), and returns an instance of the subclass built for the layout name (see §4); the constructor calls `super()` first and then returns that instance. A layout object that is not the registered one of its name throws (an identity check, not a structural one). `TData` itself is never the direct class of an instance. The instance allocates `buffer` (`layout.size` bytes) and encodes the `init_value` of the entries in order. `detection` is `"immediate"` (default) or `"deferred"`.
+- `new TData(layout, name)` takes a registered layout, or the name of one (resolved by `layout_of`), and returns an instance of the subclass built for the layout name (see §4); the constructor calls `super()` first and then returns that instance. A layout object that is not the registered one of its name throws (an identity check, not a structural one). `TData` itself is never the direct class of an instance. The instance allocates `buffer` (`layout.size` bytes) and encodes the `init_value` of the entries in order.
 - `name` is writable; `layout`, `size` and `buffer` are read-only (getter only, assignment throws `TypeError`), and the content of `buffer` can be read and written. `buffer` is always big-endian.
 - There are two ways to write `buffer`, both through TData and allowed at any time:
 
@@ -93,19 +93,28 @@ The layout rules are validated centrally at the layout stage, not spread over th
 - TData throws exceptions on errors (layout conflicts, out-of-range values); it neither logs nor exits.
 - `data.get(name)` returns the `TTag` of the tag, created and cached on first access; for an unknown name it returns `undefined`. A TTag holds no value: reading `value` decodes from the `buffer` of the TData, writing `value` is exactly equivalent to `data[name] = v`; `name`, `type` and `length` come from the Layout entry; the `change` event is emitted by the Observer.
 
-### 5.1 Detection modes and the Observer
+### 5.1 Detection, transactions and the Observer
 
-Every write path ends in the same private method of TData. The two detection modes only decide who calls `diff()` after the write, and when:
+Every write path ends in the same private method of TData:
 
 ```js
 #written() {
-    if (this.#detection === "immediate") this.#observer.diff();  // detect right now
-    this.emit("write", this);                                    // then tell the listeners
+    if (this.#transaction) { this.#transaction.written = true; return; }  // in a transaction: only remember
+    this.#observer.diff();                                                // detect right now
+    this.emit("write", this);                                             // then tell the listeners
 }
 ```
 
-- Immediate mode: `diff()` is called synchronously inside the write statement, then emits `write`. Deferred mode: only `write` is emitted, and the user completes the detection by calling `detect()`.
-- After writing the content of `buffer` directly, call `detect()`.
+- Outside a transaction, `diff()` is called synchronously inside the write statement, then `write` is emitted.
+- After writing the content of `buffer` directly, call `detect()`; inside a transaction `detect()` throws `Error`.
+
+**Transactions.** `transaction(fn)` throws `Error` if a transaction is already open; otherwise it copies `buffer`, registers the transaction state `{ written: false }` and calls `fn()` synchronously:
+
+- `fn` returns normally: the transaction is closed, `diff()` is called once, one `write` is emitted if `written` is true, and the return value of `fn` is returned (it is not checked for being a Promise);
+- `fn` throws: the transaction is closed, the copy is written back to `buffer`, no event is emitted, and the original exception is rethrown;
+- The snapshot of the Observer stays untouched during the transaction: the `diff()` at commit is exactly the net change between the last detection before the transaction and now. After a rollback `buffer` is back to its content at the start, in the same relation to the snapshot as before the transaction, so a change made by writing `buffer` directly before the transaction and not yet detected is left for the next detection;
+- Events are emitted after the transaction is closed, so writes and transactions in handlers are ordinary ones; an exception thrown by a handler at commit propagates and does not roll back;
+- Node.js runs no other JS code during the transaction, so no other code on the thread can access the tdata and the transaction needs no lock or isolation. `written` is a boolean flag, not a count, because the `write` event carries nothing beyond the tdata.
 
 **Snapshot comparison.** The Observer holds a snapshot as long as `buffer`, copied from `buffer` at creation. `diff()` compares `buffer` with the snapshot byte by byte; for the bytes that differ it finds the related tags through the lookup table `tags_at_byte`, decodes the old value from the snapshot and the new value from `buffer`, and records a change when the values differ (two NaNs count as equal). It then updates the snapshot and reports all changes together:
 

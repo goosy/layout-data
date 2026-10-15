@@ -10,7 +10,7 @@ A data block is a fixed-layout `Buffer` (big-endian inside). The layout is descr
 - **Access by name**: `data.pressure = 1.5`, or through a `TTag` handle (`data.get("pressure")`).
 - **Combined words**: a `Word` made of `Bool` bits shares its bytes with them, so writing either side updates the other.
 - **Change events**: emitted after the new value is in place, for writes by name, raw writes and direct buffer writes (followed by `detect()`). Writes that leave a value unchanged emit nothing.
-- **Two detection modes**: `immediate` (default, events fire when the write returns) and `deferred` (events fire at `detect()`, merged).
+- **Immediate detection and transactions**: events fire when a write returns; `transaction(fn)` makes a group of writes one whole, with its events emitted together at the end and its writes undone if `fn` fails.
 - **Device byte order**: `BE`, `LE`, `BEBS`, `LEBS` conversion per entry (`load_entry` / `store_entry`).
 - **TypeScript types**: declarations are generated from JSDoc, and `render_types` generates per-layout interfaces for editor completion.
 

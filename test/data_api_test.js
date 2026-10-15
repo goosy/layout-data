@@ -70,10 +70,6 @@ describe("2 TData", () => {
 		assert.throws(() => new TData({ ...LAYOUT }, "d"), /SAMPLE is not a registered layout/);
 	});
 
-	test("2.1 an unknown detection mode throws", () => {
-		assert.throws(() => new TData(LAYOUT, "d", { detection: "later" }), /unknown detection mode later/);
-	});
-
 	test("2.2 properties", () => {
 		const data = new TData(LAYOUT, "d");
 		assert.equal(data.name, "d");
@@ -242,7 +238,7 @@ describe("4.3 changes and events", () => {
 	});
 });
 
-describe("4.2 immediate mode", () => {
+describe("4.2 detection after a write", () => {
 	test("the events of a write are emitted before the write returns", () => {
 		const data = new TData(LAYOUT, "d");
 		const events = record(data);
@@ -261,60 +257,159 @@ describe("4.2 immediate mode", () => {
 	});
 });
 
-describe("4.2 deferred mode", () => {
+describe("4.2 transactions", () => {
 	const create = () => {
 		const writes = [];
-		const data = new TData(LAYOUT, "d", { detection: "deferred" });
+		const data = new TData(LAYOUT, "d");
 		data.on("write", (d) => writes.push(d));
 		return { data, writes, events: record(data) };
 	};
 
-	test("a write takes effect, emits write and no change until detect()", () => {
+	test("writes take effect at once, events come at the commit, write once after the changes", () => {
 		const { data, writes, events } = create();
-		data.id = 9;
-		data.get("pressure").value = 2;
-		assert.equal(data.id, 9);
-		assert.deepEqual(writes, [data, data]);
-		assert.deepEqual(events, []);
-		data.detect();
-		assert.deepEqual(events, [["id", 7, 9], ["pressure", 1.5, 2]]);
+		const order = [];
+		data.on("change", () => order.push("change"));
+		data.on("write", () => order.push("write"));
+		const result = data.transaction(() => {
+			data.id = 9;
+			data.get("pressure").value = 2;
+			data.write_register(0, 10);
+			assert.equal(data.id, 10);
+			assert.deepEqual(events, []);
+			assert.deepEqual(writes, []);
+			return "done";
+		});
+		assert.equal(result, "done");
+		assert.deepEqual(events, [["id", 7, 10], ["pressure", 1.5, 2]]);
+		assert.equal(writes.length, 1);
+		assert.deepEqual(order, ["change", "change", "write"]);
 	});
 
-	test("writes between two detections are merged, from the value at the last detection", () => {
-		const { data, events } = create();
-		data.id = 1;
-		data.id = 2;
-		data.id = 3;
+	test("writes in a transaction are merged; a value changed and restored emits no change but still a write", () => {
+		const { data, writes, events } = create();
+		data.transaction(() => {
+			data.id = 1;
+			data.id = 2;
+			data.run = false;
+			data.run = true;
+		});
+		assert.deepEqual(events, [["id", 7, 2]]);
+		assert.equal(writes.length, 1);
+		events.length = 0;
+		data.transaction(() => {
+			data.id = 5;
+			data.id = 2;
+		});
+		assert.deepEqual(events, []);
+		assert.equal(writes.length, 2);
+	});
+
+	test("direct writes to the buffer are detected at the commit and emit no write", () => {
+		const { data, writes, events } = create();
+		data.transaction(() => { data.buffer.writeUInt16BE(0x1234, 0); });
+		assert.deepEqual(events, [["id", 7, 0x1234]]);
+		assert.deepEqual(writes, []);
+	});
+
+	test("a transaction without a write emits nothing", () => {
+		const { data, writes, events } = create();
+		assert.equal(data.transaction(() => data.id), 7);
+		assert.deepEqual(events, []);
+		assert.deepEqual(writes, []);
+	});
+
+	test("a throwing function rolls back the buffer, emits nothing and rethrows", () => {
+		const { data, writes, events } = create();
+		const before = Buffer.from(data.buffer);
+		assert.throws(() => data.transaction(() => {
+			data.id = 9;
+			data.buffer[7] = 0xff;
+			throw new RangeError("boom");
+		}), /boom/);
+		assert.deepEqual(data.buffer, before);
+		assert.deepEqual(events, []);
+		assert.deepEqual(writes, []);
 		data.detect();
+		assert.deepEqual(events, []);
+		data.id = 8; // the data block works normally afterwards
+		assert.deepEqual(events, [["id", 7, 8]]);
+	});
+
+	test("a failing write rolls back when the function does not handle it, not when it does", () => {
+		const { data, events } = create();
+		assert.throws(() => data.transaction(() => {
+			data.id = 3;
+			data.id = 70000;
+		}), RangeError);
+		assert.equal(data.id, 7);
+		data.transaction(() => {
+			data.id = 3;
+			try { data.id = 70000; } catch { /* handled */ }
+		});
 		assert.deepEqual(events, [["id", 7, 3]]);
 	});
 
-	test("a value changed and restored before detection is not reported", () => {
+	test("a change made by writing the buffer before the transaction is still reported by the next detection", () => {
 		const { data, events } = create();
-		data.run = false;
-		data.run = true;
+		data.buffer.writeUInt16BE(4, 0);
+		assert.throws(() => data.transaction(() => {
+			data.id = 9;
+			throw new Error("x");
+		}));
+		assert.equal(data.id, 4);
 		data.detect();
-		assert.deepEqual(events, []);
+		assert.deepEqual(events, [["id", 7, 4]]);
 	});
 
-	test("a write by a handler emits write and is reported by a later detection", () => {
+	test("detect() and a nested transaction throw inside a transaction, and roll it back if unhandled", () => {
+		const { data, events } = create();
+		assert.throws(() => data.transaction(() => {
+			data.id = 9;
+			data.detect();
+		}), /not allowed in a transaction/);
+		assert.throws(() => data.transaction(() => {
+			data.id = 9;
+			data.transaction(() => {});
+		}), /already open/);
+		assert.equal(data.id, 7);
+		assert.deepEqual(events, []);
+		data.detect(); // the transaction is closed
+	});
+
+	test("the function returning a Promise is not inspected: the transaction ends at once", () => {
+		const { data, events } = create();
+		const result = data.transaction(async () => { data.id = 9; });
+		assert.ok(result instanceof Promise);
+		assert.deepEqual(events, [["id", 7, 9]]);
+	});
+
+	test("events come after the transaction is closed: handlers write and open transactions as usual", () => {
 		const { data, writes, events } = create();
-		data.get("id").on("change", () => { data.alarm = true; });
-		data.id = 8;
-		data.detect();
+		data.get("id").on("change", () => {
+			data.transaction(() => { data.alarm = true; });
+		});
+		data.transaction(() => { data.id = 8; });
+		assert.deepEqual(events, [["id", 7, 8], ["status", 1, 0x0101], ["alarm", false, true]]);
 		assert.equal(writes.length, 2);
-		assert.deepEqual(events, [["id", 7, 8]]);
-		data.detect();
-		assert.deepEqual(events.slice(1), [["status", 1, 0x0101], ["alarm", false, true]]);
 	});
 
-	test("without a write listener, writes are still allowed and detected later", () => {
-		const data = new TData(LAYOUT, "d", { detection: "deferred" });
-		const events = record(data);
-		data.id = 5;
-		assert.deepEqual(events, []);
-		data.detect();
-		assert.deepEqual(events, [["id", 7, 5]]);
+	test("a handler throwing at the commit propagates; the transaction stays committed", () => {
+		const { data } = create();
+		data.on("change", () => { throw new Error("handler"); });
+		assert.throws(() => data.transaction(() => { data.id = 8; }), /handler/);
+		assert.equal(data.id, 8);
+	});
+
+	test("a write to another data block in a transaction emits its events as usual", () => {
+		const { data } = create();
+		const other = new TData(LAYOUT, "o");
+		const other_events = record(other);
+		assert.throws(() => data.transaction(() => {
+			other.id = 1;
+			throw new Error("x");
+		}));
+		assert.deepEqual(other_events, [["id", 7, 1]]);
+		assert.equal(other.id, 1);
 	});
 });
 

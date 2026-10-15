@@ -8,7 +8,7 @@ import {
 	build_structure, validate_structure,
 	io_index_table, load_entry, store_entry, render_types,
 	type Layout, type Layout_Entry, type Layout_Item, type Data_Struct,
-	type TData_Options, type Compiled_Layouts, type Access_Tracer,
+	type Compiled_Layouts, type Access_Tracer,
 } from "tagged-data";
 
 type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends (<T>() => T extends B ? 1 : 2) ? true : false;
@@ -36,8 +36,7 @@ assert_type<Equal<typeof errors, string[]>>();
 build_structure({ name: "s" }, [{ name: "a" }]);
 
 // TData
-const options: TData_Options = { detection: "deferred" };
-const tdata = new TData(same_layout, "block", options);
+const tdata = new TData(same_layout, "block");
 // @ts-expect-error a structure is compiled by layout_of first: TData takes a layout
 new TData(data_struct, "block");
 const tag: TTag | undefined = tdata.get("a");
@@ -46,6 +45,10 @@ assert_type<Equal<typeof tdata.size, number>>();
 assert_type<Equal<typeof tdata.layout, Layout>>();
 tdata.name = "renamed";
 tdata.detect();
+const done: string = tdata.transaction(() => "done");
+assert_type<Equal<typeof done, string>>();
+// @ts-expect-error the transaction function is required
+tdata.transaction();
 tdata.on("write", (written: typeof tdata) => void written.size);
 tdata.write_register(0, 1);
 tdata.write_bit(0, 0x01, true);
@@ -61,8 +64,6 @@ tdata.layout = layout;
 tdata.write_register("0", 1);
 // @ts-expect-error a bit value is a boolean
 tdata.write_bit(0, 1, 1);
-// @ts-expect-error unknown detection mode
-new TData(same_layout, "block", { detection: "lazy" });
 
 // TTag
 if (tag) {

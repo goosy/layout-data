@@ -4,7 +4,7 @@ import { TTag } from "./TTag.js";
 import { Observer } from "./observer.js";
 import { find_layout, layout_of } from "./registry.js";
 
-/** @import { Access_Tracer, Layout, Layout_Entry, TData_Options } from "./typedefs.js" */
+/** @import { Access_Tracer, Layout, Layout_Entry } from "./typedefs.js" */
 
 /**
  * Called on every tag access while set (doc/design.md §4).
@@ -132,8 +132,12 @@ export class TData extends EventEmitter {
 
 	/** @type {Observer} */
 	#observer;
-	/** @type {"immediate" | "deferred"} (doc/spec-data-api.md §4) */
-	#detection;
+	/**
+	 * The open transaction, null outside one (doc/spec-data-api.md §4.2).
+	 *
+	 * @type {{ written: boolean } | null}
+	 */
+	#transaction = null;
 	/**
 	 * @type {Map<string, TTag>}
 	 * @description The tag handles created so far, by tag name.
@@ -156,11 +160,44 @@ export class TData extends EventEmitter {
 
 	/**
 	 * Detects every change since the last detection and emits its events
-	 * (doc/spec-data-api.md §2.6). Needed after writing the buffer directly,
-	 * and in the deferred mode whenever the user chooses.
+	 * (doc/spec-data-api.md §2.6). Needed after writing the buffer directly.
+	 *
+	 * @throws {Error} Inside a transaction.
 	 */
 	detect() {
+		if (this.#transaction) throw new Error(`${this.name}: detect() is not allowed in a transaction`);
 		this.#observer.diff();
+	}
+
+	/**
+	 * Runs fn synchronously and makes its writes one whole: no event is emitted
+	 * during it; when fn returns, one detection runs and one `write` is emitted
+	 * if fn wrote; when fn throws, the buffer is restored and no event is
+	 * emitted (doc/spec-data-api.md §4.2). The return value of fn is not
+	 * inspected: a Promise is neither awaited nor rejected.
+	 *
+	 * @template T
+	 * @param {() => T} fn
+	 * @returns {T} The return value of fn.
+	 * @throws {Error} Inside a transaction; or whatever fn throws, after the rollback.
+	 */
+	transaction(fn) {
+		if (this.#transaction) throw new Error(`${this.name}: a transaction is already open`);
+		const saved = Buffer.from(this.#buffer);
+		const state = { written: false };
+		this.#transaction = state;
+		let result;
+		try {
+			result = fn();
+		} catch (error) {
+			this.#transaction = null;
+			saved.copy(this.#buffer);
+			throw error;
+		}
+		this.#transaction = null;
+		this.#observer.diff();
+		if (state.written) this.emit("write", this);
+		return result;
 	}
 
 	/**
@@ -200,18 +237,22 @@ export class TData extends EventEmitter {
 	}
 
 	/**
-	 * After a write: detects the change at once in the immediate mode, then
-	 * emits `write` in both modes (doc/spec-data-api.md §4.2).
+	 * After a write: detects the change at once, then emits `write`; inside a
+	 * transaction only remembers the write (doc/spec-data-api.md §4.2).
 	 */
 	#written() {
-		if (this.#detection === "immediate") this.#observer.diff();
+		if (this.#transaction) {
+			this.#transaction.written = true;
+			return;
+		}
+		this.#observer.diff();
 		this.emit("write", this);
 	}
 
 	/**
 	 * Called by a tag setter after the value is written into the buffer:
-	 * detects the change at once in the immediate mode, then notifies the
-	 * user in both modes (doc/spec-data-api.md §4.2).
+	 * detects the change at once and notifies the user, or inside a
+	 * transaction remembers the write (doc/spec-data-api.md §4.2).
 	 *
 	 * @param {Layout_Entry} _entry - The layout entry of the tag.
 	 */
@@ -240,20 +281,14 @@ export class TData extends EventEmitter {
 	 *
 	 * @param {Layout | string} layout - A registered layout, or its name (layout_of).
 	 * @param {string} name - The name of the TData instance.
-	 * @param {TData_Options} [options]
 	 * @throws {Error} For an unknown layout name, or a layout that is not the registered one.
 	 */
-	constructor(layout, name, options = {}) {
+	constructor(layout, name) {
 		super();
 		if (new.target === TData) {
 			const registered = resolve_layout(layout);
-			return new (class_of(registered))(registered, name, options);
+			return new (class_of(registered))(registered, name);
 		}
-		const { detection = "immediate" } = options;
-		if (detection !== "immediate" && detection !== "deferred") {
-			throw new Error(`${name}: unknown detection mode ${detection}`);
-		}
-		this.#detection = detection;
 		this.name = name;
 		this.#layout = new.target.layout;
 		this.setMaxListeners(100);

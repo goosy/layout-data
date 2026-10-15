@@ -63,11 +63,6 @@
  */
 
 /**
- * @typedef {object} TData_Options
- * @property {"immediate" | "deferred"} [detection="immediate"] - When changes are detected.
- */
-
-/**
  * The result of compiling a layout description.
  *
  * @typedef {object} Compiled_Layouts
