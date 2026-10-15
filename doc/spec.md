@@ -19,7 +19,7 @@ Out of scope: device communication, scheduling, business rules and logging. The 
 | --- | --- |
 | Layout | The fixed format of a data block: name, type, bit offset and initial value of every tag. Immutable once compiled |
 | TData / tdata | TData is the class of data objects, a tdata is an instance: a block of data allocated for a layout, stored big-endian internally |
-| TTag | The interface of one named entry of a tdata |
+| TTag | The interface of one named tag of a tdata |
 | Combined word | A Word made of several Bools, sharing its data with its bits |
 
 ## 3. Data block requirements
@@ -34,7 +34,7 @@ Out of scope: device communication, scheduling, business rules and logging. The 
   - only one side of a combined word and its bits gives the initial value: if the word gives it, the initial values of the bits come from the whole word; otherwise they come from the bits (a bit without a value is false) and the word is composed from them;
   - the total length of a data block is a whole number of registers (a multiple of 16 bits).
 - **Bit numbering of combined words**: in a 16-bit combined word, bit k of the word value is bit k of the register. This is guaranteed by the offsets of the bits in the layout; no extra byte swapping is done internally.
-- **Byte order**: data is stored big-endian internally. Device byte orders (`BE`, `LE`, `BEBS`, `LEBS`) are converted only at the boundary where data is exchanged with a device; the package provides per-entry conversion functions. For Bool and single-byte tags the device byte order acts per 16-bit register.
+- **Byte order**: data is stored big-endian internally. Device byte orders (`BE`, `LE`, `BEBS`, `LEBS`) are converted only at the boundary where data is exchanged with a device; the package provides per-tag conversion (`load_tag`, `store_tag` of TData, and `load`, `store` of TTag) and a byte index table for a whole block (`io_index_table`). For Bool and single-byte tags the device byte order acts per 16-bit register.
 - **Access by name**: a program reads and writes tag values by name, at any time. The programming interface is in [spec-data-api.md](spec-data-api.md).
 - **Raw access**: the bytes of a tdata are read and written only through the interface, by tag or raw by byte offset (`read_bytes`, `write_bytes`, `write_bit`); the internal buffer is not exposed, so every write is seen and no change is missed. Typed access goes through tags, untyped access through bytes.
 - **Change events**: when the value of a tag changes (from an assignment or a raw write) a change event is emitted, after the new value has taken effect.
@@ -62,7 +62,7 @@ The entry `tagged-data` exports:
 | `compile_layout`, `compile_layout_data` | Compile a layout description (§6 of [spec-data-api.md](spec-data-api.md)) |
 | `build_structure`, `validate_structure`, `register_layout`, `layout_of` | Define a layout in code instead of a file (§6.5 of [spec-data-api.md](spec-data-api.md)) |
 | `set_access_tracer` | Trace the reads and writes of tags (§2.8 of [spec-data-api.md](spec-data-api.md)) |
-| `load_entry`, `store_entry`, `io_index_table` | Device byte order conversion (§6 of [design.md](design.md)) |
+| `io_index_table` | The byte index table for exchanging a whole block with a device (§2.9 of [spec-data-api.md](spec-data-api.md)); the per-tag conversion is `load_tag` / `store_tag` of TData |
 | `render_types` | Generates TypeScript declarations from compiled layouts |
 
 ## 7. Documents

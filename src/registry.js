@@ -3,6 +3,7 @@
 // is created from. Written by register_layout (layout.js), read by TData.
 
 /** @import { Layout } from "./typedefs.js" */
+/** @import { Compiled_Layout } from "./internal_types.js" */
 
 /**
  * @typedef {object} Registered
@@ -12,6 +13,35 @@
 
 /** @type {Map<string, Registered>} */
 const registered = new Map();
+
+/**
+ * The compiled data of the layouts (doc/design.md §3), kept here so that the
+ * public Layout holds none of it.
+ *
+ * @type {WeakMap<Layout, Compiled_Layout>}
+ */
+const compiled = new WeakMap();
+
+/**
+ * @param {Layout} layout
+ * @param {Compiled_Layout} data
+ */
+export function set_compiled(layout, data) {
+	compiled.set(layout, data);
+}
+
+/**
+ * The compiled data of a layout made by this package.
+ *
+ * @param {Layout} layout
+ * @returns {Compiled_Layout}
+ * @throws {Error} For an object that is not a compiled layout.
+ */
+export function compiled_of(layout) {
+	const data = compiled.get(layout);
+	if (!data) throw new Error(`${layout?.name} is not a registered layout`);
+	return data;
+}
 
 /**
  * @param {string} name

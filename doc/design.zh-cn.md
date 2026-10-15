@@ -12,7 +12,7 @@
 | `src/structure.js` | 结构展开（`build_structure`）与布局校验（`validate_structure`） |
 | `src/codecs.js` | 各类型在大端缓冲区上的编解码 |
 | `src/observer.js` | 快照比对，变化事件 |
-| `src/endian.js` | 按条目的设备字节序转换 |
+| `src/endian.js` | 单个条目和整块数据的设备字节序转换（只导出 `io_index_table`） |
 | `src/types.js` | 由布局生成 TypeScript 类型声明（`render_types`） |
 | `src/typedefs.js` | 公开类型的 JSDoc 定义（类型的唯一来源，无运行时内容） |
 | `dist/types/` | 构建时由 `rolldown.config.js` 中的插件调用 `tsc` 从 JSDoc 生成的声明文件（`tsconfig.json`），不入库 |
@@ -44,7 +44,7 @@
 - `{ includes: <片段名或内联列表>, offset }` 把一组公共条目整体偏移后拼接进来，可加 `name_prefix`。
 - `compile_layout(yaml_path)` 同步读取文件，解析片段引用（不存在或循环引用时报错），补全省略的 `length`，再对每个布局调用 `build_structure` 展开为扁平的 `items`（计算结构总长 `length`，把 coupling 规范为名称数组）并校验，返回 `{ layouts, fragments }`。
 - `compile_layout_data(root, origin)` 编译已解析的描述（与文件同结构），供在自己的文件中携带布局的使用方；`compile_layout` 读文件后调用它。
-- 每个布局编译为一个 Layout（`register_layout`）：除展开后的 `name`、`length`、`items` 外，还有按名称索引的条目表 `entries`（字节偏移、位掩码、编解码）、字节到 tag 的反查表 `tags_at_byte`。布局是不可变的纯数据，不含类，`layout.js` 不依赖 `TData`。同一份布局描述内的布局名互不相同（它们是 `layouts` 的键）。
+- 每个布局编译为一个 Layout（`register_layout`）。公开的 Layout 是深度冻结的 `{ name, length, size, items }`（spec-data-api.zh-cn.md §6.6），其中 `items` 是展开后条目的冻结副本，只含文档规定的字段。编译结果，即按名称索引的条目表 `entries`（字节偏移、位掩码、编解码）和字节到 tag 的反查表 `tags_at_byte`，存放在 `registry.js` 的模块私有 `WeakMap` 里，由 `TData`、Observer 和 `endian.js` 通过 `compiled_of(layout)` 读取，从不挂在 Layout 上，所以公开接口里不出现 entry。布局是不可变的纯数据，不含类，`layout.js` 不依赖 `TData`。同一份布局描述内的布局名互不相同（它们是 `layouts` 的键）。
 - 已编译的布局按布局名保存在登记表中（`registry.js`，它不引用任何模块，所以 `layout.js` 写入、`TData` 读取而不成环）。`register_layout(struct)` 计算展开后结构的规范文本（`name`、`length`、`items`；对象键排序，不含 `comment`，类型名小写）。该名字已登记且文本相同，就返回已登记的 Layout，所以同一个布局描述两次（即使在两份不同的描述里）只编译一次；文本不同则抛出 `another layout is already named X`。`compile_layout_data` 在登记任何一个之前先检查描述里的每个布局有无这种冲突，所以一份描述要么全部登记，要么都不登记。`layout_of(name)` 返回已登记的布局，没有则抛出 `unknown layout X`。登记表不会清空：布局名在进程的整个生命期内有效。
 - Bool 的定位规则：`byte = offset >> 3`，`bit = offset % 8`。内部缓冲按大端存放，一个字的第一个字节是寄存器的高字节，所以 coupling 中偏移 8–15 对应寄存器的 bit0–7，偏移 0–7 对应 bit8–15。布局文件按 8–15、0–7 的顺序列出，就是按寄存器 bit0 到 bit15 的顺序排列。
 
@@ -90,9 +90,10 @@
 
 - `read_bytes(offset = 0, length = size - offset)` 返回一段字节的副本（`Buffer.from(buffer.subarray(...))`），所以无法通过它改动缓冲区。
 - 原始方法在碰缓冲区之前先检查参数，出错时数据不变，也不会走到 `#written()`：`offset`、`length` 须为整数，且 `0 <= offset`、`offset + length <= size`，`mask` 须为 1 到 0xff 的整数（`RangeError`），`source` 须为 `Uint8Array`（`TypeError`）。`write_bytes` 用 `buffer.set(source, offset)` 复制。原始写入把它碰过的字节范围登记给 Observer（§5.1）。
+- `load_tag(name, io_buffer, endian)` 和 `store_tag(name, io_buffer, endian)`（spec-data-api.zh-cn.md §2.9）把 `name` 解析为布局的编译条目（名字不存在时抛出 `Error`），检查 `endian`、`io_buffer` 和该条目在其中的范围（`io_range`），再以私有缓冲区调用 `endian.js` 的 `load_entry` / `store_entry`。`load_tag` 登记该条目的字节范围，像任何写入一样以 `#written()` 结束；`store_tag` 只读缓冲区。`TTag.load(io_buffer, endian)` 和 `TTag.store(io_buffer, endian)` 以 tag 名调用它们，所以 TTag 不需要检查自己属于哪个 tdata。
 
 - TData 出错时抛出异常（布局冲突、值越界），不写日志、不退出。
-- `data.get(name)` 返回该 tag 的 `TTag`，首次访问时创建并缓存，名称不存在时返回 `undefined`。TTag 不持有值：读 `value` 从 TData 的缓冲区解码，写 `value` 与 `data[name] = v` 完全等价；`name`、`type`、`length` 来自 Layout 条目；`change` 事件由 Observer 发出。
+- `data.get(name)` 返回该 tag 的 `TTag`，首次访问时创建并缓存，名称不存在时返回 `undefined`。TTag 不持有值：读 `value` 从 TData 的缓冲区解码，写 `value` 与 `data[name] = v` 完全等价；`name`、`type`、`length` 来自布局的编译条目，TTag 私有地持有它，不对外公开；`change` 事件由 Observer 发出。
 
 ### 5.1 检测、事务与 Observer
 
@@ -126,14 +127,14 @@
 
 ## 6. 字节序转换
 
-`endian.js` 按布局条目实现设备字节序与内部大端之间的转换（`load_entry` / `store_entry` / `io_index` / `io_range`），并为整个数据块生成字节下标表（`io_index_table`），与设备成组交换条目的使用方可以据此直接按字节复制。下标表与 `load_entry` / `store_entry` 对每个条目的结果一致（有测试保证）。它们只作用于调用方给出的缓冲区，从不碰 TData 自己的缓冲区：IO 层用 `read_bytes` 取一份副本作暂存，转换到暂存里，再用 `write_bytes` 写回（spec-data-api.zh-cn.md §7）。它们都不检测变化：
+`endian.js` 按编译条目实现设备字节序与内部大端之间的转换（`load_entry` / `store_entry` / `io_index` / `io_range`），并为整个数据块生成字节下标表（`io_index_table`），与设备整块交换的使用方可以据此直接按字节复制。包只导出 `io_index_table`，其余是内部函数，由 TData 的 `load_tag` / `store_tag`（§5）传入私有缓冲区调用。下标表与 `load_entry` / `store_entry` 对每个条目的结果一致（有测试保证）。这些函数只接受 `BE`、`LE`、`BEBS`、`LEBS` 四种字节序（其他值抛出 `RangeError`，没有别名），都不检测变化：
 
-- 2 字节：`BE` 原样复制；`LE` / `little` / `BEBS` 交换两个字节；
-- 4 字节：支持 `BE`、`LE` / `little`、`BEBS`、`LEBS` 四种排列；
-- Bool 和单字节类型（Byte、SInt、USInt）只读写一个字节，不做字节内转换；它在 IO 缓冲区中的下标按 16 位寄存器换算：`LE` / `little` / `BEBS` 时为 `byte ^ 1`，`BE` / `LEBS` 时为 `byte`。Bool 按位掩码只改自己的位。
+- 2 字节：`BE` 原样复制；`LE` / `BEBS` 交换两个字节；
+- 4 字节：支持 `BE`、`LE`、`BEBS`、`LEBS` 四种排列；
+- Bool 和单字节类型（Byte、SInt、USInt）只读写一个字节，不做字节内转换；它在 IO 缓冲区中的下标按 16 位寄存器换算：`LE` / `BEBS` 时为 `byte ^ 1`，`BE` / `LEBS` 时为 `byte`。Bool 按位掩码只改自己的位。
 
 ## 7. 构建与测试
 
 - `pnpm build`：rolldown 把 `src/index.js` 打包为 `dist/tagged-data.js`（`yaml` 打进库）；
-- `pnpm bench`：`bench/change_detection_bench.js` 测量读取一个 86 个 tag、146 字节的数据块（经 `read_bytes` 取副本、从设备字节序缓冲装载，再用一次 `write_bytes` 写回，由它检测并报告变化）的开销。开发机上，逐条目转换时每周期无变化约 2.5 µs，少量变化 2.6–3.6 µs，全部变化 7.5 µs；用 `io_index_table` 按字节复制时分别约 0.4 µs、0.5–1.4 µs、5.2 µs；
+- `pnpm bench`：`bench/change_detection_bench.js` 测量读取一个 86 个 tag、146 字节的数据块（从设备字节序缓冲装载每个 tag，并检测、报告变化）的开销。开发机上，在一个事务中对每个 tag 调用 `load_tag`，每周期无变化约 2.5 µs，少量变化 2.5–3.7 µs，全部变化 7.5–8 µs；用 `io_index_table` 按字节复制再一次 `write_bytes` 时分别约 0.4–0.5 µs、0.6–1.6 µs、5.3–5.7 µs；
 - `pnpm test`：先构建，再运行类型测试和 `node --test`；`pnpm lint`：ESLint。

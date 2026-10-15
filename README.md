@@ -11,7 +11,7 @@ A data block is a fixed-layout `Buffer` (big-endian inside). The layout is descr
 - **Combined words**: a `Word` made of `Bool` bits shares its bytes with them, so writing either side updates the other.
 - **Change events**: emitted after the new value is in place, for writes by name and raw writes (`write_bytes`, `write_bit`); the internal buffer is not exposed, so no write is missed. Writes that leave a value unchanged emit nothing.
 - **Immediate detection and transactions**: events fire when a write returns; `transaction(fn)` makes a group of writes one whole, with its events emitted together at the end and its writes undone if `fn` fails.
-- **Device byte order**: `BE`, `LE`, `BEBS`, `LEBS` conversion per entry (`load_entry` / `store_entry`).
+- **Device byte order**: `BE`, `LE`, `BEBS`, `LEBS` conversion per tag (`load_tag` / `store_tag`), or by a byte index table for a whole block (`io_index_table`).
 - **TypeScript types**: declarations are generated from JSDoc, and `render_types` generates per-layout interfaces for editor completion.
 
 ## Install
@@ -62,13 +62,13 @@ pump.id = 70000;                // throws RangeError, the old value is kept
 Exchanging data with a device in another byte order:
 
 ```js
-import { load_entry, store_entry } from "tagged-data";
+pump.load_tag("pressure", io_buffer, "LEBS");  // device -> big-endian, the change is reported
+pump.get("pressure").store(io_buffer, "LEBS"); // the same through the TTag, big-endian -> device
 
-const entry = pump.layout.entries.get("pressure");
-const staged = pump.read_bytes();                   // a copy of the big-endian bytes
-load_entry(entry, io_buffer, staged, "LEBS");       // device -> big-endian
-pump.write_bytes(0, staged);                        // one write, the changes are reported
-store_entry(entry, pump.read_bytes(), io_buffer, "LEBS"); // big-endian -> device
+// a batch of loads is one write with one detection
+pump.transaction(() => {
+	for (const { name } of pump.layout.items) pump.load_tag(name, io_buffer, "LEBS");
+});
 ```
 
 ## Exports
@@ -80,7 +80,7 @@ store_entry(entry, pump.read_bytes(), io_buffer, "LEBS"); // big-endian -> devic
 | `render_types(layouts, { source, tdata_module })` | Generate TypeScript interfaces for layouts |
 | `build_structure`, `validate_structure`, `register_layout`, `layout_of` | Define a layout in code instead of a file |
 | `set_access_tracer` | Trace the reads and writes of tags |
-| `load_entry`, `store_entry`, `io_index_table` | Device byte order conversion |
+| `io_index_table` | Byte index table for exchanging a whole block with a device (per-tag conversion is `load_tag` / `store_tag` of `TData`) |
 
 ## Documentation
 

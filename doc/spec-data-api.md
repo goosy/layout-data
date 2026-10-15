@@ -11,7 +11,7 @@
 | --- | --- |
 | Layout | The fixed format of a data block: name, type, bit offset and initial value of every tag, given by a layout description (§6) and immutable once compiled |
 | TData / tdata | TData is the class of data objects, a tdata is an instance: a block of data allocated for a layout, stored big-endian internally, with access by name and change events |
-| TTag | The interface of one named entry of a tdata: read and write its value, subscribe to its changes |
+| TTag | The interface of one named tag of a tdata: read and write its value, subscribe to its changes |
 
 The T in TData and TTag stands for Typed: a tdata is stored in a fixed layout and every tag has a definite type and position.
 
@@ -113,6 +113,31 @@ Emitted after every write, whether or not it changed a value. A write is a write
 
 `set_access_tracer(tracer)` sets a function called on every read and write of a tag through the property accessors, as `tracer(tdata, name, "read" | "write")`; `set_access_tracer(null)` clears it. For tools that check which tags a piece of code touches. The tracer is global to the process and costs one check per access while unset.
 
+### 2.9 Device byte order
+
+A tdata is stored big-endian internally. To exchange data with a device, convert per tag between the tdata and an IO buffer in the byte order of the device:
+
+| Method | Description |
+| --- | --- |
+| `load_tag(name, io_buffer, endian)` | Convert the bytes of the tag named `name` from `io_buffer` and write them into the tdata; this is a write |
+| `store_tag(name, io_buffer, endian)` | Convert the bytes of the tag named `name` in the tdata and write them into `io_buffer`; the tdata is unchanged and no event is emitted |
+
+- `name`: the tag name. When you already hold a TTag, use its `load` / `store` (§3), which do the same; for a batch use names directly, which needs no TTag created for each tag;
+- `io_buffer`: a `Uint8Array` indexed like the byte offsets of the tdata (a mirror of the same size as the data block); the range of the tag in it must lie inside it;
+- `endian`: the device byte order; only `"BE"`, `"LE"`, `"BEBS"` and `"LEBS"` are accepted (ABCD stands for the four bytes in big-endian):
+
+  | Byte order | 2 bytes | 4 bytes |
+  | --- | --- | --- |
+  | `BE` | unchanged | ABCD |
+  | `LE` | the two bytes swapped | DCBA |
+  | `BEBS` | the two bytes swapped | BADC |
+  | `LEBS` | unchanged | CDAB |
+
+  A Bool and a single-byte tag (Byte, SInt, USInt) go by the 16-bit register they lie in: for `LE` and `BEBS` they sit in the other byte of the register, for `BE` and `LEBS` in place; a Bool changes only its own bit;
+- `load_tag` is the same as a write by name: it takes effect at once, detects, emits `change` and then `write`; inside a transaction it is handled at the commit. Put a batch of loads into a transaction (§2.6): one detection and one `write` at the commit;
+- Exchanging a whole block at once: `io_index_table(layout, endian)` returns the table of byte indexes; byte `i` of the data block is byte `table[i]` of the IO buffer. The user copies the bytes by it, then writes them with one `write_bytes` (§2.5);
+- Errors are checked before anything is changed: the tdata is unchanged and `load_tag` emits no `write` (errors in §5).
+
 ## 3. TTag
 
 | Member | Description |
@@ -122,6 +147,8 @@ Emitted after every write, whether or not it changed a value. A write is a write
 | `length` | Number of bytes it occupies |
 | `value` | The current value, readable and writable; writing it is exactly equivalent to `data[name] = v` |
 | `on("change", (old_value, new_value) => ...)` | Subscribe to changes of this tag |
+| `load(io_buffer, endian)` | Equivalent to `data.load_tag(name, io_buffer, endian)` (§2.9) |
+| `store(io_buffer, endian)` | Equivalent to `data.store_tag(name, io_buffer, endian)` (§2.9) |
 
 A TTag stores no value; reads and writes act directly on the tdata it belongs to.
 
@@ -173,7 +200,9 @@ The interface throws exceptions on errors. It does not log or exit the process; 
 | Writes triggered by handlers that do not settle | `Error` thrown by the detection |
 | Starting another transaction inside a transaction | `Error` |
 | A raw read or write whose offset, length or mask is out of range, or that writes past the end of the data block | `RangeError`, the data is unchanged and no `write` is emitted |
-| A raw write whose `source` is not a `Uint8Array` | `TypeError` |
+| A raw write whose `source`, or `load_tag` / `store_tag` whose `io_buffer`, is not a `Uint8Array` | `TypeError` |
+| `load_tag` / `store_tag` with an unknown tag name | `Error`, the tdata is unchanged and no `write` is emitted |
+| A byte order other than `BE`, `LE`, `BEBS`, `LEBS`, or a tag whose range in `io_buffer` is out of bounds | `RangeError`, the tdata is unchanged and no `write` is emitted |
 
 ## 6. Layout description
 
@@ -235,7 +264,7 @@ const node = new TData(layouts.NODE, "node_1");
 - `layouts`: compiled layouts by layout name, used to create TData;
 - `fragments`: entry lists by fragment name (references expanded, offsets relative to the start of the fragment), for the user to query, for example to get all tag names of a parameter block;
 - Any violation in the file throws an `Error` whose `errors` property lists all violations;
-- Every layout is registered under its name (§6.4); a layout identical to a registered one of that name (a file, whatever its path, or an object given to `compile_layout_data`) is the same `Layout` object, so several users of one description get identical objects. Do not modify a layout;
+- Every layout is registered under its name (§6.4); a layout identical to a registered one of that name (a file, whatever its path, or an object given to `compile_layout_data`) is the same `Layout` object, so several users of one description get identical objects. A layout is read-only (§6.6);
 - A layout name is used by one layout only: a layout that differs from the registered one of its name (the `comment` of the items and the case of the type names do not count) is an error, `another layout is already named X`. A description is registered all or none: the conflicts are reported in `errors` before any layout is registered. Layouts of different descriptions therefore need distinct names unless they are identical. `layout_of(name)` returns the registered layout and throws `unknown layout X` for an unknown name;
 - `compile_layout_data(root, origin)` compiles an already parsed description (the same structure as the file: `layouts` plus the fragments), for layouts embedded in the user's own file. The result and the errors are the same.
 
@@ -243,7 +272,22 @@ const node = new TData(layouts.NODE, "node_1");
 
 A layout needs no file. `build_structure({ name }, items)` expands a list of items (the same entries as in the file, with inline `coupling` lists and explicit `length`) into a structure, `validate_structure(structure)` returns the list of violations (§6.3; empty when valid), and `register_layout(structure)` compiles it into a layout and registers it (§6.4). `layout_of(name)` returns a registered layout. `new TData(layout, name)` takes that layout. `build_structure` keeps what it is given, including violations, so check the result before use.
 
+### 6.6 The layout object
+
+A layout (`Layout`) is a read-only object that exposes only these members:
+
+| Member | Description |
+| --- | --- |
+| `name` | The layout name |
+| `length` | Total length in bits |
+| `size` | Total size in bytes |
+| `items` | The expanded descriptions of the tags, in layout order (a combined word before its bits) |
+
+- Every item of `items` has: `name`; `type` (as written in the description, the case unchanged, while `TTag.type` is always lower case); `offset` (the absolute bit offset; the byte position is `offset >> 3`); `length` (bits); `init_value`; `comment` (if given); `coupling` (for a combined word: the tag names of its bits; for a bit: the tag names of the combined words it belongs to). `includes` and `name_prefix` are expanded and no longer appear;
+- The layout and its `items` are deeply frozen: modifying them throws `TypeError`;
+- A layout does not expose the table by name, byte positions, bit masks, codecs or other internal data, and users need not know them: access by name goes through `data.get(name)`, which gives a TTag, and exchanging data with a device through `load_tag` / `store_tag` or `load` / `store` of a TTag (§2.9).
+
 ## 7. Outside this interface
 
-- Exchanging data with devices (byte order conversion, grouped reads and writes, driver binding) is the job of the user's IO layer, which operates the tdata through the raw reads and writes of this interface (§2.5): it takes the current content with `read_bytes` as a staging buffer, converts between the staging buffer and the device buffer with the per-entry byte order conversion functions of the package (see design.md §6), and writes it back with one `write_bytes`;
+- Exchanging data with devices (driver binding, the orchestration of reads and writes) is the job of the user's IO layer, which operates the tdata through this interface: `load_tag` / `store_tag` convert the byte order per tag (§2.9), a whole block is exchanged with `io_index_table` plus `read_bytes` / `write_bytes` (§2.5), and a batch of loads goes into a transaction (§2.6);
 - Scheduling, rules and timing do not belong to this interface.

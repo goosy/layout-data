@@ -1,6 +1,6 @@
 import { Buffer } from "node:buffer";
 
-/** @import { Layout, Layout_Entry } from "./typedefs.js" */
+/** @import { Compiled_Layout, Layout_Entry } from "./internal_types.js" */
 
 // a change made by a change handler is detected in a further round
 const MAX_DIFF_ROUNDS = 16;
@@ -21,8 +21,10 @@ const same_value = (a, b) => a === b || (Number.isNaN(a) && Number.isNaN(b));
 export class Observer {
 	/** @type {Buffer} */
 	#buffer;
-	/** @type {Layout} */
-	#layout;
+	/** @type {string} */
+	#name;
+	/** @type {Compiled_Layout} */
+	#compiled;
 	/** @type {Buffer} */
 	#snapshot;
 	/** @type {(entry: Layout_Entry, old_value: any, new_value: any) => void} */
@@ -38,15 +40,17 @@ export class Observer {
 
 	/**
 	 * @param {Buffer} buffer - The buffer of the TData.
-	 * @param {Layout} layout - The compiled layout of the TData.
+	 * @param {string} name - The layout name, for errors.
+	 * @param {Compiled_Layout} compiled - The compiled data of the layout of the TData.
 	 * @param {(entry: Layout_Entry, old_value: any, new_value: any) => void} report - Called for each change.
 	 */
-	constructor(buffer, layout, report) {
+	constructor(buffer, name, compiled, report) {
 		this.#buffer = buffer;
-		this.#layout = layout;
+		this.#name = name;
+		this.#compiled = compiled;
 		this.#report = report;
 		this.#snapshot = Buffer.from(buffer);
-		this.#seen = new Uint32Array(layout.entries.size);
+		this.#seen = new Uint32Array(compiled.entries.size);
 	}
 
 	/**
@@ -81,7 +85,7 @@ export class Observer {
 			do {
 				this.#pending = false;
 				if (++rounds > MAX_DIFF_ROUNDS) {
-					throw new Error(`${this.#layout.name}: changes do not settle after ${MAX_DIFF_ROUNDS} rounds`);
+					throw new Error(`${this.#name}: changes do not settle after ${MAX_DIFF_ROUNDS} rounds`);
 				}
 				for (const [entry, old_value, new_value] of this.#collect()) {
 					this.#report(entry, old_value, new_value);
@@ -99,7 +103,7 @@ export class Observer {
 	#collect() {
 		const buffer = this.#buffer;
 		const snapshot = this.#snapshot;
-		const tags_at_byte = this.#layout.tags_at_byte;
+		const tags_at_byte = this.#compiled.tags_at_byte;
 		// entries already checked in this collection, by entry index
 		const seen = this.#seen;
 		if (this.#mark === 0xffffffff) {

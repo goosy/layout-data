@@ -6,7 +6,7 @@ import { join } from "node:path";
 import test, { describe } from "node:test";
 import { compile_layout, compile_layout_data } from "../src/layout.js";
 import { TData } from "../src/TData.js";
-import { layout_of } from "../src/registry.js";
+import { compiled_of, layout_of } from "../src/registry.js";
 
 const dir = mkdtempSync(join(tmpdir(), "tlms-layout-"));
 let file_seq = 0;
@@ -96,7 +96,7 @@ describe("YAML layout file", () => {
 
 	test("tags_at_byte lists the tags of each byte, a word before its bits", () => {
 		const { T } = compile(SAMPLE).layouts;
-		const names = (byte) => T.tags_at_byte[byte].map((entry) => entry.name);
+		const names = (byte) => compiled_of(T).tags_at_byte[byte].map((entry) => entry.name);
 		assert.deepEqual(names(0), ["id"]);
 		assert.deepEqual(names(2), ["status", "f8"]);
 		assert.deepEqual(names(3), ["status", "f0"]);

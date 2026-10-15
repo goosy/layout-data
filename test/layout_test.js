@@ -1,6 +1,9 @@
 import { make_struct } from "./share.js";
 import assert from "node:assert/strict";
 import test, { describe } from "node:test";
+import { register_layout } from "../src/layout.js";
+import { compiled_of } from "../src/registry.js";
+import { io_index_table } from "../src/endian.js";
 import { validate_structure } from "../src/structure.js";
 
 const VALID_ITEMS = [
@@ -192,5 +195,62 @@ describe("layout validation", () => {
 			{ name: "a", type: "Int", offset: 32, length: 32, init_value: 0 },
 		]);
 		assert.ok(errors.length >= 3, JSON.stringify(errors));
+	});
+});
+
+describe("the layout object (doc/spec-data-api.md §6.6)", () => {
+	const layout = register_layout(make_struct(VALID_ITEMS, "PUBLIC_SHAPE"));
+
+	test("it exposes only name, length, size and items", () => {
+		assert.deepEqual(Object.keys(layout).sort(), ["items", "length", "name", "size"]);
+		assert.equal(layout.name, "PUBLIC_SHAPE");
+		assert.equal(layout.length, 80);
+		assert.equal(layout.size, 10);
+		assert.equal("entries" in layout, false);
+		assert.equal("tags_at_byte" in layout, false);
+	});
+
+	test("items are the tags in layout order, with the documented fields only", () => {
+		assert.deepEqual(layout.items.map((item) => item.name), ["id", "status", "bit_0", "bit_8", "free_bit", "small", "value"]);
+		const status = layout.items.find((item) => item.name === "status");
+		assert.deepEqual({ ...status }, {
+			name: "status", type: "Word", offset: 16, length: 16, init_value: 0, coupling: ["bit_0", "bit_8"],
+		});
+		const bit = layout.items.find((item) => item.name === "bit_8");
+		assert.deepEqual([...bit.coupling], ["status"]);
+		assert.deepEqual([...layout.items[0].coupling], []);
+		assert.equal(Object.hasOwn(layout.items[0], "comment"), false);
+	});
+
+	test("the length is filled in from the type, and a comment is kept", () => {
+		const made = register_layout({
+			name: "NO_LENGTH", length: 16,
+			items: [{ name: "a", type: "UInt", offset: 0, init_value: 0, comment: "first" }],
+		});
+		assert.equal(made.items[0].length, 16);
+		assert.equal(made.items[0].comment, "first");
+	});
+
+	test("the layout and its items are deeply frozen", () => {
+		assert.ok(Object.isFrozen(layout));
+		assert.ok(Object.isFrozen(layout.items));
+		assert.ok(Object.isFrozen(layout.items[1]));
+		assert.ok(Object.isFrozen(layout.items[1].coupling));
+		assert.throws(() => { layout.name = "x"; }, TypeError);
+		assert.throws(() => { layout.items.push({}); }, TypeError);
+		assert.throws(() => { layout.items[0].offset = 8; }, TypeError);
+		assert.throws(() => { layout.items[1].coupling.push("x"); }, TypeError);
+	});
+
+	test("the compiled data is kept apart; an object that is not a layout of this package has none", () => {
+		assert.ok(compiled_of(layout).entries.has("status"));
+		assert.throws(() => compiled_of({ ...layout }), /PUBLIC_SHAPE is not a registered layout/);
+	});
+
+	test("io_index_table takes only the four byte orders", () => {
+		assert.equal(io_index_table(layout, "LEBS").length, layout.size);
+		for (const endian of ["little", "big", "be", undefined]) {
+			assert.throws(() => io_index_table(layout, endian), RangeError, String(endian));
+		}
 	});
 });

@@ -2,6 +2,7 @@ import { one_tag } from "./share.js";
 import assert from "node:assert/strict";
 import test, { describe } from "node:test";
 import { TTag } from "../src/TTag.js";
+import { compiled_of } from "../src/registry.js";
 
 describe("tag storage", () => {
 	const cases = [
@@ -92,7 +93,8 @@ describe("tag storage", () => {
 
 describe("Bool tag", () => {
 	test("bit offset maps to byte offset >> 3 and bit offset % 8", () => {
-		const { entry } = one_tag("Bool", false, 13, 2).get("tag");
+		const data = one_tag("Bool", false, 13, 2);
+		const entry = compiled_of(data.layout).entries.get("tag");
 		assert.equal(entry.byte, 1);
 		assert.equal(entry.mask, 0x20);
 	});

@@ -1,10 +1,12 @@
 import { Buffer } from "node:buffer";
 import { EventEmitter } from "node:events";
 import { TTag } from "./TTag.js";
+import { check_endian, io_range, load_entry, store_entry } from "./endian.js";
 import { Observer } from "./observer.js";
-import { find_layout, layout_of } from "./registry.js";
+import { compiled_of, find_layout, layout_of } from "./registry.js";
 
-/** @import { Access_Tracer, Layout, Layout_Entry } from "./typedefs.js" */
+/** @import { Access_Tracer, Endian, Layout } from "./typedefs.js" */
+/** @import { Compiled_Layout } from "./internal_types.js" */
 
 /**
  * Called on every tag access while set (doc/design.md §4).
@@ -30,8 +32,9 @@ const classes = new Map();
 /** The layout of the probe: a data block with no tag. */
 const EMPTY_LAYOUT = Object.freeze({
 	name: "EMPTY", length: 0, size: 0, items: Object.freeze([]),
-	entries: new Map(), tags_at_byte: [],
 });
+/** @type {Compiled_Layout} */
+const EMPTY_COMPILED = { entries: new Map(), tags_at_byte: [] };
 let probe = null;
 
 /**
@@ -67,6 +70,8 @@ export class TData extends EventEmitter {
 
 	/** @type {Layout} */
 	#layout;
+	/** @type {Compiled_Layout} */
+	#compiled;
 	/**
 	 * The compiled layout of this data block (doc/design.md §3), read-only.
 	 * The tag accessors are defined once on the prototype of the class built for the layout.
@@ -96,7 +101,7 @@ export class TData extends EventEmitter {
 	get(tagname) {
 		let tag = this.#handles.get(tagname);
 		if (tag) return tag;
-		const entry = this.layout.entries.get(tagname);
+		const entry = this.#compiled.entries.get(tagname);
 		if (!entry) return undefined;
 		tag = new TTag(this, entry);
 		this.#handles.set(tagname, tag);
@@ -185,6 +190,61 @@ export class TData extends EventEmitter {
 	}
 
 	/**
+	 * Converts the bytes of a tag from a device-ordered IO buffer and writes
+	 * them into the data block; a write like any other
+	 * (doc/spec-data-api.md §2.9).
+	 *
+	 * @param {string} name - The tag name.
+	 * @param {Uint8Array} io_buffer - Indexed like the byte offsets of the data block.
+	 * @param {Endian} endian - Device byte order.
+	 * @throws {Error} For an unknown tag name.
+	 * @throws {RangeError} For another byte order, or a tag out of the IO buffer.
+	 * @throws {TypeError} When io_buffer is not a Uint8Array.
+	 */
+	load_tag(name, io_buffer, endian) {
+		const entry = this.#entry_for_io(name, io_buffer, endian);
+		load_entry(entry, io_buffer, this.#buffer, endian);
+		this.#written(entry.byte, entry.byte + entry.size);
+	}
+
+	/**
+	 * Converts the bytes of a tag and writes them into a device-ordered IO
+	 * buffer; the data block is unchanged and no event is emitted
+	 * (doc/spec-data-api.md §2.9).
+	 *
+	 * @param {string} name - The tag name.
+	 * @param {Uint8Array} io_buffer - Indexed like the byte offsets of the data block.
+	 * @param {Endian} endian - Device byte order.
+	 * @throws {Error} For an unknown tag name.
+	 * @throws {RangeError} For another byte order, or a tag out of the IO buffer.
+	 * @throws {TypeError} When io_buffer is not a Uint8Array.
+	 */
+	store_tag(name, io_buffer, endian) {
+		const entry = this.#entry_for_io(name, io_buffer, endian);
+		store_entry(entry, this.#buffer, io_buffer, endian);
+	}
+
+	/**
+	 * The compiled entry of a tag, after checking the arguments of load_tag
+	 * and store_tag before anything is changed.
+	 *
+	 * @param {string} name
+	 * @param {Uint8Array} io_buffer
+	 * @param {Endian} endian
+	 * @returns {import("./internal_types.js").Layout_Entry}
+	 */
+	#entry_for_io(name, io_buffer, endian) {
+		if (!(io_buffer instanceof Uint8Array)) throw new TypeError(`${this.name}: io_buffer must be a Uint8Array`);
+		check_endian(endian);
+		const entry = this.#compiled.entries.get(name);
+		if (!entry) throw new Error(`${this.name}: unknown tag ${name}`);
+		if (io_range(entry, endian).end > io_buffer.length) {
+			throw new RangeError(`${this.name}.${name}: out of the io_buffer of ${io_buffer.length} bytes`);
+		}
+		return entry;
+	}
+
+	/**
 	 * Checks a byte range before anything is read or written.
 	 *
 	 * @param {number} offset
@@ -245,7 +305,8 @@ export class TData extends EventEmitter {
 	static #build_class(layout) {
 		const Layout_Data = class extends TData { };
 		Object.defineProperty(Layout_Data, "name", { value: `TData_${layout.name}` });
-		for (const entry of layout.entries.values()) {
+		const compiled = compiled_of(layout);
+		for (const entry of compiled.entries.values()) {
 			const { name, codec, byte, mask, size } = entry;
 			if (TData.is_reserved_name(name)) {
 				throw new Error(`${layout.name}.${name}: tag name collides with a TData member`);
@@ -265,6 +326,7 @@ export class TData extends EventEmitter {
 			});
 		}
 		Layout_Data.layout = layout;
+		Layout_Data.compiled = compiled;
 		return Layout_Data;
 	}
 
@@ -276,7 +338,10 @@ export class TData extends EventEmitter {
 	 * @returns {boolean}
 	 */
 	static is_reserved_name(name) {
-		probe ??= new (class extends TData { static layout = EMPTY_LAYOUT; })(EMPTY_LAYOUT, "probe");
+		probe ??= new (class extends TData {
+			static layout = EMPTY_LAYOUT;
+			static compiled = EMPTY_COMPILED;
+		})(EMPTY_LAYOUT, "probe");
 		return name in probe;
 	}
 
@@ -299,14 +364,14 @@ export class TData extends EventEmitter {
 		}
 		this.name = name;
 		this.#layout = new.target.layout;
+		this.#compiled = new.target.compiled;
 		this.setMaxListeners(100);
-		const size = this.layout.size;
-		this.#buffer = Buffer.alloc(size, 0);
+		this.#buffer = Buffer.alloc(this.#layout.size, 0);
 		// init values in layout order: the bits of a combined word after the word
-		for (const { codec, byte, mask, init_value } of this.layout.entries.values()) {
+		for (const { codec, byte, mask, init_value } of this.#compiled.entries.values()) {
 			codec.set(this.#buffer, byte, mask, init_value);
 		}
-		this.#observer = new Observer(this.#buffer, this.layout, (entry, old_value, new_value) => {
+		this.#observer = new Observer(this.#buffer, this.#layout.name, this.#compiled, (entry, old_value, new_value) => {
 			// the data block event first, as when it relayed the tag events
 			this.emit("change", entry.name, old_value, new_value);
 			this.#handles.get(entry.name)?.emit("change", old_value, new_value);

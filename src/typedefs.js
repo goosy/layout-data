@@ -1,5 +1,6 @@
 // Type definitions of the public interface. This file has no run-time content:
 // the JSDoc here is the source of the generated declaration file (dist/types).
+// The types of the internals are in internal_types.js and are not exported.
 
 /**
  * One item of a layout description, as written by the user and as expanded by
@@ -27,39 +28,40 @@
  */
 
 /**
- * Codec of one tag type on a big-endian buffer (doc/design.md §4).
+ * One tag of a compiled layout (doc/spec-data-api.md §6.6), read-only:
+ * `name`; `type`, as written in the description; `offset`, the absolute bit
+ * offset; `length` in bits; `init_value`; `comment`, if given; `coupling`,
+ * the tag names of the bits of a combined word, or of the combined words a
+ * bit belongs to.
  *
- * @typedef {object} Codec
- * @property {number} size - Size in bytes.
- * @property {(buffer: Buffer, byte: number, mask: number) => number | boolean} get
- * @property {(buffer: Buffer, byte: number, mask: number, value: number | boolean) => void} set
+ * @typedef {Readonly<{
+ *   name: string,
+ *   type: string,
+ *   offset: number,
+ *   length: number,
+ *   init_value: number | boolean,
+ *   comment?: string,
+ *   coupling: readonly string[],
+ * }>} Layout_Tag
  */
 
 /**
- * One tag of a compiled layout.
+ * A compiled layout (doc/spec-data-api.md §6.6), read-only and deeply frozen:
+ * `name`; `length` in bits; `size` in bytes; `items`, the tags in layout
+ * order (a combined word before its bits).
  *
- * @typedef {object} Layout_Entry
- * @property {string} name
- * @property {string} type - Lower case type name.
- * @property {number | boolean} init_value
- * @property {number} byte - Byte offset.
- * @property {number} index - Position among the entries of the layout.
- * @property {number} size - Size in bytes.
- * @property {number} mask - Bit mask of a Bool, 0xff otherwise.
- * @property {Codec} codec
- * @property {Layout_Item} item - The item the entry was compiled from.
+ * @typedef {Readonly<{
+ *   name: string,
+ *   length: number,
+ *   size: number,
+ *   items: readonly Layout_Tag[],
+ * }>} Layout
  */
 
 /**
- * A compiled layout (doc/design.md §3), immutable.
+ * Device byte order of an IO buffer (doc/spec-data-api.md §2.9).
  *
- * @typedef {object} Layout
- * @property {string} name
- * @property {number} length - Total length in bits.
- * @property {number} size - Total size in bytes.
- * @property {Layout_Item[]} items
- * @property {Map<string, Layout_Entry>} entries
- * @property {Layout_Entry[][]} tags_at_byte - The entries covering each byte.
+ * @typedef {"BE" | "LE" | "BEBS" | "LEBS"} Endian
  */
 
 /**

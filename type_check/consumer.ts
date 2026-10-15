@@ -6,9 +6,9 @@ import {
 	TData, TTag,
 	compile_layout, compile_layout_data, layout_of, register_layout, set_access_tracer,
 	build_structure, validate_structure,
-	io_index_table, load_entry, store_entry, render_types,
-	type Layout, type Layout_Entry, type Layout_Item, type Data_Struct,
-	type Compiled_Layouts, type Access_Tracer,
+	io_index_table, render_types,
+	type Layout, type Layout_Tag, type Layout_Item, type Data_Struct,
+	type Compiled_Layouts, type Access_Tracer, type Endian,
 } from "tagged-data";
 
 type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends (<T>() => T extends B ? 1 : 2) ? true : false;
@@ -19,8 +19,18 @@ const compiled: Compiled_Layouts = compile_layout_data({ layouts: {} });
 const from_file: Compiled_Layouts = compile_layout("layout.yaml");
 const layout: Layout = compiled.layouts.any;
 const fragment: Layout_Item[] = from_file.fragments.any;
-assert_type<Equal<typeof layout.entries, Map<string, Layout_Entry>>>();
 assert_type<Equal<typeof layout.size, number>>();
+assert_type<Equal<typeof layout.name, string>>();
+assert_type<Equal<typeof layout.items, readonly Layout_Tag[]>>();
+assert_type<Equal<Layout_Tag["coupling"], readonly string[]>>();
+// @ts-expect-error the compiled entries are not part of a layout
+void layout.entries;
+// @ts-expect-error the lookup table is not part of a layout
+void layout.tags_at_byte;
+// @ts-expect-error a layout is read-only
+layout.name = "x";
+// @ts-expect-error the items are read-only
+layout.items.push({ name: "a", type: "Int", offset: 0, length: 16, init_value: 0, coupling: [] });
 assert_type<Equal<typeof fragment, Layout_Item[]>>();
 compile_layout_data({ layouts: {} }, "origin");
 // @ts-expect-error the path must be a string
@@ -80,7 +90,8 @@ if (tag) {
 	assert_type<Equal<typeof tag.name, string>>();
 	assert_type<Equal<typeof tag.type, string>>();
 	assert_type<Equal<typeof tag.length, number>>();
-	assert_type<Equal<typeof tag.entry, Layout_Entry>>();
+	// @ts-expect-error the compiled entry is not public
+	void tag.entry;
 	assert_type<Equal<typeof tag.value, number | boolean>>();
 	tag.value = 1;
 	tag.value = true;
@@ -97,13 +108,26 @@ set_access_tracer(null);
 // @ts-expect-error the kind is "read" or "write"
 set_access_tracer((_tdata: TData, _name: string, kind: "erase") => void kind);
 
-// endian conversion
-const entry: Layout_Entry = layout.entries.get("a")!;
-const table: Int32Array = io_index_table(layout, "BEBS");
-load_entry(entry, Buffer.alloc(2), bytes, "LE");
-store_entry(entry, bytes, Buffer.alloc(2), "LE");
-// @ts-expect-error the endian is a string
-io_index_table(layout, 1);
+// device byte order
+const endian: Endian = "LEBS";
+const table: Int32Array = io_index_table(layout, endian);
+tdata.load_tag("a", Buffer.alloc(2), "LE");
+tdata.load_tag("a", new Uint8Array(2), "BEBS");
+tdata.store_tag("a", new Uint8Array(2), endian);
+tag?.load(new Uint8Array(2), "BE");
+tag?.store(new Uint8Array(2), "BE");
+// @ts-expect-error the byte order is one of the four
+io_index_table(layout, "little");
+// @ts-expect-error the byte order is one of the four
+tdata.load_tag("a", bytes, "big");
+// @ts-expect-error the tag is given by name
+tdata.load_tag(tag, bytes, "BE");
+// @ts-expect-error the IO buffer is a Uint8Array
+tdata.store_tag("a", [1, 2], "BE");
+// @ts-expect-error the byte order is required
+tag?.load(bytes);
+// @ts-expect-error the entry functions are not exported
+void (await import("tagged-data")).load_entry;
 
 // type rendering
 const text: string = render_types(compiled.layouts, { source: "layout.yaml", tdata_module: "tagged-data" });

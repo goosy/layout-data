@@ -14,7 +14,7 @@
 | `src/structure.js` | Structure expansion (`build_structure`) and layout validation (`validate_structure`) |
 | `src/codecs.js` | Encoding and decoding of each type on a big-endian buffer |
 | `src/observer.js` | Snapshot comparison, change events |
-| `src/endian.js` | Per-entry device byte order conversion |
+| `src/endian.js` | Device byte order conversion of one entry and of a whole block (only `io_index_table` is exported) |
 | `src/types.js` | TypeScript declaration generation from layouts (`render_types`) |
 | `src/typedefs.js` | JSDoc definitions of the public types (the only source of the types, no run-time content) |
 | `dist/types/` | Declaration files generated from the JSDoc by `tsc`, called from a plugin in `rolldown.config.js` during the build (`tsconfig.json`); not committed |
@@ -46,7 +46,7 @@ Dependency direction: Observer depends on TData and Layout, TData depends only o
 - `{ includes: <fragment name or inline list>, offset }` splices in a group of common entries shifted as a whole; `name_prefix` may be added.
 - `compile_layout(yaml_path)` reads the file synchronously, resolves fragment references (an unknown or circular reference is an error), fills in omitted `length`s, then calls `build_structure` for every layout to expand it into flat `items` (computing the total `length` of the structure and normalizing `coupling` to an array of names), validates it, and returns `{ layouts, fragments }`.
 - `compile_layout_data(root, origin)` compiles an already parsed description (same structure as the file), for users who carry layouts in their own files; `compile_layout` calls it after reading the file.
-- Every layout is compiled to a Layout (`register_layout`). Besides the expanded `name`, `length` and `items`, it has the table `entries` indexed by name (byte offset, bit mask, codec), and the byte-to-tag lookup table `tags_at_byte`. A layout is plain, immutable data: it holds no class and `layout.js` does not depend on `TData`. Within one layout description the layout names are distinct (they are the keys of `layouts`).
+- Every layout is compiled to a Layout (`register_layout`). The public Layout is the deeply frozen `{ name, length, size, items }` (spec-data-api.md §6.6), where `items` are frozen copies of the expanded items with only the documented fields. The compiled data, the table `entries` indexed by name (byte offset, bit mask, codec) and the byte-to-tag lookup table `tags_at_byte`, is kept in a module-private `WeakMap` of `registry.js` and read with `compiled_of(layout)` by `TData`, the Observer and `endian.js`; it is never attached to the Layout, so no entry appears in the public interface. A layout is plain, immutable data: it holds no class and `layout.js` does not depend on `TData`. Within one layout description the layout names are distinct (they are the keys of `layouts`).
 - The compiled layouts are kept in a registry by layout name (`registry.js`, which imports nothing, so `layout.js` writes to it and `TData` reads it without a cycle). `register_layout(struct)` computes the canonical text of the expanded structure (`name`, `length`, `items`; object keys sorted, `comment` left out, type names in lower case). If the name is registered with the same text it returns the registered Layout, so a layout described twice, even in two different descriptions, is compiled once; with another text it throws `another layout is already named X`. `compile_layout_data` checks every layout of the description for such a conflict before registering any, so a description is registered all or none. `layout_of(name)` returns the registered layout and throws `unknown layout X` otherwise. The registry is never cleared: a layout name is used for the life of the process.
 - Bool placement: `byte = offset >> 3`, `bit = offset % 8`. The internal buffer is big-endian and the first byte of a word is the high byte of the register, so offsets 8-15 in `coupling` are register bit 0-7 and offsets 0-7 are register bit 8-15. Listing the bits in the order 8-15, 0-7 in the layout file therefore lists them from register bit 0 to bit 15.
 
@@ -92,9 +92,10 @@ The layout rules are validated centrally at the layout stage, not spread over th
 
 - `read_bytes(offset = 0, length = size - offset)` returns a copy of a byte range (`Buffer.from(buffer.subarray(...))`), so the buffer cannot be changed through it.
 - The raw methods check their arguments before touching the buffer, so that on error the data is unchanged and `#written()` is not reached: `offset` and `length` must be integers with `0 <= offset` and `offset + length <= size`, `mask` an integer from 1 to 0xff (`RangeError`), `source` a `Uint8Array` (`TypeError`). `write_bytes` copies with `buffer.set(source, offset)`. A raw write records the byte range it touched for the Observer (§5.1).
+- `load_tag(name, io_buffer, endian)` and `store_tag(name, io_buffer, endian)` (spec-data-api.md §2.9) resolve `name` to the compiled entry of the layout (an unknown name throws `Error`), check `endian`, `io_buffer` and the range of the entry in it (`io_range`), and then call `load_entry` / `store_entry` of `endian.js` with the private buffer. `load_tag` registers the byte range of the entry and ends in `#written()` like any write; `store_tag` only reads the buffer. `TTag.load(io_buffer, endian)` and `TTag.store(io_buffer, endian)` call them with the name of the tag, so a TTag needs no check of which tdata it belongs to.
 
 - TData throws exceptions on errors (layout conflicts, out-of-range values); it neither logs nor exits.
-- `data.get(name)` returns the `TTag` of the tag, created and cached on first access; for an unknown name it returns `undefined`. A TTag holds no value: reading `value` decodes from the buffer of the TData, writing `value` is exactly equivalent to `data[name] = v`; `name`, `type` and `length` come from the Layout entry; the `change` event is emitted by the Observer.
+- `data.get(name)` returns the `TTag` of the tag, created and cached on first access; for an unknown name it returns `undefined`. A TTag holds no value: reading `value` decodes from the buffer of the TData, writing `value` is exactly equivalent to `data[name] = v`; `name`, `type` and `length` come from the compiled entry of the layout, which a TTag holds privately and does not expose; the `change` event is emitted by the Observer.
 
 ### 5.1 Detection, transactions and the Observer
 
@@ -128,14 +129,14 @@ Every write path ends in the same private method of TData:
 
 ## 6. Byte order conversion
 
-`endian.js` converts between device byte order and the internal big-endian order per layout entry (`load_entry` / `store_entry` / `io_index` / `io_range`), and builds the byte index table of a whole data block (`io_index_table`), with which a user that exchanges groups of entries with a device copies the bytes of the group directly. The table agrees with `load_entry` / `store_entry` for every entry (covered by a test). They operate on buffers given by the caller, never on the buffer of a TData: the IO layer stages a copy from `read_bytes`, converts into it and writes it back with `write_bytes` (spec-data-api.md §7). They do not detect changes:
+`endian.js` converts between device byte order and the internal big-endian order per compiled entry (`load_entry` / `store_entry` / `io_index` / `io_range`), and builds the byte index table of a whole data block (`io_index_table`), with which a user that exchanges a whole block with a device copies the bytes directly. Only `io_index_table` is exported by the package; the others are internal and used by `load_tag` / `store_tag` of TData (§5), which pass them the private buffer. The table agrees with `load_entry` / `store_entry` for every entry (covered by a test). The functions accept only the byte orders `BE`, `LE`, `BEBS` and `LEBS` (anything else is a `RangeError`, there are no aliases) and do not detect changes:
 
-- 2 bytes: `BE` copies as is; `LE` / `little` / `BEBS` swap the two bytes;
-- 4 bytes: the four orders `BE`, `LE` / `little`, `BEBS` and `LEBS` are supported;
-- Bool and single-byte types (Byte, SInt, USInt) read and write one byte without any conversion inside the byte. Their index in the IO buffer is computed per 16-bit register: `byte ^ 1` for `LE` / `little` / `BEBS`, `byte` for `BE` / `LEBS`. A Bool changes only its own bit, by bit mask.
+- 2 bytes: `BE` copies as is; `LE` / `BEBS` swap the two bytes;
+- 4 bytes: the four orders `BE`, `LE`, `BEBS` and `LEBS` are supported;
+- Bool and single-byte types (Byte, SInt, USInt) read and write one byte without any conversion inside the byte. Their index in the IO buffer is computed per 16-bit register: `byte ^ 1` for `LE` / `BEBS`, `byte` for `BE` / `LEBS`. A Bool changes only its own bit, by bit mask.
 
 ## 7. Build and test
 
 - `pnpm build`: rolldown bundles `src/index.js` into `dist/tagged-data.js` (`yaml` is bundled into the library);
-- `pnpm bench`: `bench/change_detection_bench.js` measures reading a block of 86 tags and 146 bytes (loading every tag from a device-ordered buffer through `read_bytes` and one `write_bytes`, which detects and reports the changes). On a development machine, converting entry by entry takes one cycle about 2.5 µs with no change, 2.6–3.6 µs with a few changes, and 7.5 µs with every tag changed; copying the bytes with `io_index_table` takes about 0.4 µs, 0.5–1.4 µs and 5.2 µs;
+- `pnpm bench`: `bench/change_detection_bench.js` measures reading a block of 86 tags and 146 bytes (loading every tag from a device-ordered buffer, which detects and reports the changes). On a development machine, `load_tag` of every tag in one transaction takes one cycle about 2.5 µs with no change, 2.5–3.7 µs with a few changes, and 7.5–8 µs with every tag changed; copying the bytes with `io_index_table` and one `write_bytes` takes about 0.4–0.5 µs, 0.6–1.6 µs and 5.3–5.7 µs;
 - `pnpm test`: builds first, then runs the type tests and `node --test`; `pnpm lint`: ESLint.

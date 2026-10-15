@@ -3,25 +3,23 @@ import assert from "node:assert/strict";
 import { Buffer } from "node:buffer";
 import test, { describe } from "node:test";
 import { io_index, io_index_table, io_range, load_entry, store_entry } from "../src/endian.js";
+import { compiled_of } from "../src/registry.js";
 import { register_layout } from "../src/layout.js";
 import { make_struct } from "./share.js";
 
-/** Loads a tag of a data block from an IO buffer: stages a copy, converts into it, writes it back. */
+/** Loads the tag of a data block from an IO buffer. */
 function load(data, io_buffer, endian) {
-	const staged = data.read_bytes();
-	load_entry(data.get("tag").entry, io_buffer, staged, endian);
-	data.write_bytes(0, staged);
+	data.load_tag("tag", io_buffer, endian);
 }
 
 function store(data, io_buffer, endian) {
-	store_entry(data.get("tag").entry, data.read_bytes(), io_buffer, endian);
+	data.store_tag("tag", io_buffer, endian);
 }
 
 describe("multi-byte conversion", () => {
 	const cases_2 = [
 		["BE", [0x12, 0x34]],
 		["LE", [0x34, 0x12]],
-		["little", [0x34, 0x12]],
 		["BEBS", [0x34, 0x12]],
 		["LEBS", [0x12, 0x34]],
 	];
@@ -43,7 +41,6 @@ describe("multi-byte conversion", () => {
 	const cases_4 = [
 		["BE", [0x01, 0x02, 0x03, 0x04]],
 		["LE", [0x04, 0x03, 0x02, 0x01]],
-		["little", [0x04, 0x03, 0x02, 0x01]],
 		["BEBS", [0x02, 0x01, 0x04, 0x03]],
 		["LEBS", [0x03, 0x04, 0x01, 0x02]],
 	];
@@ -94,10 +91,8 @@ describe("single-byte device byte order", () => {
 	// [endian, IO index of byte 2, IO index of byte 3]
 	const cases = [
 		["BE", 2, 3],
-		["big", 2, 3],
 		["LEBS", 2, 3],
 		["LE", 3, 2],
-		["little", 3, 2],
 		["BEBS", 3, 2],
 	];
 	for (const [endian, index_2, index_3] of cases) {
@@ -137,7 +132,10 @@ describe("single-byte device byte order", () => {
 	}
 
 	test("io_range maps single-byte tags and keeps multi-byte tags in place", () => {
-		const entry = (type, offset) => one_tag(type, type === "Bool" ? false : 0, offset, 8).get("tag").entry;
+		const entry = (type, offset) => {
+			const data = one_tag(type, type === "Bool" ? false : 0, offset, 8);
+			return compiled_of(data.layout).entries.get("tag");
+		};
 		assert.deepEqual(io_range(entry("Bool", 24), "LE"), { start: 2, end: 3 });
 		assert.deepEqual(io_range(entry("Bool", 24), "BE"), { start: 3, end: 4 });
 		assert.deepEqual(io_range(entry("Word", 16), "LE"), { start: 2, end: 4 });
@@ -173,14 +171,14 @@ describe("io_index_table", () => {
 	];
 	const LAYOUT = register_layout(make_struct(ITEMS, "IO_TABLE"));
 
-	for (const endian of ["BE", "LE", "little", "BEBS", "LEBS"]) {
+	for (const endian of ["BE", "LE", "BEBS", "LEBS"]) {
 		test(`${endian}: the table moves every byte as load_entry and store_entry do`, () => {
 			const layout = LAYOUT;
 			const table = io_index_table(layout, endian);
 			const io = Buffer.from(Array.from({ length: layout.size }, (_, i) => 0x10 + i));
 			const by_entry = Buffer.alloc(layout.size);
 			const by_table = Buffer.alloc(layout.size);
-			for (const entry of layout.entries.values()) {
+			for (const entry of compiled_of(layout).entries.values()) {
 				if (entry.type !== "bool") load_entry(entry, io, by_entry, endian);
 			}
 			for (let i = 0; i < layout.size; i++) by_table[i] = io[table[i]];
@@ -189,7 +187,7 @@ describe("io_index_table", () => {
 
 			const back_entry = Buffer.alloc(layout.size);
 			const back_table = Buffer.alloc(layout.size);
-			for (const entry of layout.entries.values()) {
+			for (const entry of compiled_of(layout).entries.values()) {
 				if (entry.type !== "bool") store_entry(entry, by_entry, back_entry, endian);
 			}
 			for (let i = 0; i < layout.size; i++) back_table[table[i]] = by_entry[i];

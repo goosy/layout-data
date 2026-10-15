@@ -335,6 +335,110 @@ describe("2.5 raw reads and writes", () => {
 	});
 });
 
+describe("2.9 device byte order", () => {
+	// io image of SAMPLE in LEBS: id (2 bytes) as is, status, pressure 1.5 = 3f c0 00 00 as CDAB
+	const io_image = () => Uint8Array.of(0x00, 0x09, 0x00, 0x03, 0x00, 0x00, 0x3f, 0xc0);
+
+	test("load_tag converts a tag from the IO buffer, as a write: change, then write", () => {
+		const data = new TData(LAYOUT, "d");
+		const events = record(data);
+		const order = [];
+		data.on("write", () => order.push("write"));
+		data.on("change", () => order.push("change"));
+		data.load_tag("pressure", io_image(), "LEBS");
+		assert.equal(data.pressure, 1.5);
+		data.load_tag("id", io_image(), "LEBS");
+		assert.equal(data.id, 9);
+		assert.deepEqual(events, [["id", 7, 9]]);
+		assert.deepEqual(order, ["write", "change", "write"]);
+	});
+
+	test("load_tag works on a plain Uint8Array, with every byte order", () => {
+		for (const [endian, bytes] of [["BE", [0x12, 0x34]], ["LE", [0x34, 0x12]], ["BEBS", [0x34, 0x12]], ["LEBS", [0x12, 0x34]]]) {
+			const data = new TData(LAYOUT, "d");
+			const io = new Uint8Array(8);
+			io.set(bytes, 2);
+			data.load_tag("status", io, endian);
+			assert.equal(data.status, 0x1234, endian);
+		}
+	});
+
+	test("load_tag of a Bool changes only its own bit", () => {
+		const data = new TData(LAYOUT, "d");
+		const events = record(data);
+		const io = new Uint8Array(8);
+		io[2] = 0x01; // alarm, in place for BE; every other bit is 0
+		data.load_tag("alarm", io, "BE");
+		assert.equal(data.alarm, true);
+		assert.equal(data.run, true); // not loaded: unchanged
+		assert.deepEqual(events.map(([name]) => name), ["status", "alarm"]);
+	});
+
+	test("a batch of loads in a transaction is one detection and one write", () => {
+		const data = new TData(LAYOUT, "d");
+		const events = record(data);
+		let writes = 0;
+		data.on("write", () => writes++);
+		data.transaction(() => {
+			for (const { name } of data.layout.items) data.load_tag(name, io_image(), "LEBS");
+		});
+		assert.equal(writes, 1);
+		assert.deepEqual(events.map(([name]) => name), ["id", "status"]);
+		assert.equal(data.status, 3);
+		assert.equal(data.pressure, 1.5);
+	});
+
+	test("store_tag converts a tag into the IO buffer; the data block is unchanged and no event is emitted", () => {
+		const data = new TData(LAYOUT, "d");
+		const events = record(data);
+		let writes = 0;
+		data.on("write", () => writes++);
+		const before = data.read_bytes();
+		const io = new Uint8Array(8);
+		data.store_tag("pressure", io, "LEBS");
+		data.store_tag("id", io, "LEBS");
+		assert.deepEqual([...io], [0x00, 0x07, 0, 0, 0x00, 0x00, 0x3f, 0xc0]);
+		assert.deepEqual(data.read_bytes(), before);
+		assert.deepEqual(events, []);
+		assert.equal(writes, 0);
+	});
+
+	test("TTag load and store are load_tag and store_tag for the name of the tag", () => {
+		const data = new TData(LAYOUT, "d");
+		const events = record(data);
+		data.get("id").load(io_image(), "LEBS");
+		assert.deepEqual(events, [["id", 7, 9]]);
+		const io = new Uint8Array(8);
+		data.get("pressure").store(io, "LEBS");
+		assert.deepEqual([...io.subarray(4)], [0x00, 0x00, 0x3f, 0xc0]);
+	});
+
+	test("an unknown tag, a wrong argument or a tag out of the IO buffer throws and changes nothing", () => {
+		const data = new TData(LAYOUT, "d");
+		const before = data.read_bytes();
+		let writes = 0;
+		data.on("write", () => writes++);
+		assert.throws(() => data.load_tag("nope", io_image(), "BE"), /unknown tag nope/);
+		assert.throws(() => data.store_tag("nope", io_image(), "BE"), /unknown tag nope/);
+		assert.throws(() => data.load_tag("pressure", new Uint8Array(7), "BE"), RangeError);
+		assert.throws(() => data.store_tag("pressure", new Uint8Array(7), "BE"), RangeError);
+		assert.throws(() => data.load_tag("id", [0, 9], "BE"), TypeError);
+		assert.throws(() => data.store_tag("id", [0, 9], "BE"), TypeError);
+		assert.deepEqual(data.read_bytes(), before);
+		assert.equal(writes, 0);
+	});
+
+	test("only BE, LE, BEBS and LEBS are byte orders: aliases and other values throw", () => {
+		const data = new TData(LAYOUT, "d");
+		for (const endian of ["little", "big", "le", "lebs", "", undefined, 1]) {
+			assert.throws(() => data.load_tag("id", io_image(), endian), RangeError, String(endian));
+			assert.throws(() => data.store_tag("id", io_image(), endian), RangeError, String(endian));
+			assert.throws(() => data.get("id").load(io_image(), endian), RangeError, String(endian));
+		}
+		assert.equal(data.id, 7);
+	});
+});
+
 describe("4.2 transactions", () => {
 	const create = () => {
 		const writes = [];

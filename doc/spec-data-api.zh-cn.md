@@ -9,7 +9,7 @@
 | --- | --- |
 | 布局 | 一块数据的固定格式：每个 tag 的名称、类型、位偏移、初值，由布局描述（§6）给出，编译后不可变 |
 | TData / tdata | TData 是数据对象的类，tdata 是它的实例：按某个布局分配的一块数据，内部按大端存放，提供按名读写和变化事件 |
-| TTag | tdata 中一个具名条目的操作接口，可读写其值、订阅其变化 |
+| TTag | tdata 中一个具名 tag 的操作接口，可读写其值、订阅其变化 |
 
 TData、TTag 中的 T 指 Typed（有类型的）：tdata 按固定布局存放，每个 tag 有确定的类型和位置。
 
@@ -111,6 +111,31 @@ data.on("write", (data) => { /* ... */ });
 
 `set_access_tracer(tracer)` 设置一个函数，每次通过属性访问器读写 tag 时按 `tracer(tdata, name, "read" | "write")` 调用；`set_access_tracer(null)` 取消。供检查一段代码碰了哪些 tag 的工具使用。追踪器对整个进程全局有效，未设置时每次访问只多一次判断。
 
+### 2.9 设备字节序
+
+tdata 内部按大端存放。与设备交换数据时，按 tag 在 tdata 与设备字节序的 IO 缓冲区之间转换：
+
+| 方法 | 说明 |
+| --- | --- |
+| `load_tag(name, io_buffer, endian)` | 把名为 `name` 的 tag 的字节从 `io_buffer` 转换后写入 tdata，这是一次写入 |
+| `store_tag(name, io_buffer, endian)` | 把 tdata 中名为 `name` 的 tag 的字节转换后写入 `io_buffer`；不改变 tdata，不发出任何事件 |
+
+- `name`：tag 名。已经持有 TTag 时用它的 `load` / `store`（§3），效果相同；批量处理时直接用名字，不必为每个 tag 创建 TTag；
+- `io_buffer`：`Uint8Array`，下标与 tdata 的字节偏移一一对应（与数据块等长的镜像），tag 在其中占的范围必须在其内；
+- `endian`：设备字节序，只接受 `"BE"`、`"LE"`、`"BEBS"`、`"LEBS"` 四个值（以 ABCD 表示大端的四个字节）：
+
+  | 字节序 | 2 字节 | 4 字节 |
+  | --- | --- | --- |
+  | `BE` | 不变 | ABCD |
+  | `LE` | 交换两个字节 | DCBA |
+  | `BEBS` | 交换两个字节 | BADC |
+  | `LEBS` | 不变 | CDAB |
+
+  Bool 和单字节 tag（Byte、SInt、USInt）以其所在的 16 位寄存器为单位：`LE` 和 `BEBS` 时位于寄存器内的另一个字节，`BE` 和 `LEBS` 时原位；Bool 只改自己的位；
+- `load_tag` 与按名写入相同：立即生效，检测并发出 `change`，再发出 `write`；事务中则在提交时一并处理。成批装载放进事务（§2.6），提交时只检测一次、只发出一次 `write`；
+- 整块一次交换：`io_index_table(layout, endian)` 返回字节下标表，数据块的第 `i` 个字节在 IO 缓冲区中的下标是 `table[i]`，使用方据此按字节复制，再用 `write_bytes` 一次写入（§2.5）；
+- 出错时先于任何改动检查：tdata 不变，`load_tag` 不发出 `write`（错误见 §5）。
+
 ## 3. TTag
 
 | 成员 | 说明 |
@@ -120,6 +145,8 @@ data.on("write", (data) => { /* ... */ });
 | `length` | 占用的字节数 |
 | `value` | 当前值，可读可写；写入与 `data[name] = v` 完全等价 |
 | `on("change", (old_value, new_value) => ...)` | 订阅该 tag 的变化 |
+| `load(io_buffer, endian)` | 等价于 `data.load_tag(name, io_buffer, endian)`（§2.9） |
+| `store(io_buffer, endian)` | 等价于 `data.store_tag(name, io_buffer, endian)`（§2.9） |
 
 TTag 不保存值，读写都直接作用于所属 tdata。
 
@@ -171,7 +198,9 @@ TTag 不保存值，读写都直接作用于所属 tdata。
 | 处理器互相触发的写入不能平息 | 检测时抛出 `Error` |
 | 事务中开始另一个事务 | `Error` |
 | 原始读写的偏移、长度、掩码越界，或写入越过数据块末尾 | `RangeError`，数据不变，不发出 `write` |
-| 原始写入的 `source` 不是 `Uint8Array` | `TypeError` |
+| 原始写入的 `source`、`load_tag` / `store_tag` 的 `io_buffer` 不是 `Uint8Array` | `TypeError` |
+| `load_tag` / `store_tag` 的 tag 名不存在 | `Error`，tdata 不变，不发出 `write` |
+| 字节序不是 `BE`、`LE`、`BEBS`、`LEBS`，或 tag 在 `io_buffer` 中的范围越界 | `RangeError`，tdata 不变，不发出 `write` |
 
 ## 6. 布局描述
 
@@ -233,7 +262,7 @@ const node = new TData(layouts.NODE, "node_1");
 - `layouts`：按布局名索引的已编译布局，用于创建 TData；
 - `fragments`：按片段名索引的条目列表（展开引用后，偏移相对于片段起点），供使用方查询，例如取得参数块的全部 tag 名；
 - 文件中有任何违规时抛出 `Error`，其 `errors` 属性列出全部违规项；
-- 每个布局都按其名字登记（§6.4）；与某名字下已登记的布局相同的布局（文件，不论路径；或交给 `compile_layout_data` 的对象）就是同一个 `Layout` 对象，所以共用一份描述的多个使用方拿到同一批对象。不要修改布局；
+- 每个布局都按其名字登记（§6.4）；与某名字下已登记的布局相同的布局（文件，不论路径；或交给 `compile_layout_data` 的对象）就是同一个 `Layout` 对象，所以共用一份描述的多个使用方拿到同一批对象。布局是只读的（§6.6）；
 - 一个布局名只属于一个布局：与其名字下已登记的布局不同的布局（条目的 `comment` 和类型名的大小写不计）是错误，`another layout is already named X`。一份描述要么全部登记，要么都不登记：冲突在登记任何布局之前就写入 `errors` 报告。所以不同描述中的布局须使用不同的名字，除非它们完全相同。`layout_of(name)` 返回已登记的布局，名字未知时抛出 `unknown layout X`；
 - `compile_layout_data(root, origin)` 编译已解析的描述（与文件同结构：`layouts` 加各片段），用于布局嵌在使用方自己文件中的情形，返回值和错误同上。
 
@@ -241,7 +270,22 @@ const node = new TData(layouts.NODE, "node_1");
 
 布局不一定要有文件。`build_structure({ name }, items)` 把条目列表（与文件中的条目相同，可内联 `coupling` 列表并显式给出 `length`）展开为结构，`validate_structure(structure)` 返回违规描述的数组（§6.3，空数组表示合法），`register_layout(structure)` 把它编译为布局并登记（§6.4）。`layout_of(name)` 返回已登记的布局。`new TData(layout, name)` 接收该布局。`build_structure` 保留收到的内容（包括违规），使用前须检查校验结果。
 
+### 6.6 布局对象
+
+布局（`Layout`）是只读对象，只公开下面这些成员：
+
+| 成员 | 说明 |
+| --- | --- |
+| `name` | 布局名 |
+| `length` | 总长，单位为位 |
+| `size` | 总字节数 |
+| `items` | 展开后的 tag 描述列表，按布局顺序（组合字在其组成位之前） |
+
+- `items` 的每一项有：`name`；`type`（保持描述中的写法，不改大小写，而 `TTag.type` 总是小写）；`offset`（绝对位偏移，字节位置是 `offset >> 3`）；`length`（位）；`init_value`；`comment`（如果给出）；`coupling`（组合字：其组成位的 tag 名；组成位：它所属的组合字的 tag 名）。`includes` 和 `name_prefix` 已经展开，不再出现；
+- 布局及其 `items` 是深度冻结的，修改它们抛出 `TypeError`；
+- 布局不公开按名索引表、字节位置、位掩码、编解码器等内部数据，使用方不需要了解它们：按名访问用 `data.get(name)` 取得 TTag，与设备交换数据用 `load_tag` / `store_tag` 或 TTag 的 `load` / `store`（§2.9）。
+
 ## 7. 不在本接口内
 
-- 与设备交换数据（字节序转换、分组读写、驱动绑定）由使用方的 IO 层负责，它通过本接口的原始读写（§2.5）操作 tdata：用 `read_bytes` 取得当前内容作暂存，用包提供的按条目的字节序转换函数（见 design.md §6）在暂存与设备缓冲区之间转换，再用 `write_bytes` 一次写回；
+- 与设备交换数据（驱动绑定、读写的编排）由使用方的 IO 层负责，它通过本接口操作 tdata：用 `load_tag` / `store_tag` 按 tag 做字节序转换（§2.9），整块交换用 `io_index_table` 加 `read_bytes` / `write_bytes`（§2.5），成批的装载放进事务（§2.6）；
 - 调度、规则、计时不属于本接口。

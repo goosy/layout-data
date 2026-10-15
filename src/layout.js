@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { parseDocument } from "yaml";
 import { CODECS } from "./codecs.js";
-import { register, registered_of } from "./registry.js";
+import { register, registered_of, set_compiled } from "./registry.js";
 import { build_structure, validate_structure, TYPE_BITS } from "./structure.js";
 
 /** @import { Compiled_Layouts, Data_Struct, Layout } from "./typedefs.js" */
@@ -75,22 +75,39 @@ function compile_structure(data_struct) {
 			size: codec.size,
 			mask: type === "bool" ? 1 << (offset % 8) : 0xff,
 			codec,
-			item,
 		};
 		entries.set(name, entry);
 		// entries keep the item order: a combined word comes before its bits
 		for (let i = byte; i < byte + codec.size && i < size; i++) tags_at_byte[i].push(entry);
 	}
 
+	// the public layout holds the name, the sizes and frozen copies of the items;
+	// the entries and the lookup table stay out of reach (doc/spec-data-api.md §6.6)
 	const layout = Object.freeze({
 		name: data_struct.name,
 		length: data_struct.length,
-		items: data_struct.items,
 		size,
-		entries,
-		tags_at_byte,
+		items: Object.freeze(data_struct.items.map(public_tag)),
 	});
+	set_compiled(layout, { entries, tags_at_byte });
 	return layout;
+}
+
+/**
+ * The frozen description of a tag of the public layout: the documented fields
+ * only, the length filled in from the type when the item has none.
+ */
+function public_tag(item) {
+	const tag = {
+		name: item.name,
+		type: item.type,
+		offset: item.offset,
+		length: item.length ?? TYPE_BITS[item.type.toLowerCase()],
+		init_value: item.init_value,
+	};
+	if (item.comment !== undefined) tag.comment = item.comment;
+	tag.coupling = Object.freeze([...(item.coupling ?? [])]);
+	return Object.freeze(tag);
 }
 
 /**
