@@ -201,14 +201,46 @@ export class TData extends EventEmitter {
 	}
 
 	/**
-	 * Writes a 16-bit register (big-endian) at a byte offset
+	 * Writes a run of 16-bit words (big-endian) from a byte offset
 	 * (doc/spec-data-api.md §2.5).
 	 *
-	 * @param {number} offset - Byte offset.
-	 * @param {number} value
+	 * @param {number} offset - Byte offset, even.
+	 * @param {ArrayLike<number>} source - The words.
+	 * @throws {RangeError} For an odd or out-of-range offset, or a run past the end.
 	 */
-	write_register(offset, value) {
-		this.#buffer.writeUInt16BE(value, offset);
+	write_words(offset, source) {
+		this.#write_run(offset, source, 2, (value, at) => this.#buffer.writeUInt16BE(value, at));
+	}
+
+	/**
+	 * Writes a run of 32-bit double words (big-endian) from a byte offset
+	 * (doc/spec-data-api.md §2.5).
+	 *
+	 * @param {number} offset - Byte offset, even.
+	 * @param {ArrayLike<number>} source - The double words.
+	 * @throws {RangeError} For an odd or out-of-range offset, or a run past the end.
+	 */
+	write_dwords(offset, source) {
+		this.#write_run(offset, source, 4, (value, at) => this.#buffer.writeUInt32BE(value, at));
+	}
+
+	/**
+	 * Writes the items of source, size bytes each, from an even byte offset.
+	 * The whole run is checked before any byte is written.
+	 *
+	 * @param {number} offset
+	 * @param {ArrayLike<number>} source
+	 * @param {number} size
+	 * @param {(value: number, at: number) => void} write_item
+	 */
+	#write_run(offset, source, size, write_item) {
+		if (!Number.isInteger(offset) || offset < 0 || offset % 2 !== 0) {
+			throw new RangeError(`${this.name}: offset ${offset} must be a non-negative even integer`);
+		}
+		if (offset + source.length * size > this.#buffer.length) {
+			throw new RangeError(`${this.name}: the run at offset ${offset} exceeds the data block`);
+		}
+		for (let i = 0; i < source.length; i++) write_item(source[i], offset + i * size);
 		this.#written();
 	}
 

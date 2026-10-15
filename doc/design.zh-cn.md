@@ -86,7 +86,7 @@
   | 途径 | 使用者 |
   | --- | --- |
   | 按名赋值（`data[name] = v` 或 `tag.value = v`） | 任何代码 |
-  | 原始写入方法 `write_register(offset, value)`、`write_bit(offset, mask, value)`、`write_bytes(offset, source)`，以字节偏移定位 | 与寄存器地址打交道的代码，如 Modbus 服务端 |
+  | 原始写入方法 `write_bit(offset, mask, value)`、`write_bytes(offset, source)`、`write_words(offset, source)`、`write_dwords(offset, source)`，以字节偏移定位 | 与寄存器地址打交道的代码，如 Modbus 服务端 |
 
 - TData 出错时抛出异常（布局冲突、值越界），不写日志、不退出。
 - `data.get(name)` 返回该 tag 的 `TTag`，首次访问时创建并缓存，名称不存在时返回 `undefined`。TTag 不持有值：读 `value` 从 TData 的 `buffer` 解码，写 `value` 与 `data[name] = v` 完全等价；`name`、`type`、`length` 来自 Layout 条目；`change` 事件由 Observer 发出。

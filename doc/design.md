@@ -88,7 +88,7 @@ The layout rules are validated centrally at the layout stage, not spread over th
   | Way | Used by |
   | --- | --- |
   | Assignment by name (`data[name] = v` or `tag.value = v`) | Any code |
-  | Raw write methods `write_register(offset, value)`, `write_bit(offset, mask, value)`, `write_bytes(offset, source)`, locating by byte offset | Code that deals with register addresses, such as a Modbus server |
+  | Raw write methods `write_bit(offset, mask, value)`, `write_bytes(offset, source)`, `write_words(offset, source)`, `write_dwords(offset, source)`, locating by byte offset | Code that deals with register addresses, such as a Modbus server |
 
 - TData throws exceptions on errors (layout conflicts, out-of-range values); it neither logs nor exits.
 - `data.get(name)` returns the `TTag` of the tag, created and cached on first access; for an unknown name it returns `undefined`. A TTag holds no value: reading `value` decodes from the `buffer` of the TData, writing `value` is exactly equivalent to `data[name] = v`; `name`, `type` and `length` come from the Layout entry; the `change` event is emitted by the Observer.

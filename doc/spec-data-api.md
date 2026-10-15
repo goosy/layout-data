@@ -67,9 +67,10 @@ For writers that do not access by tag name (such as an upstream server). They lo
 
 | Method | Description |
 | --- | --- |
-| `write_register(offset, value)` | Write one 16-bit register (big-endian); `offset` is a byte offset |
 | `write_bit(offset, mask, value)` | Write the bits of a byte selected by `mask` |
 | `write_bytes(offset, source)` | Write a run of bytes starting at `offset` |
+| `write_words(offset, source)` | Write a run of 16-bit words (big-endian) starting at `offset`; `offset` is a byte offset and must be even |
+| `write_dwords(offset, source)` | Write a run of 32-bit double words (big-endian) starting at `offset`; `offset` is a byte offset and must be even |
 
 ### 2.6 Detection and transactions
 

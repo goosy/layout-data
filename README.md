@@ -55,7 +55,7 @@ pump.get("pressure").on("change", (old_value, new_value) => { /* ... */ });
 
 pump.pressure = 1.5;            // pressure 0.5 -> 1.5
 pump.run = true;               // status 0 -> 1, then run false -> true
-pump.write_register(2, 0x0002); // raw write by byte offset: fault becomes true
+pump.write_words(2, [0x0002]); // raw write by byte offset: fault becomes true
 pump.id = 70000;                // throws RangeError, the old value is kept
 ```
 

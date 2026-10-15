@@ -65,9 +65,10 @@ const tag = data.get("pressure");
 
 | 方法 | 说明 |
 | --- | --- |
-| `write_register(offset, value)` | 写一个 16 位寄存器（大端），`offset` 为字节偏移 |
 | `write_bit(offset, mask, value)` | 写一个字节中由 `mask` 指定的位 |
 | `write_bytes(offset, source)` | 从 `offset` 起写一段字节 |
+| `write_words(offset, source)` | 从 `offset` 起写一段字（16 位，大端），`offset` 为字节偏移，须为偶数 |
+| `write_dwords(offset, source)` | 从 `offset` 起写一段双字（32 位，大端），`offset` 为字节偏移，须为偶数 |
 
 ### 2.6 检测与事务
 

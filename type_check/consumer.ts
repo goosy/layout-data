@@ -50,7 +50,8 @@ assert_type<Equal<typeof done, string>>();
 // @ts-expect-error the transaction function is required
 tdata.transaction();
 tdata.on("write", (written: typeof tdata) => void written.size);
-tdata.write_register(0, 1);
+tdata.write_words(0, [1, 2]);
+tdata.write_dwords(0, new Uint32Array(1));
 tdata.write_bit(0, 0x01, true);
 tdata.write_bytes(0, Buffer.alloc(2));
 tdata.on("change", () => {});
@@ -61,7 +62,7 @@ tdata.size = 1;
 // @ts-expect-error layout is read-only
 tdata.layout = layout;
 // @ts-expect-error the offset is a number
-tdata.write_register("0", 1);
+tdata.write_words("0", [1]);
 // @ts-expect-error a bit value is a boolean
 tdata.write_bit(0, 1, 1);
 

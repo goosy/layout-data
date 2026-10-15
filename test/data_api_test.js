@@ -257,6 +257,34 @@ describe("4.2 detection after a write", () => {
 	});
 });
 
+describe("2.5 raw writes of words and double words", () => {
+	test("write_words writes big-endian words from an even offset and detects the change", () => {
+		const data = new TData(LAYOUT, "d");
+		const events = record(data);
+		data.write_words(0, [10, 0x1234]);
+		assert.deepEqual([...data.buffer.subarray(0, 4)], [0, 10, 0x12, 0x34]);
+		assert.equal(data.id, 10);
+		assert.deepEqual(events[0], ["id", 7, 10]);
+		assert.equal(data.status, 0x1234);
+	});
+
+	test("write_dwords writes big-endian double words from an even offset", () => {
+		const data = new TData(LAYOUT, "d");
+		data.write_dwords(2, new Uint32Array([0x01020304]));
+		assert.deepEqual([...data.buffer.subarray(2, 6)], [1, 2, 3, 4]);
+	});
+
+	test("an odd offset or a run past the end throws and writes nothing", () => {
+		const data = new TData(LAYOUT, "d");
+		const before = Buffer.from(data.buffer);
+		assert.throws(() => data.write_words(1, [1]), RangeError);
+		assert.throws(() => data.write_dwords(3, [1]), RangeError);
+		assert.throws(() => data.write_words(data.size - 2, [1, 2]), RangeError);
+		assert.throws(() => data.write_dwords(data.size - 2, [1]), RangeError);
+		assert.deepEqual(data.buffer, before);
+	});
+});
+
 describe("4.2 transactions", () => {
 	const create = () => {
 		const writes = [];
@@ -273,7 +301,7 @@ describe("4.2 transactions", () => {
 		const result = data.transaction(() => {
 			data.id = 9;
 			data.get("pressure").value = 2;
-			data.write_register(0, 10);
+			data.write_words(0, [10]);
 			assert.equal(data.id, 10);
 			assert.deepEqual(events, []);
 			assert.deepEqual(writes, []);
