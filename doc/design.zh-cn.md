@@ -23,7 +23,7 @@
 | 部分 | 职责 | 实例数 | 可变性 |
 | --- | --- | --- | --- |
 | Layout | 由布局描述编译而来：各 tag 的字节位置、编解码、字节到 tag 的反查表、原型访问器 | 每种结构一个 | 不可变 |
-| TData | 值缓冲区 `buffer`（大端）、按名访问、原始写入方法、`get(name)` 返回的 TTag | 每个 tdata 一个 | 可变 |
+| TData | 值缓冲区（私有，大端）、按名访问、原始读写方法、`get(name)` 返回的 TTag | 每个 tdata 一个 | 可变 |
 | Observer | 快照比对，发出变化事件 | 每个 tdata 一个 | 可变 |
 
 依赖方向：Observer 依赖 TData 与 Layout，TData 只依赖 Layout，Layout 只依赖布局描述。使用方的调度和 IO 在包之外，包只通过 TData 的 `write` 事件通知它们，任何一方都可以监听。
@@ -80,16 +80,19 @@
 ## 5. TData
 
 - `new TData(layout, name)` 接收已登记的布局或其名字（由 `layout_of` 解析），返回按布局名构建的子类（见 §4）的实例；构造函数先调用 `super()`，再返回该实例。传来的布局对象不是其名字下已登记的那个时抛出错误（只比较引用，不比较结构）。`TData` 本身不会是任何实例的直接类。该实例分配 `buffer`（`layout.size` 字节），按条目的 `init_value` 依次编码写入。
-- `name` 可写；`layout`、`size`、`buffer` 只读（只有 getter，赋值抛出 `TypeError`），`buffer` 的内容可以读写。`buffer` 统一按大端存放。
-- 写 `buffer` 有两种途径，都经过 TData，任何时候都允许：
+- `name` 可写；`layout`、`size` 只读（只有 getter，赋值抛出 `TypeError`）。缓冲区是私有字段（`#buffer`），没有访问器，统一按大端存放；Observer 和事务所需的缓冲区由创建它们的 TData 传入。带类型的访问走 tag，不带类型的访问走字节：没有按宽度分类的原始方法。
+- 写缓冲区有两种途径，都经过 TData，任何时候都允许：
 
   | 途径 | 使用者 |
   | --- | --- |
   | 按名赋值（`data[name] = v` 或 `tag.value = v`） | 任何代码 |
-  | 原始写入方法 `write_bit(offset, mask, value)`、`write_bytes(offset, source)`、`write_words(offset, source)`、`write_dwords(offset, source)`，以字节偏移定位 | 与寄存器地址打交道的代码，如 Modbus 服务端 |
+  | 原始方法 `write_bytes(offset, source)`、`write_bit(offset, mask, value)`，以字节偏移定位 | 与寄存器地址打交道的代码，如 Modbus 服务端，以及 IO 层 |
+
+- `read_bytes(offset = 0, length = size - offset)` 返回一段字节的副本（`Buffer.from(buffer.subarray(...))`），所以无法通过它改动缓冲区。
+- 原始方法在碰缓冲区之前先检查参数，出错时数据不变，也不会走到 `#written()`：`offset`、`length` 须为整数，且 `0 <= offset`、`offset + length <= size`，`mask` 须为 1 到 0xff 的整数（`RangeError`），`source` 须为 `Uint8Array`（`TypeError`）。`write_bytes` 用 `buffer.set(source, offset)` 复制。原始写入把它碰过的字节范围登记给 Observer（§5.1）。
 
 - TData 出错时抛出异常（布局冲突、值越界），不写日志、不退出。
-- `data.get(name)` 返回该 tag 的 `TTag`，首次访问时创建并缓存，名称不存在时返回 `undefined`。TTag 不持有值：读 `value` 从 TData 的 `buffer` 解码，写 `value` 与 `data[name] = v` 完全等价；`name`、`type`、`length` 来自 Layout 条目；`change` 事件由 Observer 发出。
+- `data.get(name)` 返回该 tag 的 `TTag`，首次访问时创建并缓存，名称不存在时返回 `undefined`。TTag 不持有值：读 `value` 从 TData 的缓冲区解码，写 `value` 与 `data[name] = v` 完全等价；`name`、`type`、`length` 来自 Layout 条目；`change` 事件由 Observer 发出。
 
 ### 5.1 检测、事务与 Observer
 
@@ -104,17 +107,17 @@
 ```
 
 - 事务之外，在写入语句内部同步调用 `diff()`，再发出 `write`。
-- 直接写 `buffer` 的内容后，需调用 `detect()`；事务中调用 `detect()` 抛出 `Error`。
+- `diff()` 是内部方法，没有任何公开方法能触发检测。所有写入路径都经 `#written()` 到达它，所以在写入或事务之外，缓冲区与快照不会有差异。
 
-**事务。** `transaction(fn)` 在已有事务时抛出 `Error`；否则复制一份 `buffer`，登记事务状态 `{ written: false }`，同步调用 `fn()`：
+**事务。** `transaction(fn)` 在已有事务时抛出 `Error`；否则复制一份缓冲区，登记事务状态 `{ written: false }`，同步调用 `fn()`：
 
 - `fn` 正常返回：关闭事务，调用一次 `diff()`，`written` 为真时发出一次 `write`，返回 `fn` 的返回值（不检查它是否是 Promise）；
-- `fn` 抛出异常：关闭事务，把副本写回 `buffer`，不发出任何事件，重新抛出原异常；
-- Observer 的快照在事务中保持不动：提交时的 `diff()` 就是事务之前最近一次检测与现在之间的净变化；回滚后 `buffer` 回到事务开始时的内容，与快照的关系和事务之前一样，事务之前直接写 `buffer` 而未检测的变化仍留待下一次检测；
+- `fn` 抛出异常：关闭事务，把副本写回缓冲区，不发出任何事件，重新抛出原异常；
+- Observer 的快照在事务中保持不动：提交时的 `diff()` 就是事务之前最近一次检测与现在之间的净变化；回滚后缓冲区回到事务开始时的内容，与快照重新一致；
 - 事件在事务关闭之后发出，处理器中的写入和事务按普通情形处理；提交时处理器抛出的异常直接传出，不回滚；
 - 事务期间 Node.js 不运行别的 JS 代码，同一线程中没有其他代码能访问这个 tdata，所以事务不需要加锁或隔离；`written` 只是布尔标记，不计次数，因为 `write` 事件没有载荷之外的信息。
 
-**快照比对。** Observer 持有与 `buffer` 等长的快照，创建时复制 `buffer`。`diff()` 逐字节比较 `buffer` 与快照，只对不同的字节经反查表 `tags_at_byte` 找到相关 tag，从快照解码旧值、从 `buffer` 解码新值，值不同（两个 NaN 视为相同）的记为变化；比对完成后更新快照，再统一报告：
+**快照比对。** Observer 持有与缓冲区等长的快照，创建时复制缓冲区。每条写入路径都知道自己写了哪一段字节，并把它登记给 Observer（`touch(start, end)`；事务中各段累计为一段）；`diff()` 只逐字节比较登记范围内缓冲区与快照的差异（其余字节按构造必然相等），并清除登记。只对不同的字节经反查表 `tags_at_byte` 找到相关 tag，从快照解码旧值、从 `buffer` 解码新值，值不同（两个 NaN 视为相同）的记为变化；比对完成后更新快照，再统一报告：
 
 - 按布局顺序报告（组合字在其组成位之前），每个变化先由 TData 发出 `change(tagname, old, new)`，再由该 tag 的 TTag 发出 `change(old, new)`；事件总在新值生效之后发出；
 - 两次检测之间同一 tag 的多次写入合并为一个事件，值改变后又恢复的不发事件；
@@ -123,7 +126,7 @@
 
 ## 6. 字节序转换
 
-`endian.js` 按布局条目实现设备字节序与内部大端之间的转换（`load_entry` / `store_entry` / `io_index` / `io_range`），并为整个数据块生成字节下标表（`io_index_table`），与设备成组交换条目的使用方可以据此直接按字节复制。下标表与 `load_entry` / `store_entry` 对每个条目的结果一致（有测试保证）。它们都不检测变化：
+`endian.js` 按布局条目实现设备字节序与内部大端之间的转换（`load_entry` / `store_entry` / `io_index` / `io_range`），并为整个数据块生成字节下标表（`io_index_table`），与设备成组交换条目的使用方可以据此直接按字节复制。下标表与 `load_entry` / `store_entry` 对每个条目的结果一致（有测试保证）。它们只作用于调用方给出的缓冲区，从不碰 TData 自己的缓冲区：IO 层用 `read_bytes` 取一份副本作暂存，转换到暂存里，再用 `write_bytes` 写回（spec-data-api.zh-cn.md §7）。它们都不检测变化：
 
 - 2 字节：`BE` 原样复制；`LE` / `little` / `BEBS` 交换两个字节；
 - 4 字节：支持 `BE`、`LE` / `little`、`BEBS`、`LEBS` 四种排列；
@@ -132,5 +135,5 @@
 ## 7. 构建与测试
 
 - `pnpm build`：rolldown 把 `src/index.js` 打包为 `dist/tagged-data.js`（`yaml` 打进库）；
-- `pnpm bench`：`bench/change_detection_bench.js` 测量读取一个 86 个 tag、146 字节的数据块（逐条目从设备字节序缓冲装载，再检测并报告变化）的开销。开发机上每周期无变化约 2 µs，少量变化 2.5–3.5 µs，全部变化 7–8 µs；
+- `pnpm bench`：`bench/change_detection_bench.js` 测量读取一个 86 个 tag、146 字节的数据块（经 `read_bytes` 取副本、从设备字节序缓冲装载，再用一次 `write_bytes` 写回，由它检测并报告变化）的开销。开发机上，逐条目转换时每周期无变化约 2.5 µs，少量变化 2.6–3.6 µs，全部变化 7.5 µs；用 `io_index_table` 按字节复制时分别约 0.4 µs、0.5–1.4 µs、5.2 µs；
 - `pnpm test`：先构建，再运行类型测试和 `node --test`；`pnpm lint`：ESLint。

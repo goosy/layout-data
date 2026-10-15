@@ -40,29 +40,38 @@ const tdata = new TData(same_layout, "block");
 // @ts-expect-error a structure is compiled by layout_of first: TData takes a layout
 new TData(data_struct, "block");
 const tag: TTag | undefined = tdata.get("a");
-assert_type<Equal<typeof tdata.buffer, Buffer>>();
 assert_type<Equal<typeof tdata.size, number>>();
 assert_type<Equal<typeof tdata.layout, Layout>>();
 tdata.name = "renamed";
-tdata.detect();
 const done: string = tdata.transaction(() => "done");
 assert_type<Equal<typeof done, string>>();
 // @ts-expect-error the transaction function is required
 tdata.transaction();
 tdata.on("write", (written: typeof tdata) => void written.size);
-tdata.write_words(0, [1, 2]);
-tdata.write_dwords(0, new Uint32Array(1));
+const bytes: Buffer = tdata.read_bytes();
+assert_type<Equal<ReturnType<typeof tdata.read_bytes>, Buffer>>();
+tdata.read_bytes(2);
+tdata.read_bytes(0, 2);
 tdata.write_bit(0, 0x01, true);
 tdata.write_bytes(0, Buffer.alloc(2));
+tdata.write_bytes(0, new Uint8Array(2));
 tdata.on("change", () => {});
-// @ts-expect-error buffer is read-only
-tdata.buffer = Buffer.alloc(1);
+// @ts-expect-error the bytes are not a property
+void tdata.buffer;
+// @ts-expect-error detection is not public
+tdata.detect();
+// @ts-expect-error there are no raw writes classified by width
+tdata.write_words(0, [1]);
 // @ts-expect-error size is read-only
 tdata.size = 1;
 // @ts-expect-error layout is read-only
 tdata.layout = layout;
 // @ts-expect-error the offset is a number
-tdata.write_words("0", [1]);
+tdata.write_bytes("0", Buffer.alloc(1));
+// @ts-expect-error a source is a Uint8Array
+tdata.write_bytes(0, [1, 2]);
+// @ts-expect-error the length is a number
+tdata.read_bytes(0, "2");
 // @ts-expect-error a bit value is a boolean
 tdata.write_bit(0, 1, 1);
 
@@ -91,8 +100,8 @@ set_access_tracer((_tdata: TData, _name: string, kind: "erase") => void kind);
 // endian conversion
 const entry: Layout_Entry = layout.entries.get("a")!;
 const table: Int32Array = io_index_table(layout, "BEBS");
-load_entry(entry, Buffer.alloc(2), tdata.buffer, "LE");
-store_entry(entry, tdata.buffer, Buffer.alloc(2), "LE");
+load_entry(entry, Buffer.alloc(2), bytes, "LE");
+store_entry(entry, bytes, Buffer.alloc(2), "LE");
 // @ts-expect-error the endian is a string
 io_index_table(layout, 1);
 
@@ -101,4 +110,4 @@ const text: string = render_types(compiled.layouts, { source: "layout.yaml", tda
 // @ts-expect-error the options are required
 render_types(compiled.layouts);
 
-export { table, text };
+export { bytes, table, text };

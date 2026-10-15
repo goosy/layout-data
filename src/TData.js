@@ -35,39 +35,6 @@ const EMPTY_LAYOUT = Object.freeze({
 let probe = null;
 
 /**
- * Builds the class of a layout: a subclass of TData whose prototype holds
- * the accessor of every tag, shared by all instances of the layout.
- *
- * @param {Layout} layout
- * @returns {typeof TData}
- */
-function build_class(layout) {
-	const Layout_Data = class extends TData { };
-	Object.defineProperty(Layout_Data, "name", { value: `TData_${layout.name}` });
-	for (const entry of layout.entries.values()) {
-		const { name, codec, byte, mask } = entry;
-		if (TData.is_reserved_name(name)) {
-			throw new Error(`${layout.name}.${name}: tag name collides with a TData member`);
-		}
-		Object.defineProperty(Layout_Data.prototype, name, {
-			get() {
-				if (access_tracer) access_tracer(this, name, "read");
-				return codec.get(this.buffer, byte, mask);
-			},
-			set(value) {
-				if (access_tracer) access_tracer(this, name, "write");
-				codec.set(this.buffer, byte, mask, value);
-				this.after_write(entry);
-			},
-			enumerable: true,
-			configurable: false,
-		});
-	}
-	Layout_Data.layout = layout;
-	return Layout_Data;
-}
-
-/**
  * The registered layout a TData argument stands for.
  *
  * @param {Layout | string} layout - A layout name, or the registered layout of its name.
@@ -80,37 +47,15 @@ function resolve_layout(layout) {
 	return layout;
 }
 
-/**
- * The class of a layout, built on the first use of its name: the name tells
- * the layouts apart, as the registry holds one layout per name.
- *
- * @param {Layout} layout - A registered layout.
- * @returns {typeof TData}
- */
-function class_of(layout) {
-	let Layout_Data = classes.get(layout.name);
-	if (!Layout_Data) {
-		Layout_Data = build_class(layout);
-		classes.set(layout.name, Layout_Data);
-	}
-	return Layout_Data;
-}
-
 export class TData extends EventEmitter {
 	/**
 	 * @type {Buffer}
-	 * @readonly
-	 * @description Internal buffer
-	 * all data items, including combined words, are stored in Big-Endian format.
-	 * Device endianness is converted only at the IO boundary (the IO binding).
+	 * @description Internal buffer, private (doc/spec-data-api.md §2.2).
+	 * All data items, including combined words, are stored in Big-Endian format.
+	 * Device endianness is converted only at the IO boundary (the IO layer).
 	 */
 	#buffer;
-	/**
-	 * get the internal buffer
-	 *
-	 * @return {Buffer} - the internal buffer.
-	 */
-	get buffer() { return this.#buffer; }
+	/** @returns {number} Size of the data block in bytes. */
 	get size() {
 		return this.#buffer.length;
 	}
@@ -159,17 +104,6 @@ export class TData extends EventEmitter {
 	}
 
 	/**
-	 * Detects every change since the last detection and emits its events
-	 * (doc/spec-data-api.md §2.6). Needed after writing the buffer directly.
-	 *
-	 * @throws {Error} Inside a transaction.
-	 */
-	detect() {
-		if (this.#transaction) throw new Error(`${this.name}: detect() is not allowed in a transaction`);
-		this.#observer.diff();
-	}
-
-	/**
 	 * Runs fn synchronously and makes its writes one whole: no event is emitted
 	 * during it; when fn returns, one detection runs and one `write` is emitted
 	 * if fn wrote; when fn throws, the buffer is restored and no event is
@@ -192,6 +126,7 @@ export class TData extends EventEmitter {
 		} catch (error) {
 			this.#transaction = null;
 			saved.copy(this.#buffer);
+			this.#observer.discard();
 			throw error;
 		}
 		this.#transaction = null;
@@ -201,78 +136,80 @@ export class TData extends EventEmitter {
 	}
 
 	/**
-	 * Writes a run of 16-bit words (big-endian) from a byte offset
-	 * (doc/spec-data-api.md §2.5).
+	 * Reads a range of bytes (doc/spec-data-api.md §2.5).
 	 *
-	 * @param {number} offset - Byte offset, even.
-	 * @param {ArrayLike<number>} source - The words.
-	 * @throws {RangeError} For an odd or out-of-range offset, or a run past the end.
+	 * @param {number} [offset=0] - Byte offset.
+	 * @param {number} [length] - Number of bytes, up to the end of the data block by default.
+	 * @returns {Buffer} A copy: changing it does not affect the data block.
+	 * @throws {RangeError} For an offset or length out of range.
 	 */
-	write_words(offset, source) {
-		this.#write_run(offset, source, 2, (value, at) => this.#buffer.writeUInt16BE(value, at));
+	read_bytes(offset = 0, length = this.#buffer.length - offset) {
+		this.#check_range(offset, length);
+		return Buffer.from(this.#buffer.subarray(offset, offset + length));
 	}
 
 	/**
-	 * Writes a run of 32-bit double words (big-endian) from a byte offset
-	 * (doc/spec-data-api.md §2.5).
-	 *
-	 * @param {number} offset - Byte offset, even.
-	 * @param {ArrayLike<number>} source - The double words.
-	 * @throws {RangeError} For an odd or out-of-range offset, or a run past the end.
-	 */
-	write_dwords(offset, source) {
-		this.#write_run(offset, source, 4, (value, at) => this.#buffer.writeUInt32BE(value, at));
-	}
-
-	/**
-	 * Writes the items of source, size bytes each, from an even byte offset.
-	 * The whole run is checked before any byte is written.
-	 *
-	 * @param {number} offset
-	 * @param {ArrayLike<number>} source
-	 * @param {number} size
-	 * @param {(value: number, at: number) => void} write_item
-	 */
-	#write_run(offset, source, size, write_item) {
-		if (!Number.isInteger(offset) || offset < 0 || offset % 2 !== 0) {
-			throw new RangeError(`${this.name}: offset ${offset} must be a non-negative even integer`);
-		}
-		if (offset + source.length * size > this.#buffer.length) {
-			throw new RangeError(`${this.name}: the run at offset ${offset} exceeds the data block`);
-		}
-		for (let i = 0; i < source.length; i++) write_item(source[i], offset + i * size);
-		this.#written();
-	}
-
-	/**
-	 * Writes the bits selected by mask of the byte at offset.
+	 * Writes all the bytes of source from a byte offset (doc/spec-data-api.md §2.5).
+	 * An empty source writes nothing and emits no `write`.
 	 *
 	 * @param {number} offset - Byte offset.
-	 * @param {number} mask
-	 * @param {boolean} value
-	 */
-	write_bit(offset, mask, value) {
-		const buffer = this.#buffer;
-		buffer[offset] = value ? buffer[offset] | mask : buffer[offset] & ~mask;
-		this.#written();
-	}
-
-	/**
-	 * Writes the bytes of source from a byte offset.
-	 *
-	 * @param {number} offset - Byte offset.
-	 * @param {Buffer} source
+	 * @param {Uint8Array} source
+	 * @throws {RangeError} For an offset out of range, or a run past the end of the data block.
+	 * @throws {TypeError} When source is not a Uint8Array.
 	 */
 	write_bytes(offset, source) {
-		source.copy(this.#buffer, offset);
-		this.#written();
+		if (!(source instanceof Uint8Array)) throw new TypeError(`${this.name}: source must be a Uint8Array`);
+		this.#check_range(offset, source.length);
+		if (source.length === 0) return; // nothing written: not a write
+		this.#buffer.set(source, offset);
+		this.#written(offset, offset + source.length);
 	}
 
 	/**
-	 * After a write: detects the change at once, then emits `write`; inside a
-	 * transaction only remembers the write (doc/spec-data-api.md §4.2).
+	 * Writes the bits selected by mask of the byte at offset; the other bits
+	 * are unchanged (doc/spec-data-api.md §2.5).
+	 *
+	 * @param {number} offset - Byte offset.
+	 * @param {number} mask - An integer from 1 to 0xff.
+	 * @param {boolean} value - Taken by truthiness.
+	 * @throws {RangeError} For an offset out of range, or a mask that is not an integer from 1 to 0xff.
 	 */
-	#written() {
+	write_bit(offset, mask, value) {
+		this.#check_range(offset, 1);
+		if (!Number.isInteger(mask) || mask < 1 || mask > 0xff) {
+			throw new RangeError(`${this.name}: mask ${mask} must be an integer from 1 to 0xff`);
+		}
+		const buffer = this.#buffer;
+		buffer[offset] = value ? buffer[offset] | mask : buffer[offset] & ~mask;
+		this.#written(offset, offset + 1);
+	}
+
+	/**
+	 * Checks a byte range before anything is read or written.
+	 *
+	 * @param {number} offset
+	 * @param {number} length
+	 * @throws {RangeError}
+	 */
+	#check_range(offset, length) {
+		if (!Number.isInteger(offset) || offset < 0) {
+			throw new RangeError(`${this.name}: offset ${offset} must be a non-negative integer`);
+		}
+		if (!Number.isInteger(length) || length < 0 || offset + length > this.#buffer.length) {
+			throw new RangeError(`${this.name}: length ${length} at offset ${offset} exceeds the data block`);
+		}
+	}
+
+	/**
+	 * After a write of the byte range [start, end): registers the range, then
+	 * detects the change at once and emits `write`; inside a transaction only
+	 * remembers the write (doc/spec-data-api.md §4.2).
+	 *
+	 * @param {number} start
+	 * @param {number} end - Exclusive.
+	 */
+	#written(start, end) {
+		this.#observer.touch(start, end);
 		if (this.#transaction) {
 			this.#transaction.written = true;
 			return;
@@ -282,14 +219,53 @@ export class TData extends EventEmitter {
 	}
 
 	/**
-	 * Called by a tag setter after the value is written into the buffer:
-	 * detects the change at once and notifies the user, or inside a
-	 * transaction remembers the write (doc/spec-data-api.md §4.2).
+	 * The class of a layout, built on the first use of its name: the name tells
+	 * the layouts apart, as the registry holds one layout per name.
 	 *
-	 * @param {Layout_Entry} _entry - The layout entry of the tag.
+	 * @param {Layout} layout - A registered layout.
+	 * @returns {typeof TData}
 	 */
-	after_write(_entry) {
-		this.#written();
+	static #class_of(layout) {
+		let Layout_Data = classes.get(layout.name);
+		if (!Layout_Data) {
+			Layout_Data = TData.#build_class(layout);
+			classes.set(layout.name, Layout_Data);
+		}
+		return Layout_Data;
+	}
+
+	/**
+	 * Builds the class of a layout: a subclass of TData whose prototype holds
+	 * the accessor of every tag, shared by all instances of the layout. The
+	 * accessors are defined here so that they reach the private buffer.
+	 *
+	 * @param {Layout} layout
+	 * @returns {typeof TData}
+	 */
+	static #build_class(layout) {
+		const Layout_Data = class extends TData { };
+		Object.defineProperty(Layout_Data, "name", { value: `TData_${layout.name}` });
+		for (const entry of layout.entries.values()) {
+			const { name, codec, byte, mask, size } = entry;
+			if (TData.is_reserved_name(name)) {
+				throw new Error(`${layout.name}.${name}: tag name collides with a TData member`);
+			}
+			Object.defineProperty(Layout_Data.prototype, name, {
+				get() {
+					if (access_tracer) access_tracer(this, name, "read");
+					return codec.get(this.#buffer, byte, mask);
+				},
+				set(value) {
+					if (access_tracer) access_tracer(this, name, "write");
+					codec.set(this.#buffer, byte, mask, value);
+					this.#written(byte, byte + size);
+				},
+				enumerable: true,
+				configurable: false,
+			});
+		}
+		Layout_Data.layout = layout;
+		return Layout_Data;
 	}
 
 	/**
@@ -319,7 +295,7 @@ export class TData extends EventEmitter {
 		super();
 		if (new.target === TData) {
 			const registered = resolve_layout(layout);
-			return new (class_of(registered))(registered, name);
+			return new (TData.#class_of(registered))(registered, name);
 		}
 		this.name = name;
 		this.#layout = new.target.layout;

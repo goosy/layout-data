@@ -26,7 +26,7 @@ describe("tag storage", () => {
 			data.tag = value;
 			assert.equal(data.tag, value);
 			assert.equal(data.get("tag").value, value);
-			assert.deepEqual([...data.buffer.subarray(0, bytes.length)], bytes);
+			assert.deepEqual([...data.read_bytes(0, bytes.length)], bytes);
 		});
 	}
 
@@ -47,7 +47,7 @@ describe("tag storage", () => {
 	test("init_value is written into the buffer", () => {
 		const data = one_tag("Int", -500);
 		assert.equal(data.tag, -500);
-		assert.deepEqual([...data.buffer.subarray(0, 2)], [0xfe, 0x0c]);
+		assert.deepEqual([...data.read_bytes(0, 2)], [0xfe, 0x0c]);
 	});
 
 	test("Real value is rounded to float32 precision", () => {
@@ -61,9 +61,9 @@ describe("tag storage", () => {
 
 	test("tag only touches its own bytes", () => {
 		const data = one_tag("Int", 0, 16, 8);
-		data.buffer.fill(0xaa);
+		data.write_bytes(0, new Uint8Array(8).fill(0xaa));
 		data.tag = 0x0102;
-		assert.deepEqual([...data.buffer], [0xaa, 0xaa, 0x01, 0x02, 0xaa, 0xaa, 0xaa, 0xaa]);
+		assert.deepEqual([...data.read_bytes()], [0xaa, 0xaa, 0x01, 0x02, 0xaa, 0xaa, 0xaa, 0xaa]);
 	});
 
 	test("out-of-range integer throws RangeError and keeps the old value", () => {
@@ -80,13 +80,13 @@ describe("tag storage", () => {
 		const data = one_tag("SInt", 0);
 		data.tag = -1;
 		assert.equal(data.tag, -1);
-		assert.equal(data.buffer[0], 0xff);
+		assert.equal(data.read_bytes(0, 1)[0], 0xff);
 	});
 
 	test("Byte, SInt and USInt at an odd byte offset are accepted", () => {
-		assert.equal(one_tag("Byte", 7, 8, 2).buffer[1], 7);
-		assert.equal(one_tag("USInt", 7, 8, 2).buffer[1], 7);
-		assert.equal(one_tag("SInt", -1, 8, 2).buffer[1], 0xff);
+		assert.equal(one_tag("Byte", 7, 8, 2).read_bytes(1, 1)[0], 7);
+		assert.equal(one_tag("USInt", 7, 8, 2).read_bytes(1, 1)[0], 7);
+		assert.equal(one_tag("SInt", -1, 8, 2).read_bytes(1, 1)[0], 0xff);
 	});
 });
 
@@ -99,11 +99,11 @@ describe("Bool tag", () => {
 
 	test("setting a bit keeps the other bits of the byte", () => {
 		const data = one_tag("Bool", false, 13, 2);
-		data.buffer[1] = 0xdf;
+		data.write_bytes(1, Uint8Array.of(0xdf));
 		data.tag = true;
-		assert.deepEqual([...data.buffer], [0x00, 0xff]);
+		assert.deepEqual([...data.read_bytes()], [0x00, 0xff]);
 		data.tag = false;
-		assert.deepEqual([...data.buffer], [0x00, 0xdf]);
+		assert.deepEqual([...data.read_bytes()], [0x00, 0xdf]);
 	});
 
 	test("truthy and falsy values are normalized to boolean", () => {
@@ -134,13 +134,12 @@ describe("tag change event", () => {
 		assert.equal(count, 0);
 	});
 
-	test("detect() reports direct buffer writes once", () => {
+	test("a raw write is reported once", () => {
 		const data = one_tag("UInt", 0);
 		const events = [];
 		data.get("tag").on("change", (...args) => events.push(args));
-		data.buffer.writeUInt16BE(9, 0);
-		data.detect();
-		data.detect();
+		data.write_bytes(0, Uint8Array.of(0, 9));
+		data.write_bytes(0, Uint8Array.of(0, 9));
 		assert.deepEqual(events, [[0, 9]]);
 	});
 
@@ -148,11 +147,9 @@ describe("tag change event", () => {
 		const data = one_tag("Bool", false, 3, 2);
 		let count = 0;
 		data.get("tag").on("change", () => count++);
-		data.buffer[0] = 0xf7; // every bit except bit 3
-		data.detect();
+		data.write_bytes(0, Uint8Array.of(0xf7)); // every bit except bit 3
 		assert.equal(count, 0);
-		data.buffer[0] = 0x08;
-		data.detect();
+		data.write_bytes(0, Uint8Array.of(0x08));
 		assert.equal(count, 1);
 	});
 
@@ -173,7 +170,7 @@ describe("TTag handle", () => {
 		assert.ok(tag instanceof TTag);
 		assert.equal(data.get("tag"), tag);
 		assert.equal(tag.name, "tag");
-		data.buffer.writeInt16BE(-4, 0);
+		data.write_bytes(0, Uint8Array.of(0xff, 0xfc));
 		assert.equal(tag.value, -4);
 	});
 

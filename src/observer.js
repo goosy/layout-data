@@ -11,8 +11,10 @@ const same_value = (a, b) => a === b || (Number.isNaN(a) && Number.isNaN(b));
  * Detects the changes of a TData buffer by comparing it with a snapshot
  * (doc/design.md §5.1) and reports each changed tag once.
  *
- * Immediate mode (doc/design.md §5.1): the TData calls diff() after
- * every write. A diff() called while the changes are being reported, by a
+ * Every write path of the TData registers the byte range it wrote with
+ * touch(), then calls diff() (in a transaction: at its commit). Only the
+ * registered range is compared, the other bytes equal the snapshot by
+ * construction. A diff() called while the changes are being reported, by a
  * handler writing a tag, is only recorded; the outer diff() runs another
  * round once the current changes are reported.
  */
@@ -27,6 +29,9 @@ export class Observer {
 	#report;
 	#diffing = false;
 	#pending = false;
+	/** The byte range [#start, #end) written since the last collection. */
+	#start = Number.POSITIVE_INFINITY;
+	#end = 0;
 	/** @type {Uint32Array} */
 	#seen;
 	#mark = 0;
@@ -42,6 +47,26 @@ export class Observer {
 		this.#report = report;
 		this.#snapshot = Buffer.from(buffer);
 		this.#seen = new Uint32Array(layout.entries.size);
+	}
+
+	/**
+	 * Registers the byte range [start, end) as written.
+	 *
+	 * @param {number} start
+	 * @param {number} end - Exclusive.
+	 */
+	touch(start, end) {
+		if (start >= end) return;
+		if (start < this.#start) this.#start = start;
+		if (end > this.#end) this.#end = end;
+	}
+
+	/**
+	 * Forgets the registered range: the buffer was restored to the snapshot.
+	 */
+	discard() {
+		this.#start = Number.POSITIVE_INFINITY;
+		this.#end = 0;
 	}
 
 	/** Reports every tag changed since the last diff. */
@@ -86,7 +111,11 @@ export class Observer {
 		const changes = [];
 		let in_order = true;
 		let last_index = -1;
-		for (let i = 0; i < buffer.length; i++) {
+		// a write during the reporting registers its range for the next round
+		const start = this.#start;
+		const end = Math.min(this.#end, buffer.length);
+		this.discard();
+		for (let i = start; i < end; i++) {
 			if (buffer[i] === snapshot[i]) continue;
 			for (const entry of tags_at_byte[i]) {
 				if (seen[entry.index] === mark) continue;
@@ -100,7 +129,7 @@ export class Observer {
 				last_index = entry.index;
 			}
 		}
-		buffer.copy(snapshot);
+		if (start < end) buffer.copy(snapshot, start, start, end);
 		if (!in_order) changes.sort((a, b) => a[0].index - b[0].index);
 		return changes;
 	}

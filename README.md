@@ -9,7 +9,7 @@ A data block is a fixed-layout `Buffer` (big-endian inside). The layout is descr
 - **Fixed, validated layouts**: tag types `Bool`, `Byte`, `SInt`, `USInt`, `Int`, `UInt`, `Word`, `DInt`, `UDInt`, `DWord`, `Real`; the layout is checked as a whole and every violation is reported at once.
 - **Access by name**: `data.pressure = 1.5`, or through a `TTag` handle (`data.get("pressure")`).
 - **Combined words**: a `Word` made of `Bool` bits shares its bytes with them, so writing either side updates the other.
-- **Change events**: emitted after the new value is in place, for writes by name, raw writes and direct buffer writes (followed by `detect()`). Writes that leave a value unchanged emit nothing.
+- **Change events**: emitted after the new value is in place, for writes by name and raw writes (`write_bytes`, `write_bit`); the internal buffer is not exposed, so no write is missed. Writes that leave a value unchanged emit nothing.
 - **Immediate detection and transactions**: events fire when a write returns; `transaction(fn)` makes a group of writes one whole, with its events emitted together at the end and its writes undone if `fn` fails.
 - **Device byte order**: `BE`, `LE`, `BEBS`, `LEBS` conversion per entry (`load_entry` / `store_entry`).
 - **TypeScript types**: declarations are generated from JSDoc, and `render_types` generates per-layout interfaces for editor completion.
@@ -55,7 +55,7 @@ pump.get("pressure").on("change", (old_value, new_value) => { /* ... */ });
 
 pump.pressure = 1.5;            // pressure 0.5 -> 1.5
 pump.run = true;               // status 0 -> 1, then run false -> true
-pump.write_words(2, [0x0002]); // raw write by byte offset: fault becomes true
+pump.write_bytes(2, Buffer.from([0x00, 0x02])); // raw write by byte offset: fault becomes true
 pump.id = 70000;                // throws RangeError, the old value is kept
 ```
 
@@ -65,10 +65,10 @@ Exchanging data with a device in another byte order:
 import { load_entry, store_entry } from "tagged-data";
 
 const entry = pump.layout.entries.get("pressure");
-load_entry(entry, io_buffer, pump.buffer, "LEBS");  // device -> big-endian
-store_entry(entry, pump.buffer, io_buffer, "LEBS"); // big-endian -> device
-// after changing pump.buffer directly, report the changes:
-pump.detect();
+const staged = pump.read_bytes();                   // a copy of the big-endian bytes
+load_entry(entry, io_buffer, staged, "LEBS");       // device -> big-endian
+pump.write_bytes(0, staged);                        // one write, the changes are reported
+store_entry(entry, pump.read_bytes(), io_buffer, "LEBS"); // big-endian -> device
 ```
 
 ## Exports

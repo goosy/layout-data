@@ -29,20 +29,21 @@ describe("Observer", () => {
 	test("changes of one detection are reported in layout order", () => {
 		const data = create();
 		const events = record(data);
-		data.buffer.writeUInt16BE(5, 4); // b
-		data.buffer[2] = 0x01; // f8
-		data.buffer[3] = 0x01; // f0
-		data.buffer.writeUInt16BE(7, 0); // a
-		data.detect();
+		data.transaction(() => {
+			data.write_bytes(4, Uint8Array.of(0, 5)); // b
+			data.write_bytes(2, Uint8Array.of(0x01, 0x01)); // f8 and f0
+			data.write_bytes(0, Uint8Array.of(0, 7)); // a
+		});
 		assert.deepEqual(events.map(([name]) => name), ["a", "flags", "f0", "f8", "b"]);
 	});
 
 	test("a value changed and restored before detection is not reported", () => {
 		const data = create();
 		const events = record(data);
-		data.buffer.writeUInt16BE(9, 0);
-		data.buffer.writeUInt16BE(0, 0);
-		data.detect();
+		data.transaction(() => {
+			data.write_bytes(0, Uint8Array.of(0, 9));
+			data.write_bytes(0, Uint8Array.of(0, 0));
+		});
 		assert.deepEqual(events, []);
 	});
 
@@ -50,9 +51,10 @@ describe("Observer", () => {
 		const data = create();
 		const events = record(data);
 		data.get("a").on("change", (_, value) => { data.b = value * 10; });
-		data.buffer.writeUInt16BE(1, 0); // a
-		data.buffer[3] = 0x01; // f0
-		data.detect();
+		data.transaction(() => {
+			data.write_bytes(0, Uint8Array.of(0, 1)); // a
+			data.write_bit(3, 0x01, true); // f0
+		});
 		assert.deepEqual(events, [["a", 0, 1], ["flags", 0, 1], ["f0", false, true], ["b", 0, 10]]);
 		assert.equal(data.b, 10);
 	});
@@ -66,5 +68,27 @@ describe("Observer", () => {
 		const events = record(data);
 		data.b = 3;
 		assert.deepEqual(events, [["a", 16, 17], ["b", 0, 3]]);
+	});
+
+	test("only the written range is compared: a write reports its own tags and no others", () => {
+		const data = create();
+		const events = record(data);
+		data.write_bytes(2, Uint8Array.of(0, 0)); // the same bytes as before
+		data.b = 3;
+		data.write_bit(1, 0x01, false);
+		assert.deepEqual(events, [["b", 0, 3]]);
+	});
+
+	test("a rolled back transaction leaves no range to compare", () => {
+		const data = create();
+		const events = record(data);
+		assert.throws(() => data.transaction(() => {
+			data.a = 5;
+			data.b = 6;
+			throw new Error("x");
+		}));
+		data.write_bytes(2, Uint8Array.of(0, 1));
+		assert.deepEqual(events.map(([name]) => name), ["flags", "f0"]);
+		assert.equal(data.a, 0);
 	});
 });

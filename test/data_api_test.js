@@ -38,7 +38,7 @@ describe("2 TData", () => {
 		assert.equal(data.status, 0x0001);
 		assert.equal(data.pressure, 1.5);
 		const events = record(data);
-		data.detect();
+		data.write_bytes(0, data.read_bytes()); // the same bytes again
 		assert.deepEqual(events, []);
 	});
 
@@ -75,7 +75,7 @@ describe("2 TData", () => {
 		assert.equal(data.name, "d");
 		assert.equal(data.layout, LAYOUT);
 		assert.equal(data.size, 8);
-		assert.equal(data.buffer.length, 8);
+		assert.equal(data.read_bytes().length, 8);
 	});
 
 	test("2.2 the tag accessors sit once on the prototype of the class of the layout", () => {
@@ -96,18 +96,16 @@ describe("2 TData", () => {
 		assert.equal(other.pressure, 1.5); // the buffers stay separate
 	});
 
-	test("2.2 name is writable; layout, size and buffer are read-only, the buffer contents writable", () => {
+	test("2.2 name is writable; layout and size are read-only; the bytes are not a property", () => {
 		const data = new TData(LAYOUT, "d");
 		data.name = "renamed";
 		assert.equal(data.name, "renamed");
-		const { buffer } = data;
 		// ES modules run in strict mode: assigning a getter-only property throws
 		assert.throws(() => { data.layout = null; }, TypeError);
 		assert.throws(() => { data.size = 1; }, TypeError);
-		assert.throws(() => { data.buffer = Buffer.alloc(8); }, TypeError);
-		assert.equal(data.buffer, buffer);
-		data.buffer.writeUInt16BE(9, 0);
-		assert.equal(data.id, 9);
+		for (const member of ["buffer", "detect", "after_write", "write_words", "write_dwords"]) {
+			assert.equal(member in data, false, member);
+		}
 	});
 
 	test("2.3 a write takes effect at once, for the data block and its TTag", () => {
@@ -131,7 +129,7 @@ describe("2 TData", () => {
 		data.status = 0;
 		data.alarm = true; // offset 0: bit 8 of the word
 		assert.equal(data.status, 0x0100);
-		assert.deepEqual([...data.buffer.subarray(2, 4)], [0x01, 0x00]);
+		assert.deepEqual([...data.read_bytes(2, 2)], [0x01, 0x00]);
 		data.run = true; // offset 8: bit 0 of the word
 		assert.equal(data.status, 0x0101);
 	});
@@ -149,15 +147,6 @@ describe("2 TData", () => {
 		assert.ok(data.get("id") instanceof TTag);
 		assert.equal(data.get("id"), data.get("id"));
 		assert.equal(data.get("nope"), undefined);
-	});
-
-	test("2.6 detect() reports a direct write of the buffer", () => {
-		const data = new TData(LAYOUT, "d");
-		const events = record(data);
-		data.buffer.writeUInt16BE(9, 0);
-		assert.deepEqual(events, []);
-		data.detect();
-		assert.deepEqual(events, [["id", 7, 9]]);
 	});
 });
 
@@ -186,13 +175,12 @@ describe("3 TTag", () => {
 });
 
 describe("4.3 changes and events", () => {
-	test("every source of change is reported: property, TTag, direct buffer write", () => {
+	test("every source of change is reported: property, TTag, raw write", () => {
 		const data = new TData(LAYOUT, "d");
 		const events = record(data);
 		data.id = 1;
 		data.get("id").value = 2;
-		data.buffer.writeUInt16BE(3, 0);
-		data.detect();
+		data.write_bytes(0, Uint8Array.of(0, 3));
 		assert.deepEqual(events, [["id", 7, 1], ["id", 1, 2], ["id", 2, 3]]);
 	});
 
@@ -232,9 +220,8 @@ describe("4.3 changes and events", () => {
 		assert.throws(() => { data.id = 0; }, /do not settle after 16 rounds/);
 		data.get("id").off("change", ping);
 		const events = record(data);
-		data.detect();
-		assert.equal(events.length, 1);
-		assert.equal(events[0][0], "id");
+		data.pressure = 2; // the next write reports the change left over
+		assert.deepEqual(events.map(([name]) => name), ["id", "pressure"]);
 	});
 });
 
@@ -257,31 +244,94 @@ describe("4.2 detection after a write", () => {
 	});
 });
 
-describe("2.5 raw writes of words and double words", () => {
-	test("write_words writes big-endian words from an even offset and detects the change", () => {
+describe("2.5 raw reads and writes", () => {
+	test("read_bytes returns a copy; by default the whole block, or from an offset to the end", () => {
+		const data = new TData(LAYOUT, "d");
+		assert.deepEqual([...data.read_bytes()], [0, 7, 0, 1, 0x3f, 0xc0, 0, 0]);
+		assert.deepEqual([...data.read_bytes(4)], [0x3f, 0xc0, 0, 0]);
+		assert.deepEqual([...data.read_bytes(2, 2)], [0, 1]);
+		assert.equal(data.read_bytes(8).length, 0);
+		const copy = data.read_bytes();
+		assert.ok(Buffer.isBuffer(copy));
+		copy.fill(0xff);
+		assert.equal(data.id, 7);
+		assert.deepEqual([...data.read_bytes(0, 2)], [0, 7]);
+	});
+
+	test("write_bytes writes the bytes at a byte offset; the tags that own them change and emit", () => {
 		const data = new TData(LAYOUT, "d");
 		const events = record(data);
-		data.write_words(0, [10, 0x1234]);
-		assert.deepEqual([...data.buffer.subarray(0, 4)], [0, 10, 0x12, 0x34]);
+		const writes = [];
+		data.on("write", (d) => writes.push(d));
+		data.write_bytes(0, Buffer.from([0, 10, 0x12, 0x34]));
+		assert.deepEqual([...data.read_bytes(0, 4)], [0, 10, 0x12, 0x34]);
 		assert.equal(data.id, 10);
-		assert.deepEqual(events[0], ["id", 7, 10]);
 		assert.equal(data.status, 0x1234);
+		assert.deepEqual(events.map(([name]) => name), ["id", "status", "run"]);
+		assert.equal(writes.length, 1);
 	});
 
-	test("write_dwords writes big-endian double words from an even offset", () => {
+	test("write_bytes takes any Uint8Array, and a write need not align with tags", () => {
 		const data = new TData(LAYOUT, "d");
-		data.write_dwords(2, new Uint32Array([0x01020304]));
-		assert.deepEqual([...data.buffer.subarray(2, 6)], [1, 2, 3, 4]);
+		const events = record(data);
+		data.write_bytes(5, Uint8Array.of(0xc1)); // the middle of pressure
+		assert.deepEqual(events.map(([name]) => name), ["pressure"]);
+		assert.deepEqual([...data.read_bytes(4, 4)], [0x3f, 0xc1, 0, 0]);
 	});
 
-	test("an odd offset or a run past the end throws and writes nothing", () => {
+	test("write_bit changes only the masked bits", () => {
 		const data = new TData(LAYOUT, "d");
-		const before = Buffer.from(data.buffer);
-		assert.throws(() => data.write_words(1, [1]), RangeError);
-		assert.throws(() => data.write_dwords(3, [1]), RangeError);
-		assert.throws(() => data.write_words(data.size - 2, [1, 2]), RangeError);
-		assert.throws(() => data.write_dwords(data.size - 2, [1]), RangeError);
-		assert.deepEqual(data.buffer, before);
+		const events = record(data);
+		data.write_bit(3, 0x80, true);
+		assert.deepEqual([...data.read_bytes(2, 2)], [0, 0x81]);
+		data.write_bit(3, 0x81, false);
+		assert.deepEqual([...data.read_bytes(2, 2)], [0, 0]);
+		data.write_bit(3, 0x01, 1); // truthiness
+		assert.equal(data.run, true);
+		assert.deepEqual(events.map(([name]) => name), ["status", "status", "run", "status", "run"]);
+	});
+
+	test("every raw write emits write, also one that changes nothing; a read does not", () => {
+		const data = new TData(LAYOUT, "d");
+		let writes = 0;
+		data.on("write", () => writes++);
+		data.write_bytes(0, data.read_bytes(0, 2));
+		data.write_bit(3, 0x01, true);
+		data.read_bytes();
+		assert.equal(writes, 2);
+	});
+
+	test("an empty write_bytes writes nothing and emits no write, but its range is still checked", () => {
+		const data = new TData(LAYOUT, "d");
+		let writes = 0;
+		data.on("write", () => writes++);
+		data.write_bytes(0, new Uint8Array(0));
+		data.write_bytes(8, new Uint8Array(0)); // the end of the block
+		assert.equal(writes, 0);
+		assert.throws(() => data.write_bytes(9, new Uint8Array(0)), RangeError);
+		data.transaction(() => { data.write_bytes(0, new Uint8Array(0)); });
+		assert.equal(writes, 0);
+	});
+
+	test("a bad range, mask or source throws, changes nothing and emits no write", () => {
+		const data = new TData(LAYOUT, "d");
+		const before = data.read_bytes();
+		let writes = 0;
+		data.on("write", () => writes++);
+		for (const [offset, length] of [[-1, 1], [1.5, 1], [9, 0], [0, 9], [8, 1], [4, -1], [0, 1.5], ["0", 1]]) {
+			assert.throws(() => data.read_bytes(offset, length), RangeError, `${offset}, ${length}`);
+		}
+		assert.throws(() => data.write_bytes(7, Uint8Array.of(1, 2)), RangeError);
+		assert.throws(() => data.write_bytes(-1, Uint8Array.of(1)), RangeError);
+		assert.throws(() => data.write_bytes(0.5, Uint8Array.of(1)), RangeError);
+		assert.throws(() => data.write_bytes(0, [1, 2]), TypeError);
+		assert.throws(() => data.write_bit(8, 0x01, true), RangeError);
+		assert.throws(() => data.write_bit(-1, 0x01, true), RangeError);
+		for (const mask of [0, 0x100, -1, 1.5, "1", Number.NaN]) {
+			assert.throws(() => data.write_bit(0, mask, true), RangeError, String(mask));
+		}
+		assert.deepEqual(data.read_bytes(), before);
+		assert.equal(writes, 0);
 	});
 });
 
@@ -301,7 +351,7 @@ describe("4.2 transactions", () => {
 		const result = data.transaction(() => {
 			data.id = 9;
 			data.get("pressure").value = 2;
-			data.write_words(0, [10]);
+			data.write_bytes(0, Uint8Array.of(0, 10));
 			assert.equal(data.id, 10);
 			assert.deepEqual(events, []);
 			assert.deepEqual(writes, []);
@@ -332,11 +382,14 @@ describe("4.2 transactions", () => {
 		assert.equal(writes.length, 2);
 	});
 
-	test("direct writes to the buffer are detected at the commit and emit no write", () => {
+	test("raw writes in a transaction are detected at the commit, with one write", () => {
 		const { data, writes, events } = create();
-		data.transaction(() => { data.buffer.writeUInt16BE(0x1234, 0); });
-		assert.deepEqual(events, [["id", 7, 0x1234]]);
-		assert.deepEqual(writes, []);
+		data.transaction(() => {
+			data.write_bytes(0, Uint8Array.of(0x12, 0x34));
+			data.write_bit(7, 0xff, true);
+		});
+		assert.deepEqual(events.map(([name]) => name), ["id", "pressure"]);
+		assert.equal(writes.length, 1);
 	});
 
 	test("a transaction without a write emits nothing", () => {
@@ -348,18 +401,18 @@ describe("4.2 transactions", () => {
 
 	test("a throwing function rolls back the buffer, emits nothing and rethrows", () => {
 		const { data, writes, events } = create();
-		const before = Buffer.from(data.buffer);
+		const before = data.read_bytes();
 		assert.throws(() => data.transaction(() => {
 			data.id = 9;
-			data.buffer[7] = 0xff;
+			data.write_bit(7, 0xff, true);
 			throw new RangeError("boom");
 		}), /boom/);
-		assert.deepEqual(data.buffer, before);
+		assert.deepEqual(data.read_bytes(), before);
 		assert.deepEqual(events, []);
 		assert.deepEqual(writes, []);
-		data.detect();
-		assert.deepEqual(events, []);
-		data.id = 8; // the data block works normally afterwards
+		data.id = 8; // the data block works normally afterwards, the rolled back writes leave no trace
+		assert.deepEqual(events, [["id", 7, 8]]);
+		data.pressure = 1.5; // unchanged
 		assert.deepEqual(events, [["id", 7, 8]]);
 	});
 
@@ -377,31 +430,14 @@ describe("4.2 transactions", () => {
 		assert.deepEqual(events, [["id", 7, 3]]);
 	});
 
-	test("a change made by writing the buffer before the transaction is still reported by the next detection", () => {
+	test("a nested transaction throws, and rolls the outer one back if unhandled", () => {
 		const { data, events } = create();
-		data.buffer.writeUInt16BE(4, 0);
-		assert.throws(() => data.transaction(() => {
-			data.id = 9;
-			throw new Error("x");
-		}));
-		assert.equal(data.id, 4);
-		data.detect();
-		assert.deepEqual(events, [["id", 7, 4]]);
-	});
-
-	test("detect() and a nested transaction throw inside a transaction, and roll it back if unhandled", () => {
-		const { data, events } = create();
-		assert.throws(() => data.transaction(() => {
-			data.id = 9;
-			data.detect();
-		}), /not allowed in a transaction/);
 		assert.throws(() => data.transaction(() => {
 			data.id = 9;
 			data.transaction(() => {});
 		}), /already open/);
 		assert.equal(data.id, 7);
 		assert.deepEqual(events, []);
-		data.detect(); // the transaction is closed
 	});
 
 	test("the function returning a Promise is not inspected: the transaction ends at once", () => {
@@ -443,7 +479,17 @@ describe("4.2 transactions", () => {
 
 describe("5 errors", () => {
 	test("a tag name colliding with a data block member throws at creation", () => {
-		const struct = make_struct([{ name: "detect", type: "UInt", offset: 0, length: 16, init_value: 0 }], "BAD");
+		const struct = make_struct([{ name: "read_bytes", type: "UInt", offset: 0, length: 16, init_value: 0 }], "BAD");
 		assert.throws(() => new TData(register_layout(struct), "d"), /collides with a TData member/);
+	});
+
+	test("buffer and detect are not members: tags may have these names", () => {
+		const struct = make_struct([
+			{ name: "buffer", type: "UInt", offset: 0, length: 16, init_value: 3 },
+			{ name: "detect", type: "UInt", offset: 16, length: 16, init_value: 4 },
+		], "FREE_NAMES");
+		const data = new TData(register_layout(struct), "d");
+		assert.equal(data.buffer, 3);
+		assert.equal(data.detect, 4);
 	});
 });

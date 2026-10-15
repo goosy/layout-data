@@ -3,18 +3,18 @@ import assert from "node:assert/strict";
 import { Buffer } from "node:buffer";
 import test, { describe } from "node:test";
 import { io_index, io_index_table, io_range, load_entry, store_entry } from "../src/endian.js";
-import { TData } from "../src/TData.js";
 import { register_layout } from "../src/layout.js";
 import { make_struct } from "./share.js";
 
-/** Loads a tag of a data block from an IO buffer and detects the change. */
+/** Loads a tag of a data block from an IO buffer: stages a copy, converts into it, writes it back. */
 function load(data, io_buffer, endian) {
-	load_entry(data.get("tag").entry, io_buffer, data.buffer, endian);
-	data.detect();
+	const staged = data.read_bytes();
+	load_entry(data.get("tag").entry, io_buffer, staged, endian);
+	data.write_bytes(0, staged);
 }
 
 function store(data, io_buffer, endian) {
-	store_entry(data.get("tag").entry, data.buffer, io_buffer, endian);
+	store_entry(data.get("tag").entry, data.read_bytes(), io_buffer, endian);
 }
 
 describe("multi-byte conversion", () => {
@@ -31,7 +31,7 @@ describe("multi-byte conversion", () => {
 				const data = one_tag(type, 0);
 				load(data, Buffer.from(bytes), endian);
 				assert.equal(data.tag, 0x1234);
-				assert.deepEqual([...data.buffer.subarray(0, 2)], [0x12, 0x34]);
+				assert.deepEqual([...data.read_bytes(0, 2)], [0x12, 0x34]);
 				const out = Buffer.alloc(2);
 				store(data, out, endian);
 				assert.deepEqual([...out], bytes);
@@ -78,10 +78,10 @@ describe("multi-byte conversion", () => {
 		const io = Buffer.from([0xee, 0xee, 0xee, 0xee, 0x04, 0x03, 0x02, 0x01]);
 		load(data, io, "LE");
 		assert.equal(data.tag, 0x01020304);
-		assert.deepEqual([...data.buffer.subarray(0, 4)], [0, 0, 0, 0]);
+		assert.deepEqual([...data.read_bytes(0, 4)], [0, 0, 0, 0]);
 	});
 
-	test("a load is reported as a change once detected", () => {
+	test("a load is reported as a change", () => {
 		const data = one_tag("Int", 0);
 		const events = [];
 		data.get("tag").on("change", (...args) => events.push(args));
@@ -178,21 +178,21 @@ describe("io_index_table", () => {
 			const layout = LAYOUT;
 			const table = io_index_table(layout, endian);
 			const io = Buffer.from(Array.from({ length: layout.size }, (_, i) => 0x10 + i));
-			const by_entry = new TData(layout, "e");
+			const by_entry = Buffer.alloc(layout.size);
 			const by_table = Buffer.alloc(layout.size);
 			for (const entry of layout.entries.values()) {
-				if (entry.type !== "bool") load_entry(entry, io, by_entry.buffer, endian);
+				if (entry.type !== "bool") load_entry(entry, io, by_entry, endian);
 			}
 			for (let i = 0; i < layout.size; i++) by_table[i] = io[table[i]];
-			assert.deepEqual(by_table.subarray(0, 4), by_entry.buffer.subarray(0, 4)); // u and the word
-			assert.deepEqual(by_table.subarray(4), by_entry.buffer.subarray(4));
+			assert.deepEqual(by_table.subarray(0, 4), by_entry.subarray(0, 4)); // u and the word
+			assert.deepEqual(by_table.subarray(4), by_entry.subarray(4));
 
 			const back_entry = Buffer.alloc(layout.size);
 			const back_table = Buffer.alloc(layout.size);
 			for (const entry of layout.entries.values()) {
-				if (entry.type !== "bool") store_entry(entry, by_entry.buffer, back_entry, endian);
+				if (entry.type !== "bool") store_entry(entry, by_entry, back_entry, endian);
 			}
-			for (let i = 0; i < layout.size; i++) back_table[table[i]] = by_entry.buffer[i];
+			for (let i = 0; i < layout.size; i++) back_table[table[i]] = by_entry[i];
 			assert.deepEqual(back_table, back_entry);
 		});
 	}

@@ -25,7 +25,7 @@
 | Part | Responsibility | Instances | Mutability |
 | --- | --- | --- | --- |
 | Layout | Compiled from a layout description: byte position and codec of every tag, a byte-to-tag lookup table, prototype accessors | One per structure | Immutable |
-| TData | The value buffer `buffer` (big-endian), access by name, raw write methods, the TTag returned by `get(name)` | One per tdata | Mutable |
+| TData | The value buffer (private, big-endian), access by name, raw read and write methods, the TTag returned by `get(name)` | One per tdata | Mutable |
 | Observer | Snapshot comparison, emits change events | One per tdata | Mutable |
 
 Dependency direction: Observer depends on TData and Layout, TData depends only on Layout, Layout depends only on the layout description. The user's scheduling and IO are outside the package; the package notifies them only through the `write` event of a TData, which any party can listen to.
@@ -82,16 +82,19 @@ The layout rules are validated centrally at the layout stage, not spread over th
 ## 5. TData
 
 - `new TData(layout, name)` takes a registered layout, or the name of one (resolved by `layout_of`), and returns an instance of the subclass built for the layout name (see §4); the constructor calls `super()` first and then returns that instance. A layout object that is not the registered one of its name throws (an identity check, not a structural one). `TData` itself is never the direct class of an instance. The instance allocates `buffer` (`layout.size` bytes) and encodes the `init_value` of the entries in order.
-- `name` is writable; `layout`, `size` and `buffer` are read-only (getter only, assignment throws `TypeError`), and the content of `buffer` can be read and written. `buffer` is always big-endian.
-- There are two ways to write `buffer`, both through TData and allowed at any time:
+- `name` is writable; `layout` and `size` are read-only (getter only, assignment throws `TypeError`). The buffer is a private field (`#buffer`) with no accessor, always big-endian; the Observer and the transaction get it from the TData that creates them. Typed access goes through tags, untyped access through bytes: there are no raw methods classified by width.
+- There are two ways to write the buffer, both through TData and allowed at any time:
 
   | Way | Used by |
   | --- | --- |
   | Assignment by name (`data[name] = v` or `tag.value = v`) | Any code |
-  | Raw write methods `write_bit(offset, mask, value)`, `write_bytes(offset, source)`, `write_words(offset, source)`, `write_dwords(offset, source)`, locating by byte offset | Code that deals with register addresses, such as a Modbus server |
+  | Raw methods `write_bytes(offset, source)` and `write_bit(offset, mask, value)`, locating by byte offset | Code that deals with register addresses, such as a Modbus server, and the IO layer |
+
+- `read_bytes(offset = 0, length = size - offset)` returns a copy of a byte range (`Buffer.from(buffer.subarray(...))`), so the buffer cannot be changed through it.
+- The raw methods check their arguments before touching the buffer, so that on error the data is unchanged and `#written()` is not reached: `offset` and `length` must be integers with `0 <= offset` and `offset + length <= size`, `mask` an integer from 1 to 0xff (`RangeError`), `source` a `Uint8Array` (`TypeError`). `write_bytes` copies with `buffer.set(source, offset)`. A raw write records the byte range it touched for the Observer (§5.1).
 
 - TData throws exceptions on errors (layout conflicts, out-of-range values); it neither logs nor exits.
-- `data.get(name)` returns the `TTag` of the tag, created and cached on first access; for an unknown name it returns `undefined`. A TTag holds no value: reading `value` decodes from the `buffer` of the TData, writing `value` is exactly equivalent to `data[name] = v`; `name`, `type` and `length` come from the Layout entry; the `change` event is emitted by the Observer.
+- `data.get(name)` returns the `TTag` of the tag, created and cached on first access; for an unknown name it returns `undefined`. A TTag holds no value: reading `value` decodes from the buffer of the TData, writing `value` is exactly equivalent to `data[name] = v`; `name`, `type` and `length` come from the Layout entry; the `change` event is emitted by the Observer.
 
 ### 5.1 Detection, transactions and the Observer
 
@@ -106,17 +109,17 @@ Every write path ends in the same private method of TData:
 ```
 
 - Outside a transaction, `diff()` is called synchronously inside the write statement, then `write` is emitted.
-- After writing the content of `buffer` directly, call `detect()`; inside a transaction `detect()` throws `Error`.
+- `diff()` is internal: no public method triggers a detection. Every write path reaches it through `#written()`, so the buffer never differs from the snapshot outside a write or a transaction.
 
-**Transactions.** `transaction(fn)` throws `Error` if a transaction is already open; otherwise it copies `buffer`, registers the transaction state `{ written: false }` and calls `fn()` synchronously:
+**Transactions.** `transaction(fn)` throws `Error` if a transaction is already open; otherwise it copies the buffer, registers the transaction state `{ written: false }` and calls `fn()` synchronously:
 
 - `fn` returns normally: the transaction is closed, `diff()` is called once, one `write` is emitted if `written` is true, and the return value of `fn` is returned (it is not checked for being a Promise);
-- `fn` throws: the transaction is closed, the copy is written back to `buffer`, no event is emitted, and the original exception is rethrown;
-- The snapshot of the Observer stays untouched during the transaction: the `diff()` at commit is exactly the net change between the last detection before the transaction and now. After a rollback `buffer` is back to its content at the start, in the same relation to the snapshot as before the transaction, so a change made by writing `buffer` directly before the transaction and not yet detected is left for the next detection;
+- `fn` throws: the transaction is closed, the copy is written back to the buffer, no event is emitted, and the original exception is rethrown;
+- The snapshot of the Observer stays untouched during the transaction: the `diff()` at commit is exactly the net change between the last detection before the transaction and now. After a rollback the buffer is back to its content at the start, equal to the snapshot again;
 - Events are emitted after the transaction is closed, so writes and transactions in handlers are ordinary ones; an exception thrown by a handler at commit propagates and does not roll back;
 - Node.js runs no other JS code during the transaction, so no other code on the thread can access the tdata and the transaction needs no lock or isolation. `written` is a boolean flag, not a count, because the `write` event carries nothing beyond the tdata.
 
-**Snapshot comparison.** The Observer holds a snapshot as long as `buffer`, copied from `buffer` at creation. `diff()` compares `buffer` with the snapshot byte by byte; for the bytes that differ it finds the related tags through the lookup table `tags_at_byte`, decodes the old value from the snapshot and the new value from `buffer`, and records a change when the values differ (two NaNs count as equal). It then updates the snapshot and reports all changes together:
+**Snapshot comparison.** The Observer holds a snapshot as long as the buffer, copied from it at creation. Every write path knows the byte range it wrote and registers it with the Observer (`touch(start, end)`; inside a transaction the ranges accumulate into one); `diff()` compares the buffer with the snapshot byte by byte over the registered range only, as all other bytes are equal by construction, and clears the range. For the bytes that differ it finds the related tags through the lookup table `tags_at_byte`, decodes the old value from the snapshot and the new value from `buffer`, and records a change when the values differ (two NaNs count as equal). It then updates the snapshot and reports all changes together:
 
 - Changes are reported in layout order (a combined word before its bits). For each change TData emits `change(tagname, old, new)` first, then the TTag of that tag emits `change(old, new)`. Events are always emitted after the new value has taken effect;
 - Several writes to the same tag between two detections are merged into one event; a value changed and restored emits none;
@@ -125,7 +128,7 @@ Every write path ends in the same private method of TData:
 
 ## 6. Byte order conversion
 
-`endian.js` converts between device byte order and the internal big-endian order per layout entry (`load_entry` / `store_entry` / `io_index` / `io_range`), and builds the byte index table of a whole data block (`io_index_table`), with which a user that exchanges groups of entries with a device copies the bytes of the group directly. The table agrees with `load_entry` / `store_entry` for every entry (covered by a test). It does not detect changes:
+`endian.js` converts between device byte order and the internal big-endian order per layout entry (`load_entry` / `store_entry` / `io_index` / `io_range`), and builds the byte index table of a whole data block (`io_index_table`), with which a user that exchanges groups of entries with a device copies the bytes of the group directly. The table agrees with `load_entry` / `store_entry` for every entry (covered by a test). They operate on buffers given by the caller, never on the buffer of a TData: the IO layer stages a copy from `read_bytes`, converts into it and writes it back with `write_bytes` (spec-data-api.md §7). They do not detect changes:
 
 - 2 bytes: `BE` copies as is; `LE` / `little` / `BEBS` swap the two bytes;
 - 4 bytes: the four orders `BE`, `LE` / `little`, `BEBS` and `LEBS` are supported;
@@ -134,5 +137,5 @@ Every write path ends in the same private method of TData:
 ## 7. Build and test
 
 - `pnpm build`: rolldown bundles `src/index.js` into `dist/tagged-data.js` (`yaml` is bundled into the library);
-- `pnpm bench`: `bench/change_detection_bench.js` measures reading a block of 86 tags and 146 bytes (loading every tag from a device-ordered buffer, then detecting and reporting the changes). On a development machine one cycle takes about 2 µs with no change, 2.5–3.5 µs with a few changes, and 7–8 µs with every tag changed;
+- `pnpm bench`: `bench/change_detection_bench.js` measures reading a block of 86 tags and 146 bytes (loading every tag from a device-ordered buffer through `read_bytes` and one `write_bytes`, which detects and reports the changes). On a development machine, converting entry by entry takes one cycle about 2.5 µs with no change, 2.6–3.6 µs with a few changes, and 7.5 µs with every tag changed; copying the bytes with `io_index_table` takes about 0.4 µs, 0.5–1.4 µs and 5.2 µs;
 - `pnpm test`: builds first, then runs the type tests and `node --test`; `pnpm lint`: ESLint.

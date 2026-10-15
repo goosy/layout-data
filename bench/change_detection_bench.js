@@ -1,8 +1,10 @@
-// Benchmark of reading a data block (doc/design.md §5.1): loading every tag
-// from a device-ordered IO buffer, then detecting and reporting the changes.
+// Benchmark of reading a data block (doc/design.md §5.1, §6): loading every tag
+// from a device-ordered IO buffer through the raw reads and writes (a staged
+// copy from read_bytes, written back by one write_bytes), which detects and
+// reports the changes.
 // Not part of `pnpm test`. Run: pnpm bench
 import { Buffer } from "node:buffer";
-import { TData, build_structure, load_entry, register_layout } from "../src/index.js";
+import { TData, build_structure, io_index_table, load_entry, register_layout } from "../src/index.js";
 
 const ITER = 200_000;
 const TAG_COUNT = 65;
@@ -23,15 +25,24 @@ for (let i = 0; i < TAG_COUNT; i++) items.push({ name: `word_${i}`, type: "UInt"
 const layout = register_layout(build_structure({ name: "BENCH" }, items));
 const size = layout.size;
 
-function make_reader(endian) {
+// "entries": convert entry by entry into the staged copy; "table": copy the bytes of the whole block by the index table
+function make_reader(endian, method) {
 	const data = new TData(layout, "bench");
 	let events = 0;
 	data.on("change", () => { events++; });
 	const entries = [...data.layout.entries.values()];
-	const read = (io) => {
-		for (const entry of entries) load_entry(entry, io, data.buffer, endian);
-		data.detect();
-	};
+	const table = io_index_table(layout, endian);
+	const read = method === "entries"
+		? (io) => {
+				const staged = data.read_bytes();
+				for (const entry of entries) load_entry(entry, io, staged, endian);
+				data.write_bytes(0, staged);
+			}
+		: (io) => {
+				const staged = Buffer.allocUnsafe(size);
+				for (let i = 0; i < size; i++) staged[i] = io[table[i]];
+				data.write_bytes(0, staged);
+			};
 	return { read, events: () => events };
 }
 
@@ -63,11 +74,13 @@ function bench(reader, frames) {
 }
 
 const rows = [];
-for (const endian of ["BE", "LEBS"]) {
-	for (const kind of ["none", "3 reals", "status bits", "all"]) {
-		const reader = make_reader(endian);
-		const ns = bench(reader, make_frames(kind));
-		rows.push({ "endian": endian, "scenario": kind, "ns/cycle": ns.toFixed(0) });
+for (const method of ["entries", "table"]) {
+	for (const endian of ["BE", "LEBS"]) {
+		for (const kind of ["none", "3 reals", "status bits", "all"]) {
+			const reader = make_reader(endian, method);
+			const ns = bench(reader, make_frames(kind));
+			rows.push({ method, endian, "scenario": kind, "ns/cycle": ns.toFixed(0) });
+		}
 	}
 }
 console.log(`${layout.name}: ${layout.entries.size} tags, ${size} bytes, ${ITER} cycles each`);

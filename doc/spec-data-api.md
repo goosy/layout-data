@@ -37,9 +37,10 @@ const data = new TData(layout, name);
 | `name` | read/write | The name of the tdata |
 | `layout` | read-only | The layout in use |
 | `size` | read-only | Size of the tdata in bytes |
-| `buffer` | read-only | The internal buffer (big-endian). The property cannot be replaced by another buffer, but its content can be read and written. After changing the content directly you must call `detect()`, otherwise the changes are not detected (not needed inside a transaction, which detects at commit, see §4.2) |
 
 Assigning to a read-only property throws `TypeError`.
+
+The bytes of a tdata (stored big-endian internally) are not exposed as a property: they are reached only by access by name (§2.3), through a TTag (§3) and by raw reads and writes (§2.5). Every write therefore goes through TData and no change is missed.
 
 ### 2.3 Access by name
 
@@ -61,20 +62,28 @@ const tag = data.get("pressure");
 
 Returns the TTag of the tag; the same tdata always returns the same TTag for the same name. Returns `undefined` if the name does not exist.
 
-### 2.5 Raw writes
+### 2.5 Raw reads and writes
 
-For writers that do not access by tag name (such as an upstream server). They locate the data by byte offset, and what happens after the write is the same as for a write by name:
+Untyped access to the bytes, for users that do not access by tag name (such as an upstream server, or the IO layer that exchanges data with a device). **Typed access goes through tags, untyped access goes through bytes**: raw access has only two granularities, byte and bit, it does not interpret the type of a value, and it has no methods classified by width (words, double words).
+
+`offset` is a byte offset, the same as the byte position of a tag in the layout (the bit offset divided by 8). The data is big-endian; converting device byte order is the job of the IO layer (§7). What happens after a write is the same as for a write by name:
 
 | Method | Description |
 | --- | --- |
-| `write_bit(offset, mask, value)` | Write the bits of a byte selected by `mask` |
-| `write_bytes(offset, source)` | Write a run of bytes starting at `offset` |
-| `write_words(offset, source)` | Write a run of 16-bit words (big-endian) starting at `offset`; `offset` is a byte offset and must be even |
-| `write_dwords(offset, source)` | Write a run of 32-bit double words (big-endian) starting at `offset`; `offset` is a byte offset and must be even |
+| `read_bytes(offset = 0, length = size - offset)` | Read `length` bytes starting at `offset` and return a copy (a `Buffer`); changing the copy does not affect the tdata |
+| `write_bytes(offset, source)` | Write all the bytes of `source` (a `Uint8Array`) starting at `offset`; an empty `source` writes nothing, is not a write and emits no `write` |
+| `write_bit(offset, mask, value)` | Write the bits of the byte at `offset` selected by `mask`; `value` is taken by truthiness and the other bits are unchanged |
 
-### 2.6 Detection and transactions
+```js
+data.write_bytes(5 * 2, Buffer.from([0x12, 0x34]));  // register 5 (a Modbus write of one register)
+const bytes = data.read_bytes();                     // a copy of the whole block
+```
 
-`detect()`: performs one detection (§4.1) and reports all changes since the last detection. A detection runs automatically after every write, so you usually need it only after changing `buffer` directly. It is not allowed inside a transaction (§4.2).
+- A write need not be aligned with tags: the tags that own the bytes written change with them, and emit events as in §4;
+- There is no `read_bit`: read a bit with `read_bytes(offset, 1)[0] & mask`. `write_bit` exists because it is a read-modify-write done in one step, which the caller cannot build reliably from `write_bytes`;
+- An `offset` or `length` that is not a non-negative integer in range, a write past the end of the data block, or a `mask` that is not an integer from 1 to 0xff throws `RangeError`; a `source` that is not a `Uint8Array` throws `TypeError`. The arguments are checked before any byte is changed: on error the data is unchanged and no `write` is emitted.
+
+### 2.6 Transactions
 
 ```js
 const result = data.transaction(() => {
@@ -98,7 +107,7 @@ Emitted when the value of any tag of the tdata changes. The arguments are the ta
 data.on("write", (data) => { /* ... */ });
 ```
 
-Emitted after every write, whether or not it changed a value. It means "a write happened", for the user's scheduling and IO: they must handle every write, even one that wrote the same value; a change of value is what `change` stands for. It is emitted after the detection of that write and the `change` events it caused. A direct write to `buffer` is not a write in this sense and emits no `write`. Writes inside a transaction do not emit it at once, see §4.2. Any number of parties can listen, each with its own handler.
+Emitted after every write, whether or not it changed a value. A write is a write by name, through a TTag, or a raw write (`write_bytes`, `write_bit`); a read does not emit it, and neither does a failed write (one that throws). It means "a write happened", for the user's scheduling and IO: they must handle every write, even one that wrote the same value; a change of value is what `change` stands for. It is emitted after the detection of that write and the `change` events it caused. Writes inside a transaction do not emit it at once, see §4.2. Any number of parties can listen, each with its own handler.
 
 ### 2.8 Tracing accesses
 
@@ -124,27 +133,28 @@ A **detection** compares the current value of every tag of the tdata with its va
 
 How many times a tag is written between two detections does not matter: a detection compares only the values at the two moments. Several writes are merged into one event whose old value is the value at the previous detection; a value that changed and was restored emits no event.
 
+A detection is run by TData itself after every write (inside a transaction, at its commit, see §4.2). It is not a public interface: users neither need to nor can trigger it.
+
 ### 4.2 Transactions
 
 Because a detection runs right after every write, the several writes of one logical step let subscribers see a half-updated intermediate state. A **transaction** makes a group of writes one whole: no event is emitted during it, and at its end it is either committed at once or undone entirely.
 
 - Start and end: `transaction(fn)` calls `fn()` synchronously and commits when `fn` returns; its return value is the return value of `transaction`;
-- Inside a transaction every read and write is allowed: by name, through a TTag, raw writes, and reading and writing `buffer` directly. A write takes effect at once and reads give the uncommitted current value; a write triggers no detection and emits neither `change` nor `write`;
+- Inside a transaction every read and write is allowed: by name, through a TTag, raw reads and writes. A write takes effect at once and reads give the uncommitted current value; a write triggers no detection and emits neither `change` nor `write`;
 - Commit: after the transaction is closed, one detection (§4.1) runs and emits the `change` events. Its baseline is the values at the last detection before the transaction, so several writes in the transaction merge into one event, and a value changed and restored emits none. Then, if the transaction contained a write by name, through a TTag or a raw write, one `write` (§2.7) is emitted, however many such writes there were;
-- Rollback: when `fn` throws, `buffer` is restored to its content at the start of the transaction and no event is emitted; the original exception is rethrown;
-- Calling `detect()` or starting another transaction inside a transaction throws `Error`; if `fn` does not handle it, the transaction rolls back;
+- Rollback: when `fn` throws, the content of the tdata is restored to what it was at the start of the transaction and no event is emitted; the original exception is rethrown;
+- Starting another transaction inside a transaction throws `Error`; if `fn` does not handle it, the transaction rolls back;
 - Events are emitted after the transaction is closed, so writes and transactions in handlers are ordinary ones. An exception thrown by a handler at commit propagates out of `transaction`, but the transaction is already committed and is not rolled back.
 
 Boundaries of a transaction:
 
 - A transaction guarantees atomicity only for the synchronous part of `fn` and does not inspect its return value: `fn` should be a synchronous function; if it returns a Promise, no error is raised and the Promise is not awaited. Node.js runs no other JS code while `fn` executes, so no other code on the thread can read or write this tdata. The continuation of an asynchronous operation started inside `fn` runs after the transaction is closed; it is an ordinary write, does not belong to the transaction and is never rolled back;
-- A transaction guarantees only the `buffer` of this tdata. Writes to other tdatas inside it emit their events as usual; side effects such as event handlers are not undone by a rollback;
-- A transaction does not protect a `buffer` written by something outside the event loop, such as a `buffer` handed to an asynchronous read, or one on a `SharedArrayBuffer` written by another thread;
-- A copy of `buffer` is made when the transaction starts; its cost is proportional to the size of the data block.
+- A transaction guarantees only the content of this tdata. Writes to other tdatas inside it emit their events as usual; side effects such as event handlers are not undone by a rollback;
+- A copy of the content of the tdata is made when the transaction starts; its cost is proportional to the size of the data block.
 
 ### 4.3 Common conventions
 
-- Wherever a change comes from (a write by name, a write through a TTag, a raw write, or `detect()` after a direct write to `buffer`) an event is emitted; none is missed;
+- Wherever a change comes from (a write by name, a write through a TTag, a raw write) an event is emitted; none is missed;
 - Events are emitted after the new value has taken effect: handlers read the new value;
 - An event is emitted only when the value really changes: writing the same value emits none; writing `NaN` over `NaN` counts as unchanged;
 - A combined word and its bits emit their own events: when one write changes the word and some of its bits, the word and those bits all emit;
@@ -161,7 +171,9 @@ The interface throws exceptions on errors. It does not log or exit the process; 
 | Writing an integer outside the range of the type | `RangeError`, the old value is kept |
 | Invalid layout, or a tag name colliding with a TData member | `Error` thrown when the tdata is created |
 | Writes triggered by handlers that do not settle | `Error` thrown by the detection |
-| Calling `detect()` or starting another transaction inside a transaction | `Error` |
+| Starting another transaction inside a transaction | `Error` |
+| A raw read or write whose offset, length or mask is out of range, or that writes past the end of the data block | `RangeError`, the data is unchanged and no `write` is emitted |
+| A raw write whose `source` is not a `Uint8Array` | `TypeError` |
 
 ## 6. Layout description
 
@@ -233,5 +245,5 @@ A layout needs no file. `build_structure({ name }, items)` expands a list of ite
 
 ## 7. Outside this interface
 
-- Exchanging data with devices (byte order conversion, grouped reads and writes, driver binding) is the job of the user's IO layer, which operates the tdata through this interface and `buffer` (the package provides per-entry byte order conversion functions, see design.md §6);
+- Exchanging data with devices (byte order conversion, grouped reads and writes, driver binding) is the job of the user's IO layer, which operates the tdata through the raw reads and writes of this interface (§2.5): it takes the current content with `read_bytes` as a staging buffer, converts between the staging buffer and the device buffer with the per-entry byte order conversion functions of the package (see design.md §6), and writes it back with one `write_bytes`;
 - Scheduling, rules and timing do not belong to this interface.
