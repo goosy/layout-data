@@ -4,8 +4,9 @@ import { TTag } from "./TTag.js";
 import { check_endian, io_range, load_entry, store_entry } from "./endian.js";
 import { Observer } from "./observer.js";
 import { compiled_of, find_layout, layout_of } from "./registry.js";
+import { is_reserved_name } from "./reserved.js";
 
-/** @import { Access_Tracer, Endian, Layout } from "./typedefs.js" */
+/** @import { Access_Tracer, Data_Listener, Endian, Layout } from "./typedefs.js" */
 /** @import { Compiled_Layout } from "./internal_types.js" */
 
 /**
@@ -28,14 +29,6 @@ export function set_access_tracer(tracer) {
 
 /** The classes built so far, by layout name (doc/design.md §4). */
 const classes = new Map();
-
-/** The layout of the probe: a data block with no tag. */
-const EMPTY_LAYOUT = Object.freeze({
-	name: "EMPTY", length: 0, size: 0, items: Object.freeze([]),
-});
-/** @type {Compiled_Layout} */
-const EMPTY_COMPILED = { entries: new Map(), tags_at_byte: [] };
-let probe = null;
 
 /**
  * The registered layout a TData argument stands for.
@@ -93,6 +86,37 @@ export class TData extends EventEmitter {
 	 * @description The tag handles created so far, by tag name.
 	 */
 	#handles = new Map();
+	/**
+	 * Subscribes a listener; typed for `change` and `write`, any listener for
+	 * another event name (doc/spec-data-api.md §2.7).
+	 *
+	 * @template {string | symbol} E
+	 * @param {E} event
+	 * @param {Data_Listener<E>} listener
+	 * @returns {this}
+	 */
+	on(event, listener) { return super.on(event, listener); }
+
+	/**
+	 * Subscribes a listener for one emission, typed like `on`.
+	 *
+	 * @template {string | symbol} E
+	 * @param {E} event
+	 * @param {Data_Listener<E>} listener
+	 * @returns {this}
+	 */
+	once(event, listener) { return super.once(event, listener); }
+
+	/**
+	 * Removes a listener, typed like `on`.
+	 *
+	 * @template {string | symbol} E
+	 * @param {E} event
+	 * @param {Data_Listener<E>} listener
+	 * @returns {this}
+	 */
+	off(event, listener) { return super.off(event, listener); }
+
 	/**
 	 * Retrieves the handle of a tag, creating it on first use.
 	 * @param {string} tagname - The name of the tag to retrieve.
@@ -308,8 +332,8 @@ export class TData extends EventEmitter {
 		const compiled = compiled_of(layout);
 		for (const entry of compiled.entries.values()) {
 			const { name, codec, byte, mask, size } = entry;
-			if (TData.is_reserved_name(name)) {
-				throw new Error(`${layout.name}.${name}: tag name collides with a TData member`);
+			if (is_reserved_name(name)) {
+				throw new Error(`${layout.name}.${name}: reserved tag name`);
 			}
 			Object.defineProperty(Layout_Data.prototype, name, {
 				get() {
@@ -328,21 +352,6 @@ export class TData extends EventEmitter {
 		Layout_Data.layout = layout;
 		Layout_Data.compiled = compiled;
 		return Layout_Data;
-	}
-
-	/**
-	 * Whether a tag name would shadow a member of a data block: its accessor
-	 * would hide the member.
-	 *
-	 * @param {string} name
-	 * @returns {boolean}
-	 */
-	static is_reserved_name(name) {
-		probe ??= new (class extends TData {
-			static layout = EMPTY_LAYOUT;
-			static compiled = EMPTY_COMPILED;
-		})(EMPTY_LAYOUT, "probe");
-		return name in probe;
 	}
 
 	/**

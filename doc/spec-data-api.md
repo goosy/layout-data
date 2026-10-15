@@ -17,6 +17,10 @@ The T in TData and TTag stands for Typed: a tdata is stored in a fixed layout an
 
 Tag types: `Bool`, `Byte`, `SInt`, `USInt`, `Int`, `UInt`, `Word`, `DInt`, `UDInt`, `DWord`, `Real`. The value of a `Bool` is `true` / `false`, all others are numbers. A `Word` made of several `Bool`s is called a combined word; it shares its data with its bits.
 
+`Tag_Type` is the exported TypeScript type of the lower case type names (`"bool" | "byte" | "usint" | "sint" | "int" | "uint" | "word" | "dint" | "udint" | "dword" | "real"`). Only `TTag.type` (§3) has it, so that `switch (tag.type)` is checked. The `type` of a layout description and of the items of a layout (§6) is the text of the description (`string`).
+
+Units: a `length` is in bits and a `size` is in bytes, everywhere in this interface (`Layout.length` and `Layout.size`, the `length` of a layout item, `TData.size`, `TTag.size`).
+
 ## 2. TData
 
 ### 2.1 Creating
@@ -49,7 +53,7 @@ data.pressure = 1.5;          // write
 const value = data.pressure;  // read
 ```
 
-- Every tag name is a property of the tdata, readable and writable at any time;
+- Every tag name is a property of the tdata, readable and writable at any time; a tag name must not be a reserved name (§2.10);
 - A write takes effect at once: after it, reading gives the new value, and so does the `value` of the TTag;
 - Writing a combined word changes its bits; writing a bit changes the combined word;
 - Writing an integer outside the range of the type throws `RangeError` and keeps the old value; a `Bool` is written by truthiness.
@@ -109,6 +113,12 @@ data.on("write", (data) => { /* ... */ });
 
 Emitted after every write, whether or not it changed a value. A write is a write by name, through a TTag, or a raw write (`write_bytes`, `write_bit`); a read does not emit it, and neither does a failed write (one that throws). It means "a write happened", for the user's scheduling and IO: they must handle every write, even one that wrote the same value; a change of value is what `change` stands for. It is emitted after the detection of that write and the `change` events it caused. Writes inside a transaction do not emit it at once, see §4.2. Any number of parties can listen, each with its own handler.
 
+Event names:
+
+- `change`, `write` and `read` are reserved event names of the library. The library emits `change` and `write`; `read` is kept for a future read hook and is not emitted now. A user must not emit them with `emit` and must not use them for events of its own;
+- Any other name is free for the user's own events: `on`, `once` and `off` accept any string or symbol for it, with a listener of any signature;
+- In the declarations `on`, `once` and `off` are typed for the reserved names: the listener of `change` is `(name: string, old_value: number | boolean, new_value: number | boolean) => void` and that of `write` is `(data: TData) => void`; a listener of another type is a compile-time error. The `change` of a TTag is typed `(old_value, new_value)` the same way (§3).
+
 ### 2.8 Tracing accesses
 
 `set_access_tracer(tracer)` sets a function called on every read and write of a tag through the property accessors, as `tracer(tdata, name, "read" | "write")`; `set_access_tracer(null)` clears it. For tools that check which tags a piece of code touches. The tracer is global to the process and costs one check per access while unset.
@@ -138,15 +148,31 @@ A tdata is stored big-endian internally. To exchange data with a device, convert
 - Exchanging a whole block at once: `io_index_table(layout, endian)` returns the table of byte indexes; byte `i` of the data block is byte `table[i]` of the IO buffer. The user copies the bytes by it, then writes them with one `write_bytes` (§2.5);
 - Errors are checked before anything is changed: the tdata is unchanged and `load_tag` emits no `write` (errors in §5).
 
+### 2.10 Reserved names
+
+A tdata is one object that holds both the tags (as properties) and its own methods, so the names of the two must not meet. The reserved names are a fixed list, given here, and do not depend on the Node.js version that runs the program:
+
+| Source | Reserved names |
+| --- | --- |
+| Members of TData | `name`, `layout`, `size`, `get`, `transaction`, `read_bytes`, `write_bytes`, `write_bit`, `load_tag`, `store_tag` |
+| EventEmitter (Node.js 20.11) | `addListener`, `emit`, `eventNames`, `getMaxListeners`, `listenerCount`, `listeners`, `off`, `on`, `once`, `prependListener`, `prependOnceListener`, `rawListeners`, `removeAllListeners`, `removeListener`, `setMaxListeners`, `_events`, `_eventsCount`, `_maxListeners` |
+| Object | `constructor`, `hasOwnProperty`, `isPrototypeOf`, `propertyIsEnumerable`, `toLocaleString`, `toString`, `valueOf`, `__proto__`, `__defineGetter__`, `__defineSetter__`, `__lookupGetter__`, `__lookupSetter__` |
+
+- A tag with a reserved name is a violation of the layout (§6.3): validation reports it, and creating a tdata of such a layout throws `Error`;
+- TData stays a subclass of EventEmitter. A later version of Node.js may add methods to EventEmitter; the list does not follow them, so a tag named like such a method would hide it. The test suite compares the list with the running Node.js;
+- A later version of this package adds members to TData only as `Symbol`-keyed members or static methods, never as a new string-named member of an instance, so a tag name that is valid now stays valid;
+- The reserved event names are in §2.7. Whether a name is reserved is not queryable: there is no public function for it;
+- A TTag has no tag names, so its members (§3) are not a list to avoid.
+
 ## 3. TTag
 
 | Member | Description |
 | --- | --- |
 | `name` | The tag name |
-| `type` | The type (lower case) |
-| `length` | Number of bytes it occupies |
+| `type` | The type (lower case), of the type `Tag_Type` (§1) |
+| `size` | Number of bytes it occupies; a Bool occupies the byte it lies in, so its `size` is 1 |
 | `value` | The current value, readable and writable; writing it is exactly equivalent to `data[name] = v` |
-| `on("change", (old_value, new_value) => ...)` | Subscribe to changes of this tag |
+| `on("change", (old_value, new_value) => ...)` | Subscribe to changes of this tag; `change` is the only event of a TTag and its reserved name |
 | `load(io_buffer, endian)` | Equivalent to `data.load_tag(name, io_buffer, endian)` (§2.9) |
 | `store(io_buffer, endian)` | Equivalent to `data.store_tag(name, io_buffer, endian)` (§2.9) |
 
@@ -196,7 +222,7 @@ The interface throws exceptions on errors. It does not log or exit the process; 
 | Case | Exception |
 | --- | --- |
 | Writing an integer outside the range of the type | `RangeError`, the old value is kept |
-| Invalid layout, or a tag name colliding with a TData member | `Error` thrown when the tdata is created |
+| Invalid layout, or a reserved tag name (§2.10) | `Error` thrown when the tdata is created |
 | Writes triggered by handlers that do not settle | `Error` thrown by the detection |
 | Starting another transaction inside a transaction | `Error` |
 | A raw read or write whose offset, length or mask is out of range, or that writes past the end of the data block | `RangeError`, the data is unchanged and no `write` is emitted |
@@ -234,7 +260,7 @@ Only one file is compiled at a time for now. When several files (a directory) ar
 
 | Field | Description |
 | --- | --- |
-| `name` | The tag name, unique within a layout, not equal to a member name of TData |
+| `name` | The tag name, unique within a layout, not a reserved name (§2.10) |
 | `type` | One of the types listed in §1, case-insensitive |
 | `offset` | Bit offset; a non-Bool must be on a whole byte, a multi-byte type must start at an even byte |
 | `length` | Length in bits; may be omitted, in which case the type decides it; when written it must match the type |
@@ -248,6 +274,7 @@ Entries in a fragment may reference other fragments too.
 
 ### 6.3 Validity
 
+- Tag names are unique and are not reserved names (§2.10);
 - The byte ranges of non-Bool tags do not overlap; each bit belongs to at most one Bool;
 - A Bool inside the byte range of a non-Bool tag must be a bit (`coupling`) of that tag; every bit of a combined word must lie inside the word;
 - Only one side of a combined word and its bits gives the initial value: if the word gives it, the initial values of the bits come from the whole word; otherwise they come from the bits (a bit without a value is `false`) and the word is composed from them;

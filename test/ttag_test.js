@@ -36,13 +36,13 @@ describe("tag storage", () => {
 		assert.equal(one_tag("real", 0).get("tag").type, "real");
 	});
 
-	test("tag length in bytes follows the type", () => {
-		assert.equal(one_tag("Bool", false).get("tag").length, 1);
-		assert.equal(one_tag("Byte", 0).get("tag").length, 1);
-		assert.equal(one_tag("Int", 0).get("tag").length, 2);
-		assert.equal(one_tag("Word", 0).get("tag").length, 2);
-		assert.equal(one_tag("Real", 0).get("tag").length, 4);
-		assert.equal(one_tag("DWord", 0).get("tag").length, 4);
+	test("tag size in bytes follows the type", () => {
+		assert.equal(one_tag("Bool", false).get("tag").size, 1);
+		assert.equal(one_tag("Byte", 0).get("tag").size, 1);
+		assert.equal(one_tag("Int", 0).get("tag").size, 2);
+		assert.equal(one_tag("Word", 0).get("tag").size, 2);
+		assert.equal(one_tag("Real", 0).get("tag").size, 4);
+		assert.equal(one_tag("DWord", 0).get("tag").size, 4);
 	});
 
 	test("init_value is written into the buffer", () => {

@@ -12,6 +12,7 @@
 | `src/TData.js` / `src/TTag.js` | The data object and the tag handle |
 | `src/layout.js` | Reading and compiling layout description files, Layout, prototype accessors |
 | `src/structure.js` | Structure expansion (`build_structure`) and layout validation (`validate_structure`) |
+| `src/reserved.js` | The static lists of reserved tag names and reserved event names (internal, not exported by the package) |
 | `src/codecs.js` | Encoding and decoding of each type on a big-endian buffer |
 | `src/observer.js` | Snapshot comparison, change events |
 | `src/endian.js` | Device byte order conversion of one entry and of a whole block (only `io_index_table` is exported) |
@@ -75,7 +76,8 @@ The layout rules are validated centrally at the layout stage, not spread over th
   - the getter decodes from `buffer` with the codec on every read and caches nothing;
   - the setter writes into `buffer` with the codec and then calls `after_write`.
 - A combined word and its bits share the same bytes, so writing either one makes the other read the new value; no extra linkage is needed.
-- A tag name must not equal a TData member name (the accessor would shadow the member). `validate_structure` checks this (through `TData.is_reserved_name`), and `TData` throws when it builds the subclass.
+- A tag name must not be a reserved name (spec-data-api.md §2.10), as its accessor would shadow a member. The reserved names are the static set in `reserved.js`: the members of TData, the method and field names of EventEmitter in Node.js 20.11 and the names of `Object.prototype`. Nothing is probed at run time, so the set does not depend on the Node.js version. `reserved.js` exports `is_reserved_name(name)` to `structure.js` and `TData.js` only; the package does not export it and TData has no static method for it. `validate_structure` reports a reserved name, and `TData` throws when it builds the subclass. A test compares the set with the names found on an instance in the running Node.js, so a new EventEmitter member makes the test fail and the set is then extended.
+- The reserved event names (`change`, `write`, `read`) are the constant `RESERVED_EVENTS` in `reserved.js`, for the tests and the documentation; they are a rule for the user and are not enforced at run time. `TData` and `TTag` override `on`, `once` and `off` (each calls the `EventEmitter` method) only to carry the typed overloads: a listener type chosen by the event name through the conditional types `Data_Listener<E>` and `Tag_Listener<E>` of `typedefs.js`, so that a wrong listener of `change` or `write` is a compile-time error and other names take any listener. Future members of TData are `Symbol`-keyed or static.
 - `set_access_tracer(tracer | null)`: once set, the accessors call `tracer(tdata, name, "read" | "write")` on every read or write of a tag, for the user's dependency tracking. When unset, the accessors only pay one extra condition.
 - `render_types(layouts, { source, tdata_module })` generates type declarations from layouts (one interface per layout, tags as properties, `comment` as doc comment), to give editor completion for access by name.
 
@@ -95,7 +97,7 @@ The layout rules are validated centrally at the layout stage, not spread over th
 - `load_tag(name, io_buffer, endian)` and `store_tag(name, io_buffer, endian)` (spec-data-api.md §2.9) resolve `name` to the compiled entry of the layout (an unknown name throws `Error`), check `endian`, `io_buffer` and the range of the entry in it (`io_range`), and then call `load_entry` / `store_entry` of `endian.js` with the private buffer. `load_tag` registers the byte range of the entry and ends in `#written()` like any write; `store_tag` only reads the buffer. `TTag.load(io_buffer, endian)` and `TTag.store(io_buffer, endian)` call them with the name of the tag, so a TTag needs no check of which tdata it belongs to.
 
 - TData throws exceptions on errors (layout conflicts, out-of-range values); it neither logs nor exits.
-- `data.get(name)` returns the `TTag` of the tag, created and cached on first access; for an unknown name it returns `undefined`. A TTag holds no value: reading `value` decodes from the buffer of the TData, writing `value` is exactly equivalent to `data[name] = v`; `name`, `type` and `length` come from the compiled entry of the layout, which a TTag holds privately and does not expose; the `change` event is emitted by the Observer.
+- `data.get(name)` returns the `TTag` of the tag, created and cached on first access; for an unknown name it returns `undefined`. A TTag holds no value: reading `value` decodes from the buffer of the TData, writing `value` is exactly equivalent to `data[name] = v`; `name`, `type` and `size` come from the compiled entry of the layout, which a TTag holds privately and does not expose; the `change` event is emitted by the Observer.
 
 ### 5.1 Detection, transactions and the Observer
 

@@ -24,7 +24,7 @@ tagged-data 是一个结构化数据块库：提供基于 `Buffer`、面向数�
 
 - **固定布局**：每个 tag 有确定的类型、字节偏移和位号。
 - **布局合法**：布局必须满足下列规则，不合法的布局视为程序错误，校验报告全部违规项：
-  - 同一 tdata 内 tag 名称互不相同；
+  - 同一 tdata 内 tag 名称互不相同，且不是保留名（见 [spec-data-api.zh-cn.md](spec-data-api.zh-cn.md) §2.10）；
   - 每个 tag 的位长与其类型一致；多字节类型（Int、UInt、Word、DInt、UDInt、DWord、Real）从偶数字节开始，单字节类型（Byte、SInt、USInt）从整字节开始，Bool 可以位于任意位；
   - 非 Bool 的 tag 之间字节范围互不重叠；
   - 每一位最多属于一个 Bool tag；

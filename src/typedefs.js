@@ -76,4 +76,41 @@
  * @typedef {(tdata: import("./TData.js").TData, name: string, kind: "read" | "write") => void} Access_Tracer
  */
 
+/**
+ * Type of a tag, in lower case: the type of `TTag.type` (doc/spec-data-api.md §1).
+ *
+ * @typedef {"bool" | "byte" | "usint" | "sint" | "int" | "uint" | "word" | "dint" | "udint" | "dword" | "real"} Tag_Type
+ */
+
+/**
+ * The listeners of the events of a TData that the library emits.
+ *
+ * @typedef {object} Data_Events
+ * @property {(name: string, old_value: number | boolean, new_value: number | boolean) => void} change
+ * @property {(data: import("./TData.js").TData) => void} write
+ */
+
+/**
+ * The listener of an event of a TData: typed for `change` and `write`, any
+ * listener for another name (doc/spec-data-api.md §2.7).
+ *
+ * @template {string | symbol} E
+ * @typedef {E extends keyof Data_Events ? Data_Events[E] : (...args: any[]) => void} Data_Listener
+ */
+
+/**
+ * The listeners of the events of a TTag that the library emits.
+ *
+ * @typedef {object} Tag_Events
+ * @property {(old_value: number | boolean, new_value: number | boolean) => void} change
+ */
+
+/**
+ * The listener of an event of a TTag: typed for `change`, any listener for
+ * another name (doc/spec-data-api.md §3).
+ *
+ * @template {string | symbol} E
+ * @typedef {E extends keyof Tag_Events ? Tag_Events[E] : (...args: any[]) => void} Tag_Listener
+ */
+
 export {};

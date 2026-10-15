@@ -155,7 +155,7 @@ describe("3 TTag", () => {
 		const tag = new TData(LAYOUT, "d").get("pressure");
 		assert.equal(tag.name, "pressure");
 		assert.equal(tag.type, "real");
-		assert.equal(tag.length, 4);
+		assert.equal(tag.size, 4);
 	});
 
 	test("value is readable and writable, the same as the data block property", () => {
@@ -582,9 +582,9 @@ describe("4.2 transactions", () => {
 });
 
 describe("5 errors", () => {
-	test("a tag name colliding with a data block member throws at creation", () => {
+	test("a reserved tag name throws at creation", () => {
 		const struct = make_struct([{ name: "read_bytes", type: "UInt", offset: 0, length: 16, init_value: 0 }], "BAD");
-		assert.throws(() => new TData(register_layout(struct), "d"), /collides with a TData member/);
+		assert.throws(() => new TData(register_layout(struct), "d"), /reserved tag name/);
 	});
 
 	test("buffer and detect are not members: tags may have these names", () => {

@@ -15,6 +15,10 @@ TData、TTag 中的 T 指 Typed（有类型的）：tdata 按固定布局存放�
 
 tag 的类型：`Bool`、`Byte`、`SInt`、`USInt`、`Int`、`UInt`、`Word`、`DInt`、`UDInt`、`DWord`、`Real`。`Bool` 的值为 `true` / `false`，其余为数值。由若干 `Bool` 组成的 `Word` 称为组合字，它与各组成位共用同一块数据。
 
+`Tag_Type` 是导出的 TypeScript 类型，取值为小写的类型名（`"bool" | "byte" | "usint" | "sint" | "int" | "uint" | "word" | "dint" | "udint" | "dword" | "real"`）。只有 `TTag.type`（§3）是这个类型，所以 `switch (tag.type)` 有类型检查；布局描述和布局条目（§6）里的 `type` 是描述中的原文（`string`）。
+
+单位：本接口中 `length` 一律是位，`size` 一律是字节（`Layout.length` 与 `Layout.size`、布局条目的 `length`、`TData.size`、`TTag.size`）。
+
 ## 2. TData
 
 ### 2.1 创建
@@ -47,7 +51,7 @@ data.pressure = 1.5;          // write
 const value = data.pressure;  // read
 ```
 
-- 每个 tag 名都是 tdata 的一个属性，可读可写，任何时候都可以进行；
+- 每个 tag 名都是 tdata 的一个属性，可读可写，任何时候都可以进行；tag 名不得是保留名（§2.10）；
 - 写入立即生效：写入后读到的就是新值，读取 TTag 的 `value` 也是新值；
 - 写组合字时，各组成位随之改变；写组成位时，组合字随之改变；
 - 写入超出类型取值范围的整数时抛出 `RangeError`，原值不变；写 `Bool` 时按真假值处理。
@@ -107,6 +111,12 @@ data.on("write", (data) => { /* ... */ });
 
 每次写入之后发出，不论值是否改变。写入包括按名写入、TTag 写入和原始写入（`write_bytes`、`write_bit`），读取不发出；失败的写入（抛出异常）不发出。它表示“发生了一次写入”，供使用方的调度和 IO 使用：这些使用方要处理每一次写入，哪怕写入的值没有变；值的变化由 `change` 表示。在本次写入的检测和它引起的 `change` 事件之后发出。事务中的写入不立即发出，见 §4.2。可以有任意多方监听，各用各的处理器。
 
+事件名：
+
+- `change`、`write`、`read` 是库保留的事件名。库发出 `change` 和 `write`；`read` 留给以后的读钩子，现在不发出。使用方不得用 `emit` 自行发出这些事件，也不得把它们用作自己的事件；
+- 其他名字归使用方的自定义事件使用：`on`、`once`、`off` 对它们接受任意字符串或 symbol，处理器可以是任意签名；
+- 类型声明中，`on`、`once`、`off` 对保留名带类型：`change` 的处理器是 `(name: string, old_value: number | boolean, new_value: number | boolean) => void`，`write` 的处理器是 `(data: TData) => void`，处理器类型不符是编译期错误。TTag 的 `change` 同样带类型 `(old_value, new_value)`（§3）。
+
 ### 2.8 追踪访问
 
 `set_access_tracer(tracer)` 设置一个函数，每次通过属性访问器读写 tag 时按 `tracer(tdata, name, "read" | "write")` 调用；`set_access_tracer(null)` 取消。供检查一段代码碰了哪些 tag 的工具使用。追踪器对整个进程全局有效，未设置时每次访问只多一次判断。
@@ -136,15 +146,31 @@ tdata 内部按大端存放。与设备交换数据时，按 tag 在 tdata 与�
 - 整块一次交换：`io_index_table(layout, endian)` 返回字节下标表，数据块的第 `i` 个字节在 IO 缓冲区中的下标是 `table[i]`，使用方据此按字节复制，再用 `write_bytes` 一次写入（§2.5）；
 - 出错时先于任何改动检查：tdata 不变，`load_tag` 不发出 `write`（错误见 §5）。
 
+### 2.10 保留名
+
+tdata 是一个对象，既用属性存放 tag，又有自己的方法，所以两边的名字不能相撞。保留名是一份固定的清单，在此给出，不随运行程序的 Node.js 版本而变：
+
+| 来源 | 保留名 |
+| --- | --- |
+| TData 的成员 | `name`、`layout`、`size`、`get`、`transaction`、`read_bytes`、`write_bytes`、`write_bit`、`load_tag`、`store_tag` |
+| EventEmitter（Node.js 20.11） | `addListener`、`emit`、`eventNames`、`getMaxListeners`、`listenerCount`、`listeners`、`off`、`on`、`once`、`prependListener`、`prependOnceListener`、`rawListeners`、`removeAllListeners`、`removeListener`、`setMaxListeners`、`_events`、`_eventsCount`、`_maxListeners` |
+| Object | `constructor`、`hasOwnProperty`、`isPrototypeOf`、`propertyIsEnumerable`、`toLocaleString`、`toString`、`valueOf`、`__proto__`、`__defineGetter__`、`__defineSetter__`、`__lookupGetter__`、`__lookupSetter__` |
+
+- tag 使用保留名属于布局违规（§6.3）：校验会报告，用这样的布局创建 tdata 时抛出 `Error`；
+- TData 仍然是 EventEmitter 的子类。以后的 Node.js 可能给 EventEmitter 增加方法，清单不会跟着变，所以与这类方法同名的 tag 会遮蔽该方法。测试会把清单与运行中的 Node.js 比对；
+- 本包以后给 TData 增加成员，只用以 `Symbol` 为键的成员或静态方法，不会再给实例增加字符串名的成员，所以现在合法的 tag 名以后仍然合法；
+- 保留的事件名见 §2.7。名字是否保留不提供查询：没有公开函数；
+- TTag 没有 tag 名，它的成员（§3）不是需要避开的清单。
+
 ## 3. TTag
 
 | 成员 | 说明 |
 | --- | --- |
 | `name` | tag 名 |
-| `type` | 类型（小写） |
-| `length` | 占用的字节数 |
+| `type` | 类型（小写），类型为 `Tag_Type`（§1） |
+| `size` | 占用的字节数；Bool 占用它所在的那个字节，所以其 `size` 是 1 |
 | `value` | 当前值，可读可写；写入与 `data[name] = v` 完全等价 |
-| `on("change", (old_value, new_value) => ...)` | 订阅该 tag 的变化 |
+| `on("change", (old_value, new_value) => ...)` | 订阅该 tag 的变化；`change` 是 TTag 唯一的事件，也是它的保留名 |
 | `load(io_buffer, endian)` | 等价于 `data.load_tag(name, io_buffer, endian)`（§2.9） |
 | `store(io_buffer, endian)` | 等价于 `data.store_tag(name, io_buffer, endian)`（§2.9） |
 
@@ -194,7 +220,7 @@ TTag 不保存值，读写都直接作用于所属 tdata。
 | 情况 | 异常 |
 | --- | --- |
 | 写入超出类型取值范围的整数 | `RangeError`，原值不变 |
-| 布局不合法、tag 名与 TData 的成员冲突 | 创建 tdata 时抛出 `Error` |
+| 布局不合法、tag 名是保留名（§2.10） | 创建 tdata 时抛出 `Error` |
 | 处理器互相触发的写入不能平息 | 检测时抛出 `Error` |
 | 事务中开始另一个事务 | `Error` |
 | 原始读写的偏移、长度、掩码越界，或写入越过数据块末尾 | `RangeError`，数据不变，不发出 `write` |
@@ -232,7 +258,7 @@ layouts:
 
 | 字段 | 说明 |
 | --- | --- |
-| `name` | tag 名，同一布局内唯一，不得与 TData 的成员同名 |
+| `name` | tag 名，同一布局内唯一，不得是保留名（§2.10） |
 | `type` | §1 所列类型之一，大小写不敏感 |
 | `offset` | 位偏移；非 Bool 必须在整字节上，多字节类型必须从偶数字节开始 |
 | `length` | 位长，可省略，省略时由类型决定；写出时须与类型一致 |
@@ -246,6 +272,7 @@ layouts:
 
 ### 6.3 合法性
 
+- tag 名唯一，且不是保留名（§2.10）；
 - 非 Bool 的 tag 之间字节范围互不重叠；每一位最多属于一个 Bool；
 - Bool 落在某个非 Bool tag 的字节范围内时，必须是该 tag（组合字）的组成位；组合字的每个组成位都必须落在该字的范围内；
 - 组合字与它的组成位只能由一方给出初值：组合字给出时，组成位的初值由整字决定；组合字不给出时，由各组成位给出（未给出的位为 `false`），整字的初值由它们合成；

@@ -8,7 +8,7 @@ import {
 	build_structure, validate_structure,
 	io_index_table, render_types,
 	type Layout, type Layout_Tag, type Layout_Item, type Data_Struct,
-	type Compiled_Layouts, type Access_Tracer, type Endian,
+	type Compiled_Layouts, type Access_Tracer, type Endian, type Tag_Type,
 } from "tagged-data";
 
 type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends (<T>() => T extends B ? 1 : 2) ? true : false;
@@ -66,6 +66,18 @@ tdata.write_bit(0, 0x01, true);
 tdata.write_bytes(0, Buffer.alloc(2));
 tdata.write_bytes(0, new Uint8Array(2));
 tdata.on("change", () => {});
+tdata.on("change", (name, old_value, new_value) => void [name.length, old_value, new_value]);
+tdata.once("write", (written) => void written.size);
+tdata.off("write", (written: TData) => void written);
+// @ts-expect-error the listener of change gets a name first
+tdata.on("change", (old_value: number) => void old_value);
+// @ts-expect-error the listener of write gets the data block
+tdata.on("write", (written: string) => void written);
+// the events of the user's own take any listener
+tdata.on("alarm", (level: number, text: string) => void [level, text]);
+tdata.emit("alarm", 1, "high");
+// @ts-expect-error the reserved check is not public
+TData.is_reserved_name("get");
 // @ts-expect-error the bytes are not a property
 void tdata.buffer;
 // @ts-expect-error detection is not public
@@ -88,8 +100,24 @@ tdata.write_bit(0, 1, 1);
 // TTag
 if (tag) {
 	assert_type<Equal<typeof tag.name, string>>();
-	assert_type<Equal<typeof tag.type, string>>();
-	assert_type<Equal<typeof tag.length, number>>();
+	assert_type<Equal<typeof tag.type, Tag_Type>>();
+	assert_type<Equal<typeof tag.size, number>>();
+	// @ts-expect-error length is in bits, a tag has a size in bytes
+	void tag.length;
+	// @ts-expect-error a misspelled type is not a Tag_Type
+	void (tag.type === "itn");
+	const type_name: string = ((type: Tag_Type) => {
+		switch (type) {
+			case "bool": return "Bool";
+			case "real": return "Real";
+			default: return type;
+		}
+	})(tag.type);
+	void type_name;
+	tag.on("change", (old_value, new_value) => void [old_value, new_value]);
+	// @ts-expect-error the change of a tag has two numbers or booleans
+	tag.on("change", (old_value: string) => void old_value);
+	tag.on("other", (anything: string) => void anything);
 	// @ts-expect-error the compiled entry is not public
 	void tag.entry;
 	assert_type<Equal<typeof tag.value, number | boolean>>();

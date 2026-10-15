@@ -1,6 +1,6 @@
 import { EventEmitter } from "node:events";
 
-/** @import { Endian } from "./typedefs.js" */
+/** @import { Endian, Tag_Listener, Tag_Type } from "./typedefs.js" */
 /** @import { Layout_Entry } from "./internal_types.js" */
 
 /**
@@ -27,12 +27,43 @@ export class TTag extends EventEmitter {
 		this.setMaxListeners(20);
 	}
 
+	/**
+	 * Subscribes a listener; `change` is typed (old_value, new_value), any
+	 * listener for another event name (doc/spec-data-api.md §3).
+	 *
+	 * @template {string | symbol} E
+	 * @param {E} event
+	 * @param {Tag_Listener<E>} listener
+	 * @returns {this}
+	 */
+	on(event, listener) { return super.on(event, listener); }
+
+	/**
+	 * Subscribes a listener for one emission, typed like `on`.
+	 *
+	 * @template {string | symbol} E
+	 * @param {E} event
+	 * @param {Tag_Listener<E>} listener
+	 * @returns {this}
+	 */
+	once(event, listener) { return super.once(event, listener); }
+
+	/**
+	 * Removes a listener, typed like `on`.
+	 *
+	 * @template {string | symbol} E
+	 * @param {E} event
+	 * @param {Tag_Listener<E>} listener
+	 * @returns {this}
+	 */
+	off(event, listener) { return super.off(event, listener); }
+
 	/** @returns {string} */
 	get name() { return this.#entry.name; }
-	/** @returns {string} Lower case type name. */
+	/** @returns {Tag_Type} Lower case type name. */
 	get type() { return this.#entry.type; }
-	/** @returns {number} Size in bytes. */
-	get length() { return this.#entry.size; }
+	/** @returns {number} Size in bytes; a Bool has the byte it lies in. */
+	get size() { return this.#entry.size; }
 	/** @returns {number | boolean} */
 	get value() { return this.#tdata[this.#entry.name]; }
 	/** @param {number | boolean} value */

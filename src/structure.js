@@ -1,6 +1,6 @@
 // Expansion and validation of data block structures (doc/spec.md §3,
 // doc/design.md §3.1). Part of the data layer.
-import { TData } from "./TData.js";
+import { is_reserved_name } from "./reserved.js";
 
 /** @import { Data_Struct, Layout_Item } from "./typedefs.js" */
 
@@ -142,7 +142,7 @@ export function validate_structure(data_struct) {
 	for (const item of items) {
 		if (by_name.has(item.name)) report(item, "duplicated name");
 		else by_name.set(item.name, item);
-		if (TData.is_reserved_name(item.name)) report(item, "name collides with a TData member");
+		if (is_reserved_name(item.name)) report(item, "name is a reserved name");
 	}
 
 	// type, length, alignment and init_value

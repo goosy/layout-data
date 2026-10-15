@@ -10,6 +10,7 @@
 | `src/TData.js` / `src/TTag.js` | 数据对象与 tag 句柄 |
 | `src/layout.js` | 布局描述文件的读取与编译、Layout、原型访问器 |
 | `src/structure.js` | 结构展开（`build_structure`）与布局校验（`validate_structure`） |
+| `src/reserved.js` | 保留的 tag 名与保留的事件名的静态清单（内部使用，包不导出） |
 | `src/codecs.js` | 各类型在大端缓冲区上的编解码 |
 | `src/observer.js` | 快照比对，变化事件 |
 | `src/endian.js` | 单个条目和整块数据的设备字节序转换（只导出 `io_index_table`） |
@@ -73,7 +74,8 @@
   - getter 每次用编解码表从 `buffer` 解码，不缓存值；
   - setter 用编解码表写入 `buffer`，再调用 `after_write`。
 - 组合字与它的组成位共用同一块字节，写任何一方，另一方读到的自然是新值，不需要额外联动。
-- tag 名不得与 TData 的成员同名（访问器会遮蔽成员），由 `validate_structure` 检查（通过 `TData.is_reserved_name`），`TData` 构建子类时也会抛出错误。
+- tag 名不得是保留名（spec-data-api.zh-cn.md §2.10），否则访问器会遮蔽成员。保留名是 `reserved.js` 里的静态集合：TData 的成员、Node.js 20.11 中 EventEmitter 的方法名与字段名、`Object.prototype` 的名字。运行时不做任何探测，所以集合不随 Node.js 版本而变。`reserved.js` 导出 `is_reserved_name(name)`，只供 `structure.js` 和 `TData.js` 使用；包不导出它，TData 也没有对应的静态方法。`validate_structure` 报告保留名，`TData` 构建子类时也会抛出错误。测试把该集合与运行中的 Node.js 里实例上能找到的名字比对，所以 EventEmitter 新增成员会使测试失败，那时再扩充集合。
+- 保留的事件名（`change`、`write`、`read`）是 `reserved.js` 里的常量 `RESERVED_EVENTS`，供测试和文档使用；这是对使用方的规则，运行时不强制。`TData` 和 `TTag` 覆盖 `on`、`once`、`off`（各自只调用 `EventEmitter` 的同名方法），仅为携带带类型的重载：处理器类型由事件名通过 `typedefs.js` 里的条件类型 `Data_Listener<E>` 和 `Tag_Listener<E>` 决定，所以 `change`、`write` 的处理器写错是编译期错误，其他名字可以用任意处理器。以后给 TData 增加的成员只用 `Symbol` 为键或静态方法。
 - `set_access_tracer(tracer | null)`：设置后，访问器每次读写 tag 都调用 `tracer(tdata, name, "read" | "write")`，供使用方的依赖追踪使用；未设置时访问器只多一次判断。
 - `render_types(layouts, { source, tdata_module })` 由布局生成类型声明（每个布局一个接口，tag 为属性，`comment` 作为注释），为按名访问提供编辑器补全。
 
@@ -93,7 +95,7 @@
 - `load_tag(name, io_buffer, endian)` 和 `store_tag(name, io_buffer, endian)`（spec-data-api.zh-cn.md §2.9）把 `name` 解析为布局的编译条目（名字不存在时抛出 `Error`），检查 `endian`、`io_buffer` 和该条目在其中的范围（`io_range`），再以私有缓冲区调用 `endian.js` 的 `load_entry` / `store_entry`。`load_tag` 登记该条目的字节范围，像任何写入一样以 `#written()` 结束；`store_tag` 只读缓冲区。`TTag.load(io_buffer, endian)` 和 `TTag.store(io_buffer, endian)` 以 tag 名调用它们，所以 TTag 不需要检查自己属于哪个 tdata。
 
 - TData 出错时抛出异常（布局冲突、值越界），不写日志、不退出。
-- `data.get(name)` 返回该 tag 的 `TTag`，首次访问时创建并缓存，名称不存在时返回 `undefined`。TTag 不持有值：读 `value` 从 TData 的缓冲区解码，写 `value` 与 `data[name] = v` 完全等价；`name`、`type`、`length` 来自布局的编译条目，TTag 私有地持有它，不对外公开；`change` 事件由 Observer 发出。
+- `data.get(name)` 返回该 tag 的 `TTag`，首次访问时创建并缓存，名称不存在时返回 `undefined`。TTag 不持有值：读 `value` 从 TData 的缓冲区解码，写 `value` 与 `data[name] = v` 完全等价；`name`、`type`、`size` 来自布局的编译条目，TTag 私有地持有它，不对外公开；`change` 事件由 Observer 发出。
 
 ### 5.1 检测、事务与 Observer
 
