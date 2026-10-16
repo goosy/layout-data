@@ -42,6 +42,6 @@
 		"layout"
 	],
 	"author": "",
-	"license": "ISC",
+	"license": "MPL-2.0",
 	"packageManager": "pnpm@12.5.1"
 }

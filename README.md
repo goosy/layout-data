@@ -121,4 +121,6 @@ pnpm lint
 
 ## License
 
-ISC
+[MPL-2.0](LICENSE). You may use this library as a component of your own products, commercial or not, under any license. If you modify the files of this library, the modified files must be published under MPL-2.0, and the copyright and license notices must be kept.
+
+The license grants no trademark rights: the name "tagged-data" may not be used to promote a modified or repackaged copy of this library.
