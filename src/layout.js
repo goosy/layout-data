@@ -4,7 +4,8 @@ import { CODECS } from "./codecs.js";
 import { register, registered_of, set_compiled } from "./registry.js";
 import { build_structure, validate_structure, TYPE_BITS } from "./structure.js";
 
-/** @import { Compiled_Layouts, Data_Struct, Layout } from "./typedefs.js" */
+/** @import { Layout_Source, Registered_Layouts, Layout } from "./typedefs.js" */
+/** @import { Data_Struct } from "./internal_types.js" */
 
 /**
  * The canonical text of a value: object keys sorted, `comment` left out (it
@@ -27,13 +28,13 @@ function canonical(value, key) {
  * text equals the registered one of that name gives the registered Layout, so
  * the same layout described twice is compiled once; another structure under a
  * used name throws. Throws on an unknown type or a duplicated tag name; the
- * other layout rules are checked by validate_structure.
+ * other layout rules are checked by validate_structure. Internal.
  *
  * @param {Data_Struct} data_struct
  * @returns {Layout}
  * @throws {Error} When the name is used by another layout.
  */
-export function register_layout(data_struct) {
+export function register_structure(data_struct) {
 	const { name } = data_struct;
 	if (typeof name !== "string" || name === "") throw new Error("a layout needs a name");
 	const key = key_of(data_struct);
@@ -147,43 +148,129 @@ function resolve_items(list, fragments, stack, where, errors) {
 }
 
 /**
- * Reads the layout description file (doc/design.md §3) and compiles
- * every layout in it. The root key `layouts` maps layout names to item
- * lists; every other root key is a fragment referenced by name.
+ * Reads the sources of the layouts (doc/design.md §3), merges their layouts
+ * and fragments into one description and registers it with
+ * register_layout_data. Each source is the path of a YAML layout file or a
+ * parsed description; a list of sources is merged, so a layout may name a
+ * fragment of any source whatever the order. The root key `layouts` of a
+ * source maps layout names to item lists; every other root key is a fragment
+ * referenced by name.
  *
- * Every layout is registered under its name (register_layout): a file with the
- * same layouts as one compiled before gives the same Layout objects, whatever
- * its path, and a layout under a name used by another layout throws.
- *
- * @param {string} yaml_path - Path of the YAML layout file.
- * @returns {Compiled_Layouts}
- * @throws {Error} With `errors`, every violation found, when the file is not valid.
+ * @param {Layout_Source | Layout_Source[]} sources
+ * @returns {Registered_Layouts}
+ * @throws {Error} With `errors`, every violation found, when the sources are not valid.
  */
-export function compile_layout(yaml_path) {
-	const doc = parseDocument(readFileSync(yaml_path, "utf8"), { version: "1.2" });
-	if (doc.errors.length > 0) throw layout_error(yaml_path, doc.errors.map((e) => e.message));
-	return compile_layout_data(doc.toJS(), yaml_path);
+export function register_sources(sources) {
+	const errors = [];
+	const list = Array.isArray(sources) ? sources : [sources];
+	if (list.length === 0) errors.push("no source is given");
+	const origins = [];
+	const layout_defs = {};
+	const fragment_defs = {};
+	// the origin of each layout and fragment, to name both in a duplicate
+	const owners = { layout: new Map(), fragment: new Map() };
+	const add = (origin, root) => {
+		origins.push(origin);
+		if (root === null || typeof root !== "object" || Array.isArray(root)) {
+			errors.push(`${origin}: the root must be a mapping`);
+			return;
+		}
+		const { layouts, ...fragments } = root;
+		if (layouts !== undefined && (layouts === null || typeof layouts !== "object" || Array.isArray(layouts))) {
+			errors.push(`${origin}: the root key \`layouts\` must map layout names to item lists`);
+			return;
+		}
+		const merge = (kind, defs, into) => {
+			for (const [name, value] of Object.entries(defs)) {
+				if (owners[kind].has(name)) {
+					errors.push(`${kind} ${name} is defined in ${owners[kind].get(name)} and ${origin}`);
+					continue;
+				}
+				owners[kind].set(name, origin);
+				into[name] = value;
+			}
+		};
+		merge("layout", layouts ?? {}, layout_defs);
+		merge("fragment", fragments, fragment_defs);
+	};
+	list.forEach((source, index) => {
+		const label = Array.isArray(sources) ? `layout description #${index + 1}` : "layout description";
+		if (Array.isArray(source)) {
+			errors.push(`${label}: a list of sources must not contain a list`);
+		} else if (typeof source === "string") {
+			let text;
+			try {
+				text = readFileSync(source, "utf8");
+			} catch (error) {
+				errors.push(error.message);
+				return;
+			}
+			const doc = parseDocument(text, { version: "1.2" });
+			if (doc.errors.length > 0) errors.push(...doc.errors.map((e) => `${source}: ${e.message}`));
+			else add(source, doc.toJS());
+		} else {
+			add(label, source);
+		}
+	});
+	if (errors.length === 0 && Object.keys(layout_defs).length === 0) errors.push("no layout is defined in the sources");
+	if (errors.length > 0) throw layout_error("layout sources", errors);
+	return register_layout_data({ layouts: layout_defs, ...fragment_defs }, origins.join(", "));
 }
 
-function layout_error(origin, errors) {
-	const error = new Error(`invalid layout file ${origin}:\n${errors.join("\n")}`);
+/** Set once a call of register_layout has registered the layouts. */
+let registered_once = false;
+
+/**
+ * Registers the layouts of the sources, once per process: a layout is
+ * described, registered under its name, and then used by that name
+ * (doc/spec-data-api.md §6.4). Nothing is registered when a source is not
+ * valid, and such a call does not use up the single call.
+ *
+ * @param {Layout_Source | Layout_Source[]} sources - The path of a YAML layout file, a parsed description, or a list of them.
+ * @returns {Registered_Layouts}
+ * @throws {Error} With `errors`, every violation found, when the sources are not valid.
+ * @throws {Error} When the layouts were registered by an earlier call.
+ */
+export function register_layout(sources) {
+	if (registered_once) throw new Error("register_layout can be called only once");
+	const result = register_sources(sources);
+	registered_once = true;
+	return result;
+}
+
+function layout_error(subject, errors) {
+	const error = new Error(`invalid ${subject}:\n${errors.join("\n")}`);
 	error.errors = errors;
 	return error;
 }
 
 /**
- * Compiles a layout description that is already parsed: the same structure as
- * the layout file (compile_layout), for a user whose own file carries the
- * layouts among other data. The layouts are registered as by compile_layout.
+ * The conflicts of structures with the layouts registered under their names.
+ *
+ * @param {Record<string, Data_Struct>} structs - By layout name.
+ * @returns {string[]}
+ */
+function find_conflicts(structs) {
+	const conflicts = [];
+	for (const [name, struct] of Object.entries(structs)) {
+		const known = registered_of(name);
+		if (known && known.key !== key_of(struct)) conflicts.push(`layout ${name}: another layout is already named ${name}`);
+	}
+	return conflicts;
+}
+
+/**
+ * Registers the layouts of one description that is parsed and complete: the
+ * root key `layouts` and the fragments the layouts name. Internal.
  *
  * @param {Record<string, any>} root - The parsed description: `layouts` and the fragments.
  * @param {string} [origin] - Names the source in errors.
- * @returns {Compiled_Layouts}
+ * @returns {Registered_Layouts}
  * @throws {Error} With `errors`, every violation found, when the description is not valid.
  */
-export function compile_layout_data(root, origin = "layout description") {
+export function register_layout_data(root, origin = "the given object") {
 	const fail = (errors) => {
-		throw layout_error(origin, errors);
+		throw layout_error(`layout description from ${origin}`, errors);
 	};
 	if (root === null || typeof root !== "object" || Array.isArray(root)) fail(["the root must be a mapping"]);
 	const { layouts: layout_defs, ...fragment_defs } = root;
@@ -206,14 +293,11 @@ export function compile_layout_data(root, origin = "layout description") {
 	}
 	if (errors.length === 0) {
 		// all or none: a conflict is found before any of the layouts is registered
-		for (const [name, struct] of Object.entries(structs)) {
-			const known = registered_of(name);
-			if (known && known.key !== key_of(struct)) errors.push(`layout ${name}: another layout is already named ${name}`);
-		}
+		errors.push(...find_conflicts(structs));
 	}
 	if (errors.length > 0) fail(errors);
 
 	const layouts = {};
-	for (const [name, struct] of Object.entries(structs)) layouts[name] = register_layout(struct);
+	for (const [name, struct] of Object.entries(structs)) layouts[name] = register_structure(struct);
 	return { layouts, fragments };
 }

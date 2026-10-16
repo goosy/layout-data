@@ -15,7 +15,7 @@ tagged-data 是一个结构化数据块库：提供基于 `Buffer`、面向数�
 
 | 术语 | 含义 |
 | --- | --- |
-| 布局 | 一块数据的固定格式：每个 tag 的名称、类型、位偏移、初值，编译后不可变 |
+| 布局 | 一块数据的固定格式：每个 tag 的名称、类型、位偏移、初值，注册后不可变 |
 | TData / tdata | TData 是数据对象的类，tdata 是它的实例：按某个布局分配的一块数据，内部按大端存放 |
 | TTag | tdata 中一个具名 tag 的操作接口 |
 | 组合字 | 由若干 Bool 组成的 Word，与各组成位共用同一块数据 |
@@ -57,11 +57,11 @@ tagged-data 是一个结构化数据块库：提供基于 `Buffer`、面向数�
 | 导出 | 说明 |
 | --- | --- |
 | `TData`、`TTag` | 数据对象和 tag 句柄（[spec-data-api.zh-cn.md](spec-data-api.zh-cn.md) §2 和 §3） |
-| `compile_layout`、`compile_layout_data` | 编译布局描述（[spec-data-api.zh-cn.md](spec-data-api.zh-cn.md) §6） |
-| `build_structure`、`validate_structure`、`register_layout`、`layout_of` | 在代码中定义布局，不用文件（[spec-data-api.zh-cn.md](spec-data-api.zh-cn.md) §6.5） |
+| `register_layout` | 注册各来源中的布局：YAML 文件或已解析的描述（在代码里给条目也用它），每个进程一次；先注册，再按布局名创建 `TData`（[spec-data-api.zh-cn.md](spec-data-api.zh-cn.md) §6） |
+| `get_layout` | 按名取得已登记的布局（[spec-data-api.zh-cn.md](spec-data-api.zh-cn.md) §6.4） |
 | `set_access_tracer` | 追踪 tag 的读写（[spec-data-api.zh-cn.md](spec-data-api.zh-cn.md) §2.8） |
 | `io_index_table` | 与设备整块交换用的字节下标表（[spec-data-api.zh-cn.md](spec-data-api.zh-cn.md) §2.9）；按 tag 的转换是 TData 的 `load_tag` / `store_tag` |
-| `render_types` | 由编译后的布局生成 TypeScript 类型声明 |
+| `render_types` | 由已注册的布局生成 TypeScript 类型声明 |
 
 ## 7. 文档
 

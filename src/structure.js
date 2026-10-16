@@ -3,7 +3,8 @@
 import { FLOAT32_MAX } from "./codecs.js";
 import { is_reserved_name } from "./reserved.js";
 
-/** @import { Data_Struct, Layout_Item } from "./typedefs.js" */
+/** @import { Layout_Item } from "./typedefs.js" */
+/** @import { Data_Struct } from "./internal_types.js" */
 
 function add_item(data_struct, item, base_offset, name_prefix) {
 	const items = data_struct.items;
@@ -81,7 +82,7 @@ function share_init_value(word, bits) {
 
 /**
  * Expands a list of items (resolving `includes` and `coupling`, making offsets
- * absolute) into the given structure.
+ * absolute) into the given structure. Internal. It changes the items it is given.
  *
  * @param {{name: string}} data_struct - The structure to fill in; only the name is given.
  * @param {Layout_Item[]} items
@@ -90,7 +91,7 @@ function share_init_value(word, bits) {
 export function build_structure(data_struct, items) {
 	data_struct.length = 0;
 	data_struct.items = [];
-	if (!items) return;
+	if (!items) return data_struct;
 	for (const item of items) {
 		add_item(data_struct, item, 0);
 	}
@@ -127,7 +128,7 @@ function check_init_value(item, type) {
 
 /**
  * Validates a structure built by build_structure against the layout rules
- * (doc/spec.md §3, doc/design.md §3.1).
+ * (doc/spec.md §3, doc/design.md §3.1). Internal.
  *
  * @param {Data_Struct} data_struct
  * @returns {string[]} descriptions of all violations, empty when the layout is valid

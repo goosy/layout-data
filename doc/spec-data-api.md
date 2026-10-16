@@ -9,7 +9,7 @@
 
 | Name | Meaning |
 | --- | --- |
-| Layout | The fixed format of a data block: name, type, bit offset and initial value of every tag, given by a layout description (§6) and immutable once compiled |
+| Layout | The fixed format of a data block: name, type, bit offset and initial value of every tag, given by a layout description (§6) and immutable once registered |
 | TData / tdata | TData is the class of data objects, a tdata is an instance: a block of data allocated for a layout, stored big-endian internally, with access by name and change events |
 | TTag | The interface of one named tag of a tdata: read and write its value, subscribe to its changes |
 
@@ -29,7 +29,7 @@ Units: a `length` is in bits and a `size` is in bytes, everywhere in this interf
 const data = new TData(layout, name);
 ```
 
-- `layout`: a registered layout, from `compile_layout` (§6) or `register_layout` (§6.5), or the name of one, which `layout_of(name)` resolves; a structure is not accepted, and an unknown name or a layout object that is not the registered one of its name throws;
+- `layout`: the name of a registered layout, which is the normal way (§6.4: register first, then create by name), or the registered layout object itself, which `get_layout(name)` returns or a registration result holds; a list of items is not accepted, and an unknown name or a layout object that is not the registered one of its name throws;
 - `name`: the name of the tdata, used in logs and error messages;
 - After creation every tag equals its initial value from the layout, and no change event is emitted;
 - A layout name identifies one layout for the life of the process: the data blocks of one layout share one class (§6.4).
@@ -166,7 +166,7 @@ A tdata is one object that holds both the tags (as properties) and its own metho
 | EventEmitter (Node.js 20.11) | `addListener`, `emit`, `eventNames`, `getMaxListeners`, `listenerCount`, `listeners`, `off`, `on`, `once`, `prependListener`, `prependOnceListener`, `rawListeners`, `removeAllListeners`, `removeListener`, `setMaxListeners`, `_events`, `_eventsCount`, `_maxListeners` |
 | Object | `constructor`, `hasOwnProperty`, `isPrototypeOf`, `propertyIsEnumerable`, `toLocaleString`, `toString`, `valueOf`, `__proto__`, `__defineGetter__`, `__defineSetter__`, `__lookupGetter__`, `__lookupSetter__` |
 
-- A tag with a reserved name is a violation of the layout (§6.3): validation reports it, and creating a tdata of such a layout throws `Error`;
+- A tag with a reserved name is a violation of the layout (§6.3): registering such a layout throws `Error` (§6.4), so a tdata of it never exists;
 - TData stays a subclass of EventEmitter. A later version of Node.js may add methods to EventEmitter; the list does not follow them, so a tag named like such a method would hide it. The test suite compares the list with the running Node.js;
 - A later version of this package adds members to TData only as `Symbol`-keyed members or static methods, never as a new string-named member of an instance, so a tag name that is valid now stays valid;
 - The reserved event names are in §2.7. Whether a name is reserved is not queryable: there is no public function for it;
@@ -241,7 +241,8 @@ The interface throws exceptions on errors. It does not log or exit the process; 
 | Writing a value that is not a number to an integer or `Real` tag | `TypeError`, the old value is kept, no event and no `write` |
 | Writing `NaN`, `Infinity`, a non-integer or an integer outside the range to an integer tag, or a finite number beyond float32 to a `Real` tag | `RangeError`, the old value is kept, no event and no `write` |
 | A handler throws | the first exception is thrown by the write statement after all events are dispatched; the value stands and `write` is emitted (§4.4) |
-| Invalid layout, or a reserved tag name (§2.10) | `Error` thrown when the tdata is created |
+| Invalid layout, or a reserved tag name (§2.10) | `Error` with `errors`, thrown by `register_layout`; nothing is registered (§6.4) |
+| `register_layout` called again after it registered layouts | `Error`, the layouts of the first call stay (§6.4) |
 | Writes triggered by handlers that do not settle | `Error`, thrown by the write statement after the events are dispatched (§4.4) |
 | Starting another transaction inside a transaction | `Error` |
 | A raw read or write whose offset, length or mask is out of range, or that writes past the end of the data block | `RangeError`, the data is unchanged and no `write` is emitted |
@@ -250,6 +251,8 @@ The interface throws exceptions on errors. It does not log or exit the process; 
 | A byte order other than `BE`, `LE`, `BEBS`, `LEBS`, or a tag whose range in `io_buffer` is out of bounds | `RangeError`, the tdata is unchanged and no `write` is emitted |
 
 ## 6. Layout description
+
+The flow is **register once, then use by name**: the layouts are described (§6.1 to §6.3), all of them are registered by one call of `register_layout` (§6.4), and from then on `new TData("PUMP", "pump_1")` creates data blocks of a layout by its name. The user needs to know how to express a layout as a YAML structure and which name it has; whether it is compiled, and into what, is not part of the flow.
 
 ### 6.1 File
 
@@ -273,7 +276,7 @@ layouts:
     - { includes: node_parameters, offset: 144 }
 ```
 
-Only one file is compiled at a time for now. When several files (a directory) are supported, the merge rules and the handling of key conflicts will be specified.
+A file is complete in itself or is one of several sources (§6.4): a file may hold only fragments, only layouts, or both, and the fragments of every source are available to the layouts of every source.
 
 ### 6.2 Entries
 
@@ -300,23 +303,46 @@ Entries in a fragment may reference other fragments too.
 - The total length of a layout is a whole number of registers (a multiple of 16 bits);
 - Referenced fragments must exist, and fragments must not reference each other in a cycle.
 
-### 6.4 Compiling
+### 6.4 Registering
 
 ```js
-const { layouts, fragments } = compile_layout(yaml_path);
-const node = new TData(layouts.NODE, "node_1");
+register_layout("pump.yaml");                                     // one file
+register_layout(["common.yaml", "pump.yaml", "valve.yaml"]);      // several files
+register_layout(["common.yaml", { layouts: { INLINE: [...] } }]); // files and descriptions
+const pump = new TData("PUMP", "pump_1");                         // from then on, by the layout name
 ```
 
-- `layouts`: compiled layouts by layout name, used to create TData;
-- `fragments`: entry lists by fragment name (references expanded, offsets relative to the start of the fragment), for the user to query, for example to get all tag names of a parameter block;
-- Any violation in the file throws an `Error` whose `errors` property lists all violations;
-- Every layout is registered under its name (§6.4); a layout identical to a registered one of that name (a file, whatever its path, or an object given to `compile_layout_data`) is the same `Layout` object, so several users of one description get identical objects. A layout is read-only (§6.6);
-- A layout name is used by one layout only: a layout that differs from the registered one of its name (the `comment` of the items and the case of the type names do not count) is an error, `another layout is already named X`. A description is registered all or none: the conflicts are reported in `errors` before any layout is registered. Layouts of different descriptions therefore need distinct names unless they are identical. `layout_of(name)` returns the registered layout and throws `unknown layout X` for an unknown name;
-- `compile_layout_data(root, origin)` compiles an already parsed description (the same structure as the file: `layouts` plus the fragments), for layouts embedded in the user's own file. The result and the errors are the same.
+`register_layout(sources)` registers the layouts of its sources. A layout can be used only after it is registered.
+
+- `sources`: one source or a list of sources, each either **a string, the path of a YAML 1.2 file**, or **an object, a description that is already parsed** (the structure of §6.1: `layouts` plus the fragments; this is also how items are given in code, §6.5). A list does not hold lists, and an empty list is an error. A string is always a path;
+- **Once per process.** The layouts are registered by one call, so that the layouts and fragments are all known together and nothing depends on the order of calls. A second call throws `Error` (`register_layout can be called only once`), and the layouts of the first stay. A call that fails registers nothing and does not use up the call, so the program may go on to register something else, for example a default description when its own file is not valid;
+- **The sources are merged, then resolved.** The layouts and the fragments of all the sources are collected first, and only then are the fragment references resolved, so a layout may name a fragment of any source, whatever the order of the list. A source needs no `layouts` key (a file of common fragments has none), but at least one source must define a layout;
+- The same fragment name or the same layout name in two sources is an error naming both sources (a file is named by its path, a description by its position in the list, `layout description #2`); nothing is overridden;
+- Every layout is validated (§6.3), the omitted `length`s are filled in, and the sources are not changed;
+- Any violation throws an `Error` whose `errors` property lists all violations of all sources, and nothing is registered: the sources are registered all or none. An unreadable file and a YAML syntax error are violations too. The layout and fragment errors name the layout or fragment, not the file;
+- Return value: `{ layouts, fragments }` for all the sources. `layouts` holds the registered layouts by name, as `get_layout(name)` returns them; `fragments` holds the entry lists by fragment name (references expanded, offsets relative to the start of the fragment), for the user to query, for example to get all tag names of a parameter block. Neither is needed for the flow above;
+- A layout name stays registered for the life of the process. `get_layout(name)` returns the registered layout (read-only, §6.6) and throws `unknown layout X` for a name that is not registered, as `new TData(name, ...)` does;
+- Consequences of registering once: a changed layout file takes effect only in a new process (no hot reload, and a REPL or a test cannot register a changed layout again); a library built on tagged-data cannot call `register_layout` itself, it can only export the paths of its layout files for the application to put in `sources`; when two copies of the package are installed, each has its own registry and its own single call, and neither sees the layouts of the other.
 
 ### 6.5 Defining a layout in code
 
-A layout needs no file. `build_structure({ name }, items)` expands a list of items (the same entries as in the file, with inline `coupling` lists and explicit `length`) into a structure, `validate_structure(structure)` returns the list of violations (§6.3; empty when valid), and `register_layout(structure)` compiles it into a layout and registers it (§6.4). `layout_of(name)` returns a registered layout. `new TData(layout, name)` takes that layout. `build_structure` keeps what it is given, including violations, so check the result before use.
+A layout needs no file. Give a description, the structure of §6.1, to `register_layout` (§6.4), with the items of a layout as a list under its name:
+
+```js
+register_layout({
+  layouts: {
+    PUMP: [
+      { name: "id", type: "UInt", offset: 0, init_value: 0 },
+      { name: "pressure", type: "Real", offset: 32, init_value: 0 },
+    ],
+  },
+});
+const data = new TData("PUMP", "pump_1");
+```
+
+- the items are the entries of §6.2; `length` may be omitted; `coupling` and `includes` take an inline list or the name of a fragment of any of the sources;
+- the description and the entries in it are not changed;
+- there is no separate function that registers one list of items, nor any that expands or validates a structure by itself: registration is the single step that validates (§6.4).
 
 ### 6.6 The layout object
 

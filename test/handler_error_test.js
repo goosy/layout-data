@@ -1,14 +1,13 @@
-import { make_struct } from "./share.js";
+import { register_items } from "./share.js";
 import assert from "node:assert/strict";
 import test, { describe } from "node:test";
 import { TData } from "../src/TData.js";
-import { register_layout } from "../src/layout.js";
 
-const LAYOUT = register_layout(make_struct([
+const LAYOUT = register_items("HANDLER_ERRORS", [
 	{ name: "a", type: "UInt", offset: 0, length: 16, init_value: 0 },
 	{ name: "b", type: "UInt", offset: 16, length: 16, init_value: 0 },
 	{ name: "c", type: "UInt", offset: 32, length: 16, init_value: 0 },
-], "HANDLER_ERRORS"));
+]);
 
 const create = () => new TData(LAYOUT, "d");
 

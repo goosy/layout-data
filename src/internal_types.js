@@ -27,6 +27,15 @@
  */
 
 /**
+ * The expanded structure of a data block (the result of build_structure).
+ *
+ * @typedef {object} Data_Struct
+ * @property {string} name
+ * @property {number} length - Total length in bits.
+ * @property {import("./typedefs.js").Layout_Item[]} items
+ */
+
+/**
  * The compiled data of a layout, kept apart from the public Layout
  * (doc/design.md §3).
  *

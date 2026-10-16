@@ -4,19 +4,22 @@
 import { Buffer } from "node:buffer";
 import {
 	TData, TTag,
-	compile_layout, compile_layout_data, layout_of, register_layout, set_access_tracer,
-	build_structure, validate_structure,
+	register_layout, get_layout, set_access_tracer,
 	io_index_table, render_types,
-	type Layout, type Layout_Tag, type Layout_Item, type Data_Struct,
-	type Compiled_Layouts, type Access_Tracer, type Endian, type Tag_Type,
+	type Layout, type Layout_Tag, type Layout_Item, type Layout_Source,
+	type Registered_Layouts, type Access_Tracer, type Endian, type Tag_Type,
 } from "tagged-data";
 
 type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends (<T>() => T extends B ? 1 : 2) ? true : false;
 function assert_type<_T extends true>() {}
 
-// layout compilation
-const compiled: Compiled_Layouts = compile_layout_data({ layouts: {} });
-const from_file: Compiled_Layouts = compile_layout("layout.yaml");
+// registering layouts: a file, a parsed description, or a list of them
+const compiled: Registered_Layouts = register_layout({ layouts: {} });
+const from_file: Registered_Layouts = register_layout("layout.yaml");
+const from_list: Registered_Layouts = register_layout(["common.yaml", "pump.yaml", { layouts: {} }]);
+const sources: Layout_Source[] = ["a.yaml", { layouts: {} }];
+register_layout(sources);
+void from_list;
 const layout: Layout = compiled.layouts.any;
 const fragment: Layout_Item[] = from_file.fragments.any;
 assert_type<Equal<typeof layout.size, number>>();
@@ -32,23 +35,29 @@ layout.name = "x";
 // @ts-expect-error the items are read-only
 layout.items.push({ name: "a", type: "Int", offset: 0, length: 16, init_value: 0, coupling: [] });
 assert_type<Equal<typeof fragment, Layout_Item[]>>();
-compile_layout_data({ layouts: {} }, "origin");
-// @ts-expect-error the path must be a string
-compile_layout(1);
+// @ts-expect-error a source is a path or a description, not a number
+register_layout(1);
+// @ts-expect-error the sources are required
+register_layout();
 
-// structures
+// items given in code are a description, registered and then used by name
 const items: Layout_Item[] = [{ name: "a", type: "word", offset: 0, init_value: 1 }];
-const data_struct: Data_Struct = build_structure({ name: "s" }, items);
-const errors: string[] = validate_structure(data_struct);
-const same_layout: Layout = register_layout(data_struct);
-assert_type<Equal<typeof errors, string[]>>();
-// @ts-expect-error an item needs a type and an offset
-build_structure({ name: "s" }, [{ name: "a" }]);
+const same_layout: Layout = register_layout({ layouts: { s: items } }).layouts.s;
+assert_type<Equal<typeof same_layout, Layout>>();
+assert_type<Equal<typeof get_layout, (name: string) => Layout>>();
+// @ts-expect-error the old compile names are gone
+void (await import("tagged-data")).compile_layout;
+// @ts-expect-error the file and the data entries are one entry now
+void (await import("tagged-data")).register_layout_file;
+// @ts-expect-error a structure is no longer built in steps
+void (await import("tagged-data")).build_structure;
+// @ts-expect-error the validation is part of the registration
+void (await import("tagged-data")).validate_structure;
 
 // TData
 const tdata = new TData(same_layout, "block");
-// @ts-expect-error a structure is compiled by layout_of first: TData takes a layout
-new TData(data_struct, "block");
+// @ts-expect-error a list of items is registered first: TData takes a layout
+new TData(items, "block");
 const tag: TTag | undefined = tdata.get("a");
 assert_type<Equal<typeof tdata.size, number>>();
 assert_type<Equal<typeof tdata.layout, Layout>>();

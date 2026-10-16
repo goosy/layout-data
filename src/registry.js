@@ -1,6 +1,6 @@
 // The registry of the compiled layouts, by layout name (doc/design.md §3).
 // A name identifies one layout: it is the only source of the layouts a TData
-// is created from. Written by register_layout (layout.js), read by TData.
+// is created from. Written by register_structure (layout.js), read by TData.
 
 /** @import { Layout } from "./typedefs.js" */
 /** @import { Compiled_Layout } from "./internal_types.js" */
@@ -76,7 +76,7 @@ export function find_layout(name) {
  * @returns {Layout}
  * @throws {Error} When no layout of that name is registered.
  */
-export function layout_of(name) {
+export function get_layout(name) {
 	const layout = find_layout(name);
 	if (!layout) throw new Error(`unknown layout ${name}`);
 	return layout;

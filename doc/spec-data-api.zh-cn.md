@@ -7,7 +7,7 @@
 
 | 名称 | 含义 |
 | --- | --- |
-| 布局 | 一块数据的固定格式：每个 tag 的名称、类型、位偏移、初值，由布局描述（§6）给出，编译后不可变 |
+| 布局 | 一块数据的固定格式：每个 tag 的名称、类型、位偏移、初值，由布局描述（§6）给出，注册后不可变 |
 | TData / tdata | TData 是数据对象的类，tdata 是它的实例：按某个布局分配的一块数据，内部按大端存放，提供按名读写和变化事件 |
 | TTag | tdata 中一个具名 tag 的操作接口，可读写其值、订阅其变化 |
 
@@ -27,7 +27,7 @@ tag 的类型：`Bool`、`Byte`、`SInt`、`USInt`、`Int`、`UInt`、`Word`、`
 const data = new TData(layout, name);
 ```
 
-- `layout`：已登记的布局，来自 `compile_layout`（§6）或 `register_layout`（§6.5），或者是其名字，由 `layout_of(name)` 解析；不接受结构，名字未知或布局对象不是其名字下已登记的那个时抛出错误；
+- `layout`：已登记布局的名字，这是通常的用法（§6.4：先注册，再按名创建）；也可以是已登记的布局对象本身，由 `get_layout(name)` 返回，或来自注册的返回值；不接受条目列表，名字未知或布局对象不是其名字下已登记的那个时抛出错误；
 - `name`：tdata 的名称，用于日志和错误信息；
 - 创建后每个 tag 的值等于布局中的初值，此时不发出变化事件；
 - 布局名在进程的整个生命期内标识唯一的布局：同一布局的数据块共用一个类（§6.4）。
@@ -164,7 +164,7 @@ tdata 是一个对象，既用属性存放 tag，又有自己的方法，所以�
 | EventEmitter（Node.js 20.11） | `addListener`、`emit`、`eventNames`、`getMaxListeners`、`listenerCount`、`listeners`、`off`、`on`、`once`、`prependListener`、`prependOnceListener`、`rawListeners`、`removeAllListeners`、`removeListener`、`setMaxListeners`、`_events`、`_eventsCount`、`_maxListeners` |
 | Object | `constructor`、`hasOwnProperty`、`isPrototypeOf`、`propertyIsEnumerable`、`toLocaleString`、`toString`、`valueOf`、`__proto__`、`__defineGetter__`、`__defineSetter__`、`__lookupGetter__`、`__lookupSetter__` |
 
-- tag 使用保留名属于布局违规（§6.3）：校验会报告，用这样的布局创建 tdata 时抛出 `Error`；
+- tag 使用保留名属于布局违规（§6.3）：注册这样的布局时抛出 `Error`（§6.4），所以不会有这种布局的 tdata；
 - TData 仍然是 EventEmitter 的子类。以后的 Node.js 可能给 EventEmitter 增加方法，清单不会跟着变，所以与这类方法同名的 tag 会遮蔽该方法。测试会把清单与运行中的 Node.js 比对；
 - 本包以后给 TData 增加成员，只用以 `Symbol` 为键的成员或静态方法，不会再给实例增加字符串名的成员，所以现在合法的 tag 名以后仍然合法；
 - 保留的事件名见 §2.7。名字是否保留不提供查询：没有公开函数；
@@ -239,7 +239,8 @@ TTag 不保存值，读写都直接作用于所属 tdata。
 | 向整型或 `Real` tag 写入不是数字的值 | `TypeError`，原值不变，不发出事件和 `write` |
 | 向整型 tag 写入 `NaN`、`Infinity`、非整数或超出范围的整数，或向 `Real` tag 写入超出 float32 的有限数 | `RangeError`，原值不变，不发出事件和 `write` |
 | 处理器抛出异常 | 全部事件派发完之后，写入语句抛出第一个异常；值保留，`write` 照常发出（§4.4） |
-| 布局不合法、tag 名是保留名（§2.10） | 创建 tdata 时抛出 `Error` |
+| 布局不合法、tag 名是保留名（§2.10） | `register_layout` 抛出带 `errors` 的 `Error`，什么都不登记（§6.4） |
+| `register_layout` 在成功登记之后再次调用 | `Error`，第一次登记的布局保持不变（§6.4） |
 | 处理器互相触发的写入不能平息 | `Error`，全部事件派发完之后由写入语句抛出（§4.4） |
 | 事务中开始另一个事务 | `Error` |
 | 原始读写的偏移、长度、掩码越界，或写入越过数据块末尾 | `RangeError`，数据不变，不发出 `write` |
@@ -248,6 +249,8 @@ TTag 不保存值，读写都直接作用于所属 tdata。
 | 字节序不是 `BE`、`LE`、`BEBS`、`LEBS`，或 tag 在 `io_buffer` 中的范围越界 | `RangeError`，tdata 不变，不发出 `write` |
 
 ## 6. 布局描述
+
+流程是**注册一次，再按名使用**：先描述布局（§6.1 到 §6.3），用一次 `register_layout` 调用把它们全部注册（§6.4），此后用 `new TData("PUMP", "pump_1")` 按布局名创建数据块。使用方需要知道的是怎样把布局表达成 YAML 结构、它叫什么名字；它是否经过编译、编译成什么，不属于这个流程。
 
 ### 6.1 文件
 
@@ -271,7 +274,7 @@ layouts:
     - { includes: node_parameters, offset: 144 }
 ```
 
-目前一次只编译一个文件。以后支持多个文件（目录）时，再规定合并方式和键冲突的处理。
+一个文件可以自成一体，也可以是多个来源之一（§6.4）：文件里可以只有片段、只有布局，或者两者都有，每个来源的片段对所有来源的布局都可用。
 
 ### 6.2 条目
 
@@ -298,23 +301,46 @@ layouts:
 - 布局总长是整数个寄存器（16 位的整数倍）；
 - 引用的片段必须存在，片段之间不得循环引用。
 
-### 6.4 编译
+### 6.4 注册
 
 ```js
-const { layouts, fragments } = compile_layout(yaml_path);
-const node = new TData(layouts.NODE, "node_1");
+register_layout("pump.yaml");                                     // 一个文件
+register_layout(["common.yaml", "pump.yaml", "valve.yaml"]);      // 多个文件
+register_layout(["common.yaml", { layouts: { INLINE: [...] } }]); // 文件和描述混用
+const pump = new TData("PUMP", "pump_1");                         // 此后按布局名使用
 ```
 
-- `layouts`：按布局名索引的已编译布局，用于创建 TData；
-- `fragments`：按片段名索引的条目列表（展开引用后，偏移相对于片段起点），供使用方查询，例如取得参数块的全部 tag 名；
-- 文件中有任何违规时抛出 `Error`，其 `errors` 属性列出全部违规项；
-- 每个布局都按其名字登记（§6.4）；与某名字下已登记的布局相同的布局（文件，不论路径；或交给 `compile_layout_data` 的对象）就是同一个 `Layout` 对象，所以共用一份描述的多个使用方拿到同一批对象。布局是只读的（§6.6）；
-- 一个布局名只属于一个布局：与其名字下已登记的布局不同的布局（条目的 `comment` 和类型名的大小写不计）是错误，`another layout is already named X`。一份描述要么全部登记，要么都不登记：冲突在登记任何布局之前就写入 `errors` 报告。所以不同描述中的布局须使用不同的名字，除非它们完全相同。`layout_of(name)` 返回已登记的布局，名字未知时抛出 `unknown layout X`；
-- `compile_layout_data(root, origin)` 编译已解析的描述（与文件同结构：`layouts` 加各片段），用于布局嵌在使用方自己文件中的情形，返回值和错误同上。
+`register_layout(sources)` 注册各来源中的布局。布局注册之后才能使用。
+
+- `sources`：一个来源，或来源的列表；每个来源是**字符串，即 YAML 1.2 文件的路径**，或是**对象，即已经解析好的描述**（§6.1 的结构：`layouts` 加各片段；在代码里给条目也是这样，§6.5）。列表里不能再放列表，空列表是错误。字符串永远是路径；
+- **每个进程只能调用一次。** 布局一次注册，布局和片段就是同时全部已知的，不依赖调用的先后。第二次调用抛出 `Error`（`register_layout can be called only once`），第一次登记的布局保持不变。失败的调用什么都不登记，也不算用掉这一次，所以程序可以接着注册别的内容，例如自己的文件不合法时改用默认描述；
+- **先合并来源，再解析。** 先收集所有来源的布局和片段，然后才解析片段引用，所以布局可以引用任何来源中的片段，与列表的顺序无关。来源不必有 `layouts` 键（只放公共片段的文件就没有），但至少要有一个来源定义了布局；
+- 两个来源里出现同名片段或同名布局是错误，错误信息写出两个来源（文件用路径，描述用它在列表中的位置，如 `layout description #2`）；不做覆盖；
+- 每个布局都要校验（§6.3），省略的 `length` 会补全，传入的来源不会被修改；
+- 有任何违规时抛出 `Error`，其 `errors` 属性列出所有来源的全部违规项，且什么都不登记：这些来源要么全部登记，要么都不登记。读不到的文件和 YAML 语法错误也是违规。布局和片段方面的错误写出布局或片段的名字，不写文件名；
+- 返回值：`{ layouts, fragments }`，包含所有来源。`layouts` 是按名字索引的已登记布局，与 `get_layout(name)` 返回的相同；`fragments` 是按片段名索引的条目列表（展开引用后，偏移相对于片段起点），供使用方查询，例如取得参数块的全部 tag 名。上面的流程不需要它们；
+- 布局名在进程的整个生命期内保持登记。`get_layout(name)` 返回已登记的布局（只读，§6.6），名字未登记时抛出 `unknown layout X`，与 `new TData(name, ...)` 相同；
+- 只注册一次的后果：改过的布局文件只在新进程里生效（没有热重载，REPL 或测试里也无法重新注册改过的布局）；基于 tagged-data 的库不能自己调用 `register_layout`，只能导出它的布局文件路径，由应用放进 `sources`；装了两份本包时，各有各的登记表和各自的那一次调用，互相看不到对方的布局。
 
 ### 6.5 在代码中定义布局
 
-布局不一定要有文件。`build_structure({ name }, items)` 把条目列表（与文件中的条目相同，可内联 `coupling` 列表并显式给出 `length`）展开为结构，`validate_structure(structure)` 返回违规描述的数组（§6.3，空数组表示合法），`register_layout(structure)` 把它编译为布局并登记（§6.4）。`layout_of(name)` 返回已登记的布局。`new TData(layout, name)` 接收该布局。`build_structure` 保留收到的内容（包括违规），使用前须检查校验结果。
+布局不一定要有文件。把一个描述，即 §6.1 的结构，交给 `register_layout`（§6.4），每个布局的条目是它名字下的一个列表：
+
+```js
+register_layout({
+  layouts: {
+    PUMP: [
+      { name: "id", type: "UInt", offset: 0, init_value: 0 },
+      { name: "pressure", type: "Real", offset: 32, init_value: 0 },
+    ],
+  },
+});
+const data = new TData("PUMP", "pump_1");
+```
+
+- 条目就是 §6.2 的条目；`length` 可以省略；`coupling` 和 `includes` 接受内联列表，或任一来源中某个片段的名字；
+- 传入的描述和其中的条目不会被修改；
+- 没有单独登记一个条目列表的函数，也没有单独展开或校验结构的函数：注册是唯一做校验的步骤（§6.4）。
 
 ### 6.6 布局对象
 

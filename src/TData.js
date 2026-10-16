@@ -4,7 +4,7 @@ import { TTag } from "./TTag.js";
 import { emit_all } from "./dispatch.js";
 import { check_endian, io_range, load_entry, store_entry } from "./endian.js";
 import { Observer } from "./observer.js";
-import { compiled_of, find_layout, layout_of } from "./registry.js";
+import { compiled_of, find_layout, get_layout } from "./registry.js";
 import { is_reserved_name } from "./reserved.js";
 
 /** @import { Access_Tracer, Data_Listener, Endian, Layout } from "./typedefs.js" */
@@ -39,7 +39,7 @@ const classes = new Map();
  * @throws {Error} For an unknown name, or a layout that is not the registered one.
  */
 function resolve_layout(layout) {
-	if (typeof layout === "string") return layout_of(layout);
+	if (typeof layout === "string") return get_layout(layout);
 	if (find_layout(layout?.name) !== layout) throw new Error(`${layout?.name} is not a registered layout`);
 	return layout;
 }
@@ -371,7 +371,7 @@ export class TData extends EventEmitter {
 	 * layout name (a subclass of TData whose prototype holds the tag
 	 * accessors), building the class on the first use of the name.
 	 *
-	 * @param {Layout | string} layout - A registered layout, or its name (layout_of).
+	 * @param {Layout | string} layout - A registered layout, or its name (get_layout).
 	 * @param {string} name - The name of the TData instance.
 	 * @throws {Error} For an unknown layout name, or a layout that is not the registered one.
 	 */

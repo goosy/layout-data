@@ -1,11 +1,9 @@
-import { one_tag } from "./share.js";
+import { one_tag, register_items } from "./share.js";
 import assert from "node:assert/strict";
 import { Buffer } from "node:buffer";
 import test, { describe } from "node:test";
 import { io_index, io_index_table, io_range, load_entry, store_entry } from "../src/endian.js";
 import { compiled_of } from "../src/registry.js";
-import { register_layout } from "../src/layout.js";
-import { make_struct } from "./share.js";
 
 /** Loads the tag of a data block from an IO buffer. */
 function load(data, io_buffer, endian) {
@@ -169,7 +167,7 @@ describe("io_index_table", () => {
 		{ name: "c", type: "USInt", offset: 104, length: 8, init_value: 0 },
 		{ name: "w", type: "Int", offset: 112, length: 16, init_value: 0 },
 	];
-	const LAYOUT = register_layout(make_struct(ITEMS, "IO_TABLE"));
+	const LAYOUT = register_items("IO_TABLE", ITEMS);
 
 	for (const endian of ["BE", "LE", "BEBS", "LEBS"]) {
 		test(`${endian}: the table moves every byte as load_entry and store_entry do`, () => {

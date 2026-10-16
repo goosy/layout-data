@@ -1,7 +1,6 @@
-import { make_struct } from "./share.js";
+import { make_struct, register_items } from "./share.js";
 import assert from "node:assert/strict";
 import test, { describe } from "node:test";
-import { register_layout } from "../src/layout.js";
 import { compiled_of } from "../src/registry.js";
 import { io_index_table } from "../src/endian.js";
 import { validate_structure } from "../src/structure.js";
@@ -199,7 +198,7 @@ describe("layout validation", () => {
 });
 
 describe("the layout object (doc/spec-data-api.md §6.6)", () => {
-	const layout = register_layout(make_struct(VALID_ITEMS, "PUBLIC_SHAPE"));
+	const layout = register_items("PUBLIC_SHAPE", VALID_ITEMS);
 
 	test("it exposes only name, length, size and items", () => {
 		assert.deepEqual(Object.keys(layout).sort(), ["items", "length", "name", "size"]);
@@ -223,10 +222,7 @@ describe("the layout object (doc/spec-data-api.md §6.6)", () => {
 	});
 
 	test("the length is filled in from the type, and a comment is kept", () => {
-		const made = register_layout({
-			name: "NO_LENGTH", length: 16,
-			items: [{ name: "a", type: "UInt", offset: 0, init_value: 0, comment: "first" }],
-		});
+		const made = register_items("NO_LENGTH", [{ name: "a", type: "UInt", offset: 0, init_value: 0, comment: "first" }]);
 		assert.equal(made.items[0].length, 16);
 		assert.equal(made.items[0].comment, "first");
 	});

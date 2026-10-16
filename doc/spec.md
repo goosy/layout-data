@@ -17,7 +17,7 @@ Out of scope: device communication, scheduling, business rules and logging. The 
 
 | Term | Meaning |
 | --- | --- |
-| Layout | The fixed format of a data block: name, type, bit offset and initial value of every tag. Immutable once compiled |
+| Layout | The fixed format of a data block: name, type, bit offset and initial value of every tag. Immutable once registered |
 | TData / tdata | TData is the class of data objects, a tdata is an instance: a block of data allocated for a layout, stored big-endian internally |
 | TTag | The interface of one named tag of a tdata |
 | Combined word | A Word made of several Bools, sharing its data with its bits |
@@ -59,11 +59,11 @@ The entry `tagged-data` exports:
 | Export | Description |
 | --- | --- |
 | `TData`, `TTag` | The data object and the tag handle (§2 and §3 of [spec-data-api.md](spec-data-api.md)) |
-| `compile_layout`, `compile_layout_data` | Compile a layout description (§6 of [spec-data-api.md](spec-data-api.md)) |
-| `build_structure`, `validate_structure`, `register_layout`, `layout_of` | Define a layout in code instead of a file (§6.5 of [spec-data-api.md](spec-data-api.md)) |
+| `register_layout` | Register the layouts of the sources, YAML files or parsed descriptions (also for items given in code), once per process; register first, then create `TData` by layout name (§6 of [spec-data-api.md](spec-data-api.md)) |
+| `get_layout` | Look up a registered layout by name (§6.4 of [spec-data-api.md](spec-data-api.md)) |
 | `set_access_tracer` | Trace the reads and writes of tags (§2.8 of [spec-data-api.md](spec-data-api.md)) |
 | `io_index_table` | The byte index table for exchanging a whole block with a device (§2.9 of [spec-data-api.md](spec-data-api.md)); the per-tag conversion is `load_tag` / `store_tag` of TData |
-| `render_types` | Generates TypeScript declarations from compiled layouts |
+| `render_types` | Generates TypeScript declarations from registered layouts |
 
 ## 7. Documents
 

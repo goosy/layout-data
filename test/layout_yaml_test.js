@@ -4,18 +4,18 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test, { describe } from "node:test";
-import { compile_layout, compile_layout_data } from "../src/layout.js";
+import { register_layout_data, register_sources } from "../src/layout.js";
 import { TData } from "../src/TData.js";
-import { compiled_of, layout_of } from "../src/registry.js";
+import { compiled_of, get_layout } from "../src/registry.js";
 
 const dir = mkdtempSync(join(tmpdir(), "tlms-layout-"));
 let file_seq = 0;
 
-/** Writes a YAML layout file and compiles it. */
+/** Writes a YAML layout file and registers it. */
 function compile(yaml) {
 	const file = join(dir, `layout_${++file_seq}.yaml`);
 	writeFileSync(file, yaml);
-	return compile_layout(file);
+	return register_sources(file);
 }
 
 function errors_of(yaml) {
@@ -133,14 +133,29 @@ layouts:
 		assert.ok(errors.includes("T.b: length 8 does not match type UInt"), errors.join("\n"));
 	});
 
-	test("a file without the layouts key is rejected", () => {
-		assert.deepEqual(errors_of("x: []\n"), ["the root key `layouts` must map layout names to item lists"]);
+	test("a file without the layouts key defines no layout", () => {
+		assert.deepEqual(errors_of("x: []\n"), ["no layout is defined in the sources"]);
+	});
+
+	test("the layouts key must be a mapping", () => {
+		const errors = errors_of("layouts: []\n");
+		assert.equal(errors.length, 1);
+		assert.match(errors[0], /the root key `layouts` must map layout names to item lists/);
+	});
+
+	test("a missing file and a YAML syntax error are reported in errors", () => {
+		assert.throws(() => register_sources(join(dir, "missing.yaml")), (error) => {
+			assert.match(error.errors[0], /ENOENT/);
+			return true;
+		});
+		const errors = errors_of("layouts: [unclosed\n");
+		assert.ok(errors.length >= 1 && errors[0].includes("layout_"), errors.join("\n"));
 	});
 });
 
 describe("parsed layout description", () => {
-	test("compile_layout_data compiles the same structure as a file", () => {
-		const { layouts, fragments } = compile_layout_data({
+	test("register_layout_data registers the same structure as a file", () => {
+		const { layouts, fragments } = register_layout_data({
 			layouts: { PARSED: [{ name: "a", type: "UInt", offset: 0, init_value: 3 }, { includes: "tail", offset: 16 }] },
 			tail: [{ name: "b", type: "UInt", offset: 0, init_value: 4 }],
 		});
@@ -149,7 +164,7 @@ describe("parsed layout description", () => {
 	});
 
 	test("errors name the origin", () => {
-		assert.throws(() => compile_layout_data({ x: [] }, "my.yaml"), /invalid layout file my.yaml/);
+		assert.throws(() => register_layout_data({ x: [] }, "my.yaml"), /invalid layout description from my.yaml/);
 	});
 });
 
@@ -164,13 +179,13 @@ describe("layout registry", () => {
 		const first = compile(source("REG_SAME"));
 		const second = compile(source("REG_SAME"));
 		assert.equal(second.layouts.REG_SAME, first.layouts.REG_SAME);
-		assert.equal(layout_of("REG_SAME"), first.layouts.REG_SAME);
+		assert.equal(get_layout("REG_SAME"), first.layouts.REG_SAME);
 		assert.equal(new TData("REG_SAME", "t").a, 1);
 	});
 
 	test("a layout shared by two descriptions is one Layout whatever else they hold", () => {
-		const first = compile_layout_data({ layouts: { REG_SHARED: [{ name: "a", type: "UInt", offset: 0, init_value: 1 }] } });
-		const second = compile_layout_data({
+		const first = register_layout_data({ layouts: { REG_SHARED: [{ name: "a", type: "UInt", offset: 0, init_value: 1 }] } });
+		const second = register_layout_data({
 			layouts: {
 				REG_SHARED: [{ name: "a", type: "UInt", offset: 0, init_value: 1 }],
 				REG_OTHER: [{ name: "b", type: "UInt", offset: 0, init_value: 2 }],
@@ -197,7 +212,7 @@ describe("layout registry", () => {
     - { name: a, type: UInt, offset: 0, init_value: 2 }
 `);
 		assert.deepEqual(errors, ["layout REG_USED: another layout is already named REG_USED"]);
-		assert.throws(() => layout_of("REG_NEW"), /unknown layout REG_NEW/);
+		assert.throws(() => get_layout("REG_NEW"), /unknown layout REG_NEW/);
 	});
 
 	test("an invalid file registers nothing", () => {

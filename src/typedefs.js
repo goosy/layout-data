@@ -3,8 +3,8 @@
 // The types of the internals are in internal_types.js and are not exported.
 
 /**
- * One item of a layout description, as written by the user and as expanded by
- * build_structure (doc/spec-data-api.md §6).
+ * One item of a layout description, as written by the user in a layout file
+ * or given to register_layout_data (doc/spec-data-api.md §6).
  *
  * @typedef {object} Layout_Item
  * @property {string} [name] - Tag name.
@@ -16,15 +16,6 @@
  * @property {string} [name_prefix] - Prefix of the names of the included items.
  * @property {Layout_Item[] | string} [includes] - Included items, or a fragment name.
  * @property {Layout_Item[] | string[] | string} [coupling] - Coupled bits, or a fragment name; names after expansion.
- */
-
-/**
- * The expanded structure of a data block (the result of build_structure).
- *
- * @typedef {object} Data_Struct
- * @property {string} name
- * @property {number} length - Total length in bits.
- * @property {Layout_Item[]} items
  */
 
 /**
@@ -65,9 +56,17 @@
  */
 
 /**
- * The result of compiling a layout description.
+ * A source of layouts: the path of a YAML 1.2 layout file, or a description
+ * that is already parsed (the same structure as the file: `layouts` and the
+ * fragments, doc/spec-data-api.md §6.1).
  *
- * @typedef {object} Compiled_Layouts
+ * @typedef {string | Record<string, any>} Layout_Source
+ */
+
+/**
+ * The result of registering a layout description.
+ *
+ * @typedef {object} Registered_Layouts
  * @property {Record<string, Layout>} layouts
  * @property {Record<string, Layout_Item[]>} fragments
  */

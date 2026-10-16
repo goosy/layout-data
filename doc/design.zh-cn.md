@@ -9,7 +9,7 @@
 | `src/index.js` | 包的公开接口 |
 | `src/TData.js` / `src/TTag.js` | 数据对象与 tag 句柄 |
 | `src/layout.js` | 布局描述文件的读取与编译、Layout、原型访问器 |
-| `src/structure.js` | 结构展开（`build_structure`）与布局校验（`validate_structure`） |
+| `src/structure.js` | 结构展开（`build_structure`）与布局校验（`validate_structure`）；内部使用，包不导出 |
 | `src/dispatch.js` | `emit_all`：调用一个事件的每个监听函数，收集它们抛出的异常（内部使用，包不导出） |
 | `src/reserved.js` | 保留的 tag 名与保留的事件名的静态清单（内部使用，包不导出） |
 | `src/codecs.js` | 各类型在大端缓冲区上的编解码 |
@@ -44,17 +44,18 @@
 - `type` 取值（大小写不敏感）：`Bool`、`Byte`、`SInt`、`USInt`、`Int`、`UInt`、`Word`、`DInt`、`UDInt`、`DWord`、`Real`。
 - `Word` 条目带 `coupling`（片段名或内联列表）时，表示由若干 Bool 组成的状态字或命令字；`is_combined: true` 只是说明性标记：整字与各位共用同一块字节，联动不依赖它。coupling 内各项的 `offset` 相对于该字的起点。
 - `{ includes: <片段名或内联列表>, offset }` 把一组公共条目整体偏移后拼接进来，可加 `name_prefix`。
-- `compile_layout(yaml_path)` 同步读取文件，解析片段引用（不存在或循环引用时报错），补全省略的 `length`，再对每个布局调用 `build_structure` 展开为扁平的 `items`（计算结构总长 `length`，把 coupling 规范为名称数组）并校验，返回 `{ layouts, fragments }`。
-- `compile_layout_data(root, origin)` 编译已解析的描述（与文件同结构），供在自己的文件中携带布局的使用方；`compile_layout` 读文件后调用它。
-- 每个布局编译为一个 Layout（`register_layout`）。公开的 Layout 是深度冻结的 `{ name, length, size, items }`（spec-data-api.zh-cn.md §6.6），其中 `items` 是展开后条目的冻结副本，只含文档规定的字段。编译结果，即按名称索引的条目表 `entries`（字节偏移、位掩码、编解码）和字节到 tag 的反查表 `tags_at_byte`，存放在 `registry.js` 的模块私有 `WeakMap` 里，由 `TData`、Observer 和 `endian.js` 通过 `compiled_of(layout)` 读取，从不挂在 Layout 上，所以公开接口里不出现 entry。布局是不可变的纯数据，不含类，`layout.js` 不依赖 `TData`。同一份布局描述内的布局名互不相同（它们是 `layouts` 的键）。
-- 已编译的布局按布局名保存在登记表中（`registry.js`，它不引用任何模块，所以 `layout.js` 写入、`TData` 读取而不成环）。`register_layout(struct)` 计算展开后结构的规范文本（`name`、`length`、`items`；对象键排序，不含 `comment`，类型名小写）。该名字已登记且文本相同，就返回已登记的 Layout，所以同一个布局描述两次（即使在两份不同的描述里）只编译一次；文本不同则抛出 `another layout is already named X`。`compile_layout_data` 在登记任何一个之前先检查描述里的每个布局有无这种冲突，所以一份描述要么全部登记，要么都不登记。`layout_of(name)` 返回已登记的布局，没有则抛出 `unknown layout X`。登记表不会清空：布局名在进程的整个生命期内有效。
+- `register_layout(sources)`（spec-data-api.zh-cn.md §6.4）由模块标志 `registered_once` 守护：标志已置位时抛出 `Error`，只有 `register_sources` 成功返回之后才置位，所以失败的调用不会置位。实际工作由 `register_sources(sources)` 完成，它是内部函数，测试调用的就是它，因为测试在一个进程里要注册很多次。
+- `register_sources(sources)` 把各来源整理成一份描述并交下去。第一阶段：按列表顺序读取每个来源，字符串用 `readFileSync` 和 `parseDocument`（YAML 1.2）读取，对象原样使用；读取或解析错误、根不是映射、`layouts` 不是映射，都带着来源（路径，或第 i 个对象的 `layout description #i`）进入 `errors`。各来源的布局和片段分别合并为一张表；名字已被前面的来源占用时报错并写出两个来源（`owners` 记着每个名字的来源）。空列表、列表里再放列表、合并后没有任何布局都是错误。发现的所有问题一起作为带 `errors` 的 `Error` 抛出。
+- `register_layout_data(root, origin)` 是第二阶段，接收合并后的描述（`{ layouts, ...fragments }`，spec-data-api.zh-cn.md §6.1），登记其中的布局并返回 `{ layouts, fragments }`。它在 `resolve_items` 中解析片段引用（不存在或循环引用时报错）并补全省略的 `length`，`resolve_items` 复制每个条目和嵌套列表，所以传入的描述从不被修改。再对每个布局调用 `build_structure` 展开为扁平的 `items`（计算结构总长 `length`，把 coupling 规范为名称数组），校验每个结构，检查与已登记布局的冲突（`find_conflicts`），然后才用 `register_structure` 把它们全部登记，所以一份描述要么全部登记，要么都不登记。除了测试辅助函数 `one_tag` 为了随意补齐数据块而直接调用 `register_structure` 之外，没有任何路径会登记未经校验的布局。
+- 每个布局编译为一个 Layout（`register_structure`）。公开的 Layout 是深度冻结的 `{ name, length, size, items }`（spec-data-api.zh-cn.md §6.6），其中 `items` 是展开后条目的冻结副本，只含文档规定的字段。编译结果，即按名称索引的条目表 `entries`（字节偏移、位掩码、编解码）和字节到 tag 的反查表 `tags_at_byte`，存放在 `registry.js` 的模块私有 `WeakMap` 里，由 `TData`、Observer 和 `endian.js` 通过 `compiled_of(layout)` 读取，从不挂在 Layout 上，所以公开接口里不出现 entry。布局是不可变的纯数据，不含类，`layout.js` 不依赖 `TData`。同一份布局描述内的布局名互不相同（它们是 `layouts` 的键）。
+- 已编译的布局按布局名保存在登记表中（`registry.js`，它不引用任何模块，所以 `layout.js` 写入、`TData` 读取而不成环）。`register_structure(struct)` 计算展开后结构的规范文本（`name`、`length`、`items`；对象键排序，不含 `comment`，类型名小写）。该名字已登记且文本相同，就返回已登记的 Layout；文本不同则抛出 `another layout is already named X`。`register_layout_data` 在登记任何一个之前先检查描述里的每个布局有无这种冲突，所以一份描述要么全部登记，要么都不登记。公开的 `register_layout` 只登记一次（见上），所以这两条规则只对内部函数有意义，测试会多次调用它们。`get_layout(name)` 返回已登记的布局，没有则抛出 `unknown layout X`。登记表不会清空：布局名在进程的整个生命期内有效。
 - Bool 的定位规则：`byte = offset >> 3`，`bit = offset % 8`。内部缓冲按大端存放，一个字的第一个字节是寄存器的高字节，所以 coupling 中偏移 8–15 对应寄存器的 bit0–7，偏移 0–7 对应 bit8–15。布局文件按 8–15、0–7 的顺序列出，就是按寄存器 bit0 到 bit15 的顺序排列。
 
 ### 3.1 布局校验
 
 布局规则在布局阶段集中校验，不分散到 TData 和 TTag 的运行时：
 
-- `validate_structure(data_struct)` 对 `build_structure` 展开后的扁平 `items` 做校验，返回违规描述的数组（空数组表示合法），不在发现第一个错误时退出。
+- `validate_structure(data_struct)` 对 `build_structure` 展开后的扁平 `items` 做校验，返回违规描述的数组（空数组表示合法），不在发现第一个错误时退出。它是内部函数。
 - 校验内容：
   - 名称：`items` 中名称重复；名称与 TData 的成员（`TData.prototype` 上的方法、getter，以及 `name` 等实例字段）冲突。
   - 类型与长度：`type` 不在支持的类型中；`length` 与类型不符（Bool 1，Byte / SInt / USInt 8，Int / UInt / Word 16，DInt / UDInt / DWord / Real 32）。
@@ -65,8 +66,8 @@
   - `init_value` 的类型与取值范围与 `type` 相符。
   - 组合字与它的组成位不同时给出 `init_value`（展开时记录冲突，由校验报告）。
 - `build_structure` 遇到重名时保留条目，交给校验报告。
-- `compile_layout` 对文件中的全部布局调用校验，有违规时抛出包含全部违规项的错误（`error.errors`）。
-- 校验通过后，TData 和 TTag 不重复做这些检查；`register_layout` 只保留防御性断言。
+- `register_layout` 对全部来源中的布局调用校验，有违规时抛出包含全部违规项的错误（`error.errors`）。
+- 校验通过后，TData 和 TTag 不重复做这些检查；`register_structure` 只保留防御性断言。
 
 ## 4. 编解码与原型访问器
 
@@ -82,7 +83,7 @@
 
 ## 5. TData
 
-- `new TData(layout, name)` 接收已登记的布局或其名字（由 `layout_of` 解析），返回按布局名构建的子类（见 §4）的实例；构造函数先调用 `super()`，再返回该实例。传来的布局对象不是其名字下已登记的那个时抛出错误（只比较引用，不比较结构）。`TData` 本身不会是任何实例的直接类。该实例分配 `buffer`（`layout.size` 字节），按条目的 `init_value` 依次编码写入。
+- `new TData(layout, name)` 接收已登记的布局或其名字（由 `get_layout` 解析），返回按布局名构建的子类（见 §4）的实例；构造函数先调用 `super()`，再返回该实例。传来的布局对象不是其名字下已登记的那个时抛出错误（只比较引用，不比较结构）。`TData` 本身不会是任何实例的直接类。该实例分配 `buffer`（`layout.size` 字节），按条目的 `init_value` 依次编码写入。
 - `name` 可写；`layout`、`size` 只读（只有 getter，赋值抛出 `TypeError`）。缓冲区是私有字段（`#buffer`），没有访问器，统一按大端存放；Observer 和事务所需的缓冲区由创建它们的 TData 传入。带类型的访问走 tag，不带类型的访问走字节：没有按宽度分类的原始方法。
 - 写缓冲区有两种途径，都经过 TData，任何时候都允许：
 

@@ -40,13 +40,13 @@ layouts:
     - { name: pressure, type: Real, offset: 32, init_value: 0.5, comment: Outlet pressure }
 ```
 
-Compile it and use it:
+Register it once, then use it by the layout name:
 
 ```js
-import { compile_layout, TData } from "tagged-data";
+import { register_layout, TData } from "tagged-data";
 
-const { layouts } = compile_layout("pump.yaml");
-const pump = new TData(layouts.PUMP, "pump_1");
+register_layout("pump.yaml");
+const pump = new TData("PUMP", "pump_1");
 
 pump.on("change", (name, old_value, new_value) => {
 	console.log(name, old_value, "->", new_value);
@@ -76,9 +76,9 @@ pump.transaction(() => {
 | Export | Purpose |
 | --- | --- |
 | `TData`, `TTag` | The data object and the tag handle |
-| `compile_layout(path)`, `compile_layout_data(root, origin)` | Compile a YAML layout file, or an already parsed description |
+| `register_layout(sources)` | Register the layouts of YAML files or parsed descriptions (a path, an object, or a list of them), once per process; then create `TData` by layout name |
 | `render_types(layouts, { source, tdata_module })` | Generate TypeScript interfaces for layouts |
-| `build_structure`, `validate_structure`, `register_layout`, `layout_of` | Define a layout in code instead of a file |
+| `get_layout(name)` | Look up a registered layout by name |
 | `set_access_tracer` | Trace the reads and writes of tags |
 | `io_index_table` | Byte index table for exchanging a whole block with a device (per-tag conversion is `load_tag` / `store_tag` of `TData`) |
 

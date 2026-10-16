@@ -1,13 +1,12 @@
+import { register_items } from "./share.js";
 // The TData / TTag programming interface, section by section of
 // doc/spec-data-api.md.
-import { make_struct } from "./share.js";
 import assert from "node:assert/strict";
 import { Buffer } from "node:buffer";
 import test, { describe } from "node:test";
 import { TData } from "../src/TData.js";
 import { TTag } from "../src/TTag.js";
-import { register_layout } from "../src/layout.js";
-import { layout_of } from "../src/registry.js";
+import { get_layout } from "../src/registry.js";
 
 // the word gives no init value: it is composed from its bits
 const ITEMS = [
@@ -21,7 +20,7 @@ const ITEMS = [
 	},
 	{ name: "pressure", type: "Real", offset: 32, length: 32, init_value: 1.5 },
 ];
-const LAYOUT = register_layout(make_struct(ITEMS, "SAMPLE"));
+const LAYOUT = register_items("SAMPLE", ITEMS);
 
 const record = (data) => {
 	const events = [];
@@ -50,19 +49,19 @@ describe("2 TData", () => {
 	});
 
 	test("2.1 the same layout registered again is the registered one; another one under the name throws", () => {
-		assert.equal(register_layout(make_struct(ITEMS, "SAMPLE")), LAYOUT);
+		assert.equal(register_items("SAMPLE", ITEMS), LAYOUT);
 		const changed = structuredClone(ITEMS);
 		changed[0].init_value = 8;
-		assert.throws(() => register_layout(make_struct(changed, "SAMPLE")), /another layout is already named SAMPLE/);
+		assert.throws(() => register_items("SAMPLE", changed), /another layout is already named SAMPLE/);
 	});
 
 	test("2.1 a layout name stands for the registered layout", () => {
 		const data = new TData("SAMPLE", "d");
 		assert.equal(data.layout, LAYOUT);
 		assert.equal(Object.getPrototypeOf(data), Object.getPrototypeOf(new TData(LAYOUT, "e")));
-		assert.equal(layout_of("SAMPLE"), LAYOUT);
+		assert.equal(get_layout("SAMPLE"), LAYOUT);
 		assert.throws(() => new TData("NOPE", "d"), /unknown layout NOPE/);
-		assert.throws(() => layout_of("NOPE"), /unknown layout NOPE/);
+		assert.throws(() => get_layout("NOPE"), /unknown layout NOPE/);
 	});
 
 	test("2.1 a layout that is not the registered one throws", () => {
@@ -582,17 +581,16 @@ describe("4.2 transactions", () => {
 });
 
 describe("5 errors", () => {
-	test("a reserved tag name throws at creation", () => {
-		const struct = make_struct([{ name: "read_bytes", type: "UInt", offset: 0, length: 16, init_value: 0 }], "BAD");
-		assert.throws(() => new TData(register_layout(struct), "d"), /reserved tag name/);
+	test("a reserved tag name is refused when the layout is registered", () => {
+		const items = [{ name: "read_bytes", type: "UInt", offset: 0, init_value: 0 }];
+		assert.throws(() => register_items("BAD", items), /read_bytes: name is a reserved name/);
 	});
 
 	test("buffer and detect are not members: tags may have these names", () => {
-		const struct = make_struct([
-			{ name: "buffer", type: "UInt", offset: 0, length: 16, init_value: 3 },
-			{ name: "detect", type: "UInt", offset: 16, length: 16, init_value: 4 },
-		], "FREE_NAMES");
-		const data = new TData(register_layout(struct), "d");
+		const data = new TData(register_items("FREE_NAMES", [
+			{ name: "buffer", type: "UInt", offset: 0, init_value: 3 },
+			{ name: "detect", type: "UInt", offset: 16, init_value: 4 },
+		]), "d");
 		assert.equal(data.buffer, 3);
 		assert.equal(data.detect, 4);
 	});
