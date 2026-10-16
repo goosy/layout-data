@@ -1,6 +1,6 @@
 {
 	"name": "layout-data",
-	"version": "0.1.0",
+	"version": "0.2.0",
 	"description": "Structured, reactive, buffer-based data blocks with named, typed tags",
 	"type": "module",
 	"exports": {
@@ -10,7 +10,8 @@
 		}
 	},
 	"files": [
-		"dist"
+		"dist",
+		"CHANGELOG.md"
 	],
 	"engines": {
 		"node": ">=20.11"
@@ -41,7 +42,7 @@
 		"PLC",
 		"layout"
 	],
-	"author": "",
+	"author": "Goosy Jo <goosy.jo@gmail.com>",
 	"repository": {
 		"type": "git",
 		"url": "git+https://github.com/goosy/layout-data.git"
