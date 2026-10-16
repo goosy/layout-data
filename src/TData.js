@@ -1,6 +1,7 @@
 import { Buffer } from "node:buffer";
 import { EventEmitter } from "node:events";
 import { TTag } from "./TTag.js";
+import { emit_all } from "./dispatch.js";
 import { check_endian, io_range, load_entry, store_entry } from "./endian.js";
 import { Observer } from "./observer.js";
 import { compiled_of, find_layout, layout_of } from "./registry.js";
@@ -159,8 +160,10 @@ export class TData extends EventEmitter {
 			throw error;
 		}
 		this.#transaction = null;
-		this.#observer.diff();
-		if (state.written) this.emit("write", this);
+		const errors = [];
+		this.#observer.diff(errors);
+		if (state.written) emit_all(this, "write", [this], errors);
+		if (errors.length > 0) throw errors[0];
 		return result;
 	}
 
@@ -298,8 +301,10 @@ export class TData extends EventEmitter {
 			this.#transaction.written = true;
 			return;
 		}
-		this.#observer.diff();
-		this.emit("write", this);
+		const errors = [];
+		this.#observer.diff(errors);
+		emit_all(this, "write", [this], errors);
+		if (errors.length > 0) throw errors[0];
 	}
 
 	/**
@@ -342,6 +347,11 @@ export class TData extends EventEmitter {
 				},
 				set(value) {
 					if (access_tracer) access_tracer(this, name, "write");
+					const reason = codec.check(value);
+					if (reason !== null) {
+						const Refused_Error = typeof value === "number" ? RangeError : TypeError;
+						throw new Refused_Error(`${this.name}.${name}: ${reason}`);
+					}
 					codec.set(this.#buffer, byte, mask, value);
 					this.#written(byte, byte + size);
 				},
@@ -380,10 +390,10 @@ export class TData extends EventEmitter {
 		for (const { codec, byte, mask, init_value } of this.#compiled.entries.values()) {
 			codec.set(this.#buffer, byte, mask, init_value);
 		}
-		this.#observer = new Observer(this.#buffer, this.#layout.name, this.#compiled, (entry, old_value, new_value) => {
+		this.#observer = new Observer(this.#buffer, this.#layout.name, this.#compiled, (entry, old_value, new_value, errors) => {
 			// the data block event first, as when it relayed the tag events
-			this.emit("change", entry.name, old_value, new_value);
-			this.#handles.get(entry.name)?.emit("change", old_value, new_value);
+			emit_all(this, "change", [entry.name, old_value, new_value], errors);
+			emit_all(this.#handles.get(entry.name), "change", [old_value, new_value], errors);
 		});
 	}
 }

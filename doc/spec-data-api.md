@@ -56,7 +56,15 @@ const value = data.pressure;  // read
 - Every tag name is a property of the tdata, readable and writable at any time; a tag name must not be a reserved name (§2.10);
 - A write takes effect at once: after it, reading gives the new value, and so does the `value` of the TTag;
 - Writing a combined word changes its bits; writing a bit changes the combined word;
-- Writing an integer outside the range of the type throws `RangeError` and keeps the old value; a `Bool` is written by truthiness.
+- A value is checked before it is written, and a value that is refused throws, keeps the old value, emits no event and no `write`:
+
+  | Type | Accepted | Refused |
+  | --- | --- | --- |
+  | `Bool` | any value, taken by truthiness | none |
+  | Integer types (`Byte`, `SInt`, `USInt`, `Int`, `UInt`, `Word`, `DInt`, `UDInt`, `DWord`) | an integer inside the range of the type | not a number (a string, `null`, `undefined`, a boolean, an object, a bigint): `TypeError`; `NaN`, `Infinity`, a non-integer such as `1.5`, or an integer outside the range: `RangeError`; nothing is truncated or converted |
+  | `Real` | any number: `NaN` and `±Infinity` are kept; a finite value is rounded to float32 | not a number: `TypeError`; a finite number whose magnitude is above the float32 maximum (about 3.4028235e38), such as `1e40`: `RangeError` |
+
+  The `init_value` of a layout is stricter (§6.2): for a `Real` it must be a finite number inside the same range.
 
 ### 2.4 Getting a TTag
 
@@ -111,7 +119,7 @@ Emitted when the value of any tag of the tdata changes. The arguments are the ta
 data.on("write", (data) => { /* ... */ });
 ```
 
-Emitted after every write, whether or not it changed a value. A write is a write by name, through a TTag, or a raw write (`write_bytes`, `write_bit`); a read does not emit it, and neither does a failed write (one that throws). It means "a write happened", for the user's scheduling and IO: they must handle every write, even one that wrote the same value; a change of value is what `change` stands for. It is emitted after the detection of that write and the `change` events it caused. Writes inside a transaction do not emit it at once, see §4.2. Any number of parties can listen, each with its own handler.
+Emitted after every write, whether or not it changed a value. A write is a write by name, through a TTag, or a raw write (`write_bytes`, `write_bit`); a read does not emit it, and neither does a refused write (one that throws before it takes effect, §2.3, §5). It means "a write happened", for the user's scheduling and IO: they must handle every write, even one that wrote the same value; a change of value is what `change` stands for. It is emitted after the detection of that write and the `change` events it caused. Writes inside a transaction do not emit it at once, see §4.2. Any number of parties can listen, each with its own handler.
 
 Event names:
 
@@ -197,7 +205,7 @@ Because a detection runs right after every write, the several writes of one logi
 - Commit: after the transaction is closed, one detection (§4.1) runs and emits the `change` events. Its baseline is the values at the last detection before the transaction, so several writes in the transaction merge into one event, and a value changed and restored emits none. Then, if the transaction contained a write by name, through a TTag or a raw write, one `write` (§2.7) is emitted, however many such writes there were;
 - Rollback: when `fn` throws, the content of the tdata is restored to what it was at the start of the transaction and no event is emitted; the original exception is rethrown;
 - Starting another transaction inside a transaction throws `Error`; if `fn` does not handle it, the transaction rolls back;
-- Events are emitted after the transaction is closed, so writes and transactions in handlers are ordinary ones. An exception thrown by a handler at commit propagates out of `transaction`, but the transaction is already committed and is not rolled back.
+- Events are emitted after the transaction is closed, so writes and transactions in handlers are ordinary ones. An exception thrown by a handler at commit propagates out of `transaction` as in §4.4, but the transaction is already committed and is not rolled back.
 
 Boundaries of a transaction:
 
@@ -213,17 +221,28 @@ Boundaries of a transaction:
 - A combined word and its bits emit their own events: when one write changes the word and some of its bits, the word and those bits all emit;
 - The changes of one detection are emitted in layout order (a combined word before its bits); for each change the `change` of the tdata is emitted first, then the `change` of the TTag;
 - Handlers may write any tag: the changes caused by that write are emitted after the current batch has been emitted;
-- If writes triggered by handlers keep causing new changes for 16 rounds in a row, the detection throws an exception to prevent endless oscillation; changes not yet emitted are not lost and are emitted at the next detection.
+- If writes triggered by handlers keep causing new changes for 16 rounds in a row, the detection stops and throws an exception to prevent endless oscillation (an exception like those of §4.4); changes not yet emitted are not lost and are emitted at the next detection.
 
+### 4.4 Exceptions thrown by handlers
+
+A handler (a listener of `change` or `write`) may throw. The library never logs it and emits no `error` event; the rules are:
+
+- **No event is lost**: a write is dispatched completely. All the `change` events of its detection are emitted in the order of §4.3, then `write`; every listener of every event is called, in the order it subscribed. A listener that throws does not stop the others, the later listeners of the same event, the later events and `write` are still delivered;
+- **The first exception is thrown**: when the dispatch is complete, the write statement (an assignment by name, `tag.value = v`, a raw write, `load_tag`) throws the first exception caught. The other exceptions are dropped;
+- **The value stands**: the new value has taken effect before any event, so it is not rolled back, and `write` is emitted even though the statement throws. A refused write (§2.3) is the only write that throws without taking effect;
+- **A transaction** at its commit follows the same rules, and the first exception propagates out of `transaction`, which has been committed (§4.2). When `fn` itself throws, nothing is emitted and the changes are rolled back, as before;
+- **Nested writes**: a write made by a handler is an ordinary write; the exception it throws goes into the handler that made it, and it is the handler's own exception if the handler does not catch it. The oscillation exception of §4.3 counts as an exception of the dispatch under the same rules.
 ## 5. Errors
 
 The interface throws exceptions on errors. It does not log or exit the process; the caller decides how to handle them:
 
 | Case | Exception |
 | --- | --- |
-| Writing an integer outside the range of the type | `RangeError`, the old value is kept |
+| Writing a value that is not a number to an integer or `Real` tag | `TypeError`, the old value is kept, no event and no `write` |
+| Writing `NaN`, `Infinity`, a non-integer or an integer outside the range to an integer tag, or a finite number beyond float32 to a `Real` tag | `RangeError`, the old value is kept, no event and no `write` |
+| A handler throws | the first exception is thrown by the write statement after all events are dispatched; the value stands and `write` is emitted (§4.4) |
 | Invalid layout, or a reserved tag name (§2.10) | `Error` thrown when the tdata is created |
-| Writes triggered by handlers that do not settle | `Error` thrown by the detection |
+| Writes triggered by handlers that do not settle | `Error`, thrown by the write statement after the events are dispatched (§4.4) |
 | Starting another transaction inside a transaction | `Error` |
 | A raw read or write whose offset, length or mask is out of range, or that writes past the end of the data block | `RangeError`, the data is unchanged and no `write` is emitted |
 | A raw write whose `source`, or `load_tag` / `store_tag` whose `io_buffer`, is not a `Uint8Array` | `TypeError` |
@@ -264,7 +283,7 @@ Only one file is compiled at a time for now. When several files (a directory) ar
 | `type` | One of the types listed in §1, case-insensitive |
 | `offset` | Bit offset; a non-Bool must be on a whole byte, a multi-byte type must start at an even byte |
 | `length` | Length in bits; may be omitted, in which case the type decides it; when written it must match the type |
-| `init_value` | Initial value, which must be representable by the type; see below for combined words and their bits |
+| `init_value` | Initial value, which must be representable by the type (an integer inside the range of the type; for a `Real`, a finite number inside the float32 range); see below for combined words and their bits |
 | `comment` | Optional description, used to generate point tables, type declarations and so on |
 | `coupling` | The bits of a combined word: a fragment name or an inline list of entries; the `offset` of each bit is relative to the word |
 | `is_combined` | Optional descriptive mark of a combined word whose word and bits are linked in both directions; the linkage is decided by `coupling` and does not depend on it |

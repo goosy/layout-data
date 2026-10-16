@@ -1,5 +1,6 @@
 // Expansion and validation of data block structures (doc/spec.md §3,
 // doc/design.md §3.1). Part of the data layer.
+import { FLOAT32_MAX } from "./codecs.js";
 import { is_reserved_name } from "./reserved.js";
 
 /** @import { Data_Struct, Layout_Item } from "./typedefs.js" */
@@ -119,7 +120,7 @@ function check_init_value(item, type) {
 	const value = item.init_value;
 	if (type === "bool") return typeof value === "boolean";
 	if (typeof value !== "number") return false;
-	if (type === "real") return !Number.isNaN(value) && Math.abs(value) <= 3.4028234663852886e38;
+	if (type === "real") return Number.isFinite(value) && Math.abs(value) <= FLOAT32_MAX;
 	const [min, max] = INTEGER_RANGES[type];
 	return Number.isInteger(value) && value >= min && value <= max;
 }

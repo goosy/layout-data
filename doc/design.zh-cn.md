@@ -10,6 +10,7 @@
 | `src/TData.js` / `src/TTag.js` | 数据对象与 tag 句柄 |
 | `src/layout.js` | 布局描述文件的读取与编译、Layout、原型访问器 |
 | `src/structure.js` | 结构展开（`build_structure`）与布局校验（`validate_structure`） |
+| `src/dispatch.js` | `emit_all`：调用一个事件的每个监听函数，收集它们抛出的异常（内部使用，包不导出） |
 | `src/reserved.js` | 保留的 tag 名与保留的事件名的静态清单（内部使用，包不导出） |
 | `src/codecs.js` | 各类型在大端缓冲区上的编解码 |
 | `src/observer.js` | 快照比对，变化事件 |
@@ -94,7 +95,8 @@
 - 原始方法在碰缓冲区之前先检查参数，出错时数据不变，也不会走到 `#written()`：`offset`、`length` 须为整数，且 `0 <= offset`、`offset + length <= size`，`mask` 须为 1 到 0xff 的整数（`RangeError`），`source` 须为 `Uint8Array`（`TypeError`）。`write_bytes` 用 `buffer.set(source, offset)` 复制。原始写入把它碰过的字节范围登记给 Observer（§5.1）。
 - `load_tag(name, io_buffer, endian)` 和 `store_tag(name, io_buffer, endian)`（spec-data-api.zh-cn.md §2.9）把 `name` 解析为布局的编译条目（名字不存在时抛出 `Error`），检查 `endian`、`io_buffer` 和该条目在其中的范围（`io_range`），再以私有缓冲区调用 `endian.js` 的 `load_entry` / `store_entry`。`load_tag` 登记该条目的字节范围，像任何写入一样以 `#written()` 结束；`store_tag` 只读缓冲区。`TTag.load(io_buffer, endian)` 和 `TTag.store(io_buffer, endian)` 以 tag 名调用它们，所以 TTag 不需要检查自己属于哪个 tdata。
 
-- TData 出错时抛出异常（布局冲突、值越界），不写日志、不退出。
+- TData 出错时抛出异常（布局冲突、值被拒绝），不写日志、不退出。
+- **值检查。** 每个编解码器在 `get`、`set` 之外有 `check(value)`：值可接受时返回 `null`，否则返回原因文字。tag 访问器的 setter 在 `codec.set` 之前调用它，所以被拒绝的值不会碰缓冲区和 Observer；`typeof value` 不是 `"number"` 时抛出 `TypeError`，是数字时抛出 `RangeError`（消息为 `<tdata 名>.<tag>: <原因>`）。`Bool` 总是返回 `null`。整型编解码器要求是数字、满足 `Number.isInteger` 并在类型范围内；`Real` 编解码器要求是数字，放过 `NaN` 和 `±Infinity`，拒绝绝对值超过 `FLOAT32_MAX`（`3.4028234663852886e38`，与 `structure.js` 的 `check_init_value` 用的值相同）的有限值。`Buffer.write*` 只作为最后一道防线，不当作检查。
 - `data.get(name)` 返回该 tag 的 `TTag`，首次访问时创建并缓存，名称不存在时返回 `undefined`。TTag 不持有值：读 `value` 从 TData 的缓冲区解码，写 `value` 与 `data[name] = v` 完全等价；`name`、`type`、`size` 来自布局的编译条目，TTag 私有地持有它，不对外公开；`change` 事件由 Observer 发出。
 
 ### 5.1 检测、事务与 Observer
@@ -117,14 +119,15 @@
 - `fn` 正常返回：关闭事务，调用一次 `diff()`，`written` 为真时发出一次 `write`，返回 `fn` 的返回值（不检查它是否是 Promise）；
 - `fn` 抛出异常：关闭事务，把副本写回缓冲区，不发出任何事件，重新抛出原异常；
 - Observer 的快照在事务中保持不动：提交时的 `diff()` 就是事务之前最近一次检测与现在之间的净变化；回滚后缓冲区回到事务开始时的内容，与快照重新一致；
-- 事件在事务关闭之后发出，处理器中的写入和事务按普通情形处理；提交时处理器抛出的异常直接传出，不回滚；
+- 事件在事务关闭之后发出，处理器中的写入和事务按普通情形处理；提交时处理器抛出的异常在全部事件和 `write` 派发完之后由 `transaction` 抛出（见下文派发），不回滚；
 - 事务期间 Node.js 不运行别的 JS 代码，同一线程中没有其他代码能访问这个 tdata，所以事务不需要加锁或隔离；`written` 只是布尔标记，不计次数，因为 `write` 事件没有载荷之外的信息。
 
 **快照比对。** Observer 持有与缓冲区等长的快照，创建时复制缓冲区。每条写入路径都知道自己写了哪一段字节，并把它登记给 Observer（`touch(start, end)`；事务中各段累计为一段）；`diff()` 只逐字节比较登记范围内缓冲区与快照的差异（其余字节按构造必然相等），并清除登记。只对不同的字节经反查表 `tags_at_byte` 找到相关 tag，从快照解码旧值、从 `buffer` 解码新值，值不同（两个 NaN 视为相同）的记为变化；比对完成后更新快照，再统一报告：
 
 - 按布局顺序报告（组合字在其组成位之前），每个变化先由 TData 发出 `change(tagname, old, new)`，再由该 tag 的 TTag 发出 `change(old, new)`；事件总在新值生效之后发出；
 - 两次检测之间同一 tag 的多次写入合并为一个事件，值改变后又恢复的不发事件；
-- 事件处理器中再写 tag 时，嵌套的比对只登记，等当前这一轮变化报告完再比对一轮；连续 16 轮仍有新变化时抛出异常，防止振荡；
+- 事件处理器中再写 tag 时，嵌套的比对只登记，等当前这一轮变化报告完再比对一轮；连续 16 轮仍有新变化时停止后续轮次，并把振荡异常记为这次派发的一个错误；
+- **派发与错误**（spec-data-api.zh-cn.md §4.4）。`#written()` 和事务的提交各持有一个 `errors` 数组，依次传给 `diff(errors)` 和 `emit_all`；派发期间什么都不抛，直到最后。`dispatch.js` 中的 `emit_all(emitter, event, args, errors)` 对 `emitter.rawListeners(event)` 的每个函数在各自的 `try` 里以 `emitter` 为 `this` 调用，监听函数抛出的东西推入 `errors`；`once` 的包装函数照常在 `rawListeners` 里自行移除。Observer 对每个变化都调用 `report(entry, old, new, errors)`，即使其中一个抛出也不中止，因为一轮的变化在报告第一个之前就已收集完、快照也已更新。`diff(errors)` 之后，写入同样经 `emit_all` 发出 `write`，最后才在有错误时抛出 `errors[0]`。嵌套的 `diff()`（`#diffing`）只登记待处理的一轮，不推入任何错误。第一个异常原样抛出，不包装（不用 `AggregateError`），其余丢弃；
 - 旧值从快照解码，不缓存任何值。
 
 ## 6. 字节序转换

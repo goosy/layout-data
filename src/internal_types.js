@@ -7,6 +7,7 @@
  *
  * @typedef {object} Codec
  * @property {number} size - Size in bytes.
+ * @property {(value: any) => string | null} check - The reason a value is refused, null if it can be written.
  * @property {(buffer: Buffer, byte: number, mask: number) => number | boolean} get
  * @property {(buffer: Buffer, byte: number, mask: number, value: number | boolean) => void} set
  */

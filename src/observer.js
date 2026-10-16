@@ -27,7 +27,7 @@ export class Observer {
 	#compiled;
 	/** @type {Buffer} */
 	#snapshot;
-	/** @type {(entry: Layout_Entry, old_value: any, new_value: any) => void} */
+	/** @type {(entry: Layout_Entry, old_value: any, new_value: any, errors: unknown[]) => void} */
 	#report;
 	#diffing = false;
 	#pending = false;
@@ -42,7 +42,7 @@ export class Observer {
 	 * @param {Buffer} buffer - The buffer of the TData.
 	 * @param {string} name - The layout name, for errors.
 	 * @param {Compiled_Layout} compiled - The compiled data of the layout of the TData.
-	 * @param {(entry: Layout_Entry, old_value: any, new_value: any) => void} report - Called for each change.
+	 * @param {(entry: Layout_Entry, old_value: any, new_value: any, errors: unknown[]) => void} report - Called for each change; what a handler throws goes to `errors`.
 	 */
 	constructor(buffer, name, compiled, report) {
 		this.#buffer = buffer;
@@ -73,8 +73,14 @@ export class Observer {
 		this.#end = 0;
 	}
 
-	/** Reports every tag changed since the last diff. */
-	diff() {
+	/**
+	 * Reports every tag changed since the last diff. Nothing is thrown: what
+	 * the handlers throw, and the exception of changes that do not settle, are
+	 * pushed to `errors` after every change has been reported (doc/spec-data-api.md §4.4).
+	 *
+	 * @param {unknown[]} errors
+	 */
+	diff(errors) {
 		if (this.#diffing) {
 			this.#pending = true;
 			return;
@@ -85,10 +91,11 @@ export class Observer {
 			do {
 				this.#pending = false;
 				if (++rounds > MAX_DIFF_ROUNDS) {
-					throw new Error(`${this.#name}: changes do not settle after ${MAX_DIFF_ROUNDS} rounds`);
+					errors.push(new Error(`${this.#name}: changes do not settle after ${MAX_DIFF_ROUNDS} rounds`));
+					break;
 				}
 				for (const [entry, old_value, new_value] of this.#collect()) {
-					this.#report(entry, old_value, new_value);
+					this.#report(entry, old_value, new_value, errors);
 				}
 			} while (this.#pending);
 		} finally {
