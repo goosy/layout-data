@@ -325,6 +325,17 @@ A file is complete in itself or is one of several sources (§6.4): a file may ho
 
 Entries in a fragment may reference other fragments too.
 
+There are two kinds of entry, and the declarations name them (`Layout_Item` is either of the two):
+
+| Entry | Fields | Declaration |
+| --- | --- | --- |
+| A tag | `name`, `type`, `offset` are required; `length`, `init_value`, `comment`, `is_combined`, `coupling` are optional; it has no `includes` | `Tag_Item` |
+| An inclusion | `includes` and `offset` are required; `name_prefix` is optional; it has no `name` and no `type` | `Include_Item` |
+
+- `coupling` is a fragment name or an inline list of tag entries, never a list of names: the names of the bits are a result of the registration (they appear in `Layout_Tag.coupling`, §6.6), not an input;
+- A whole description has the declaration `Layout_Description`: `layouts`, a mapping from layout names to lists of entries, and one list of entries for each fragment. The declaration of a source of layouts is `Layout_Source`, a file path or a description. In the declarations the parameter of `register_layout` is typed with them, so that an editor completes the fields of an entry and notices a misspelled one;
+- The `fragments` that `register_layout` returns hold the entries with the references expanded: `includes` and `coupling` are lists of entries, never names, and every `length` is present. Their declaration is the same `Layout_Item`.
+
 ### 6.3 Validity
 
 - Tag names are unique and are not reserved names (§2.10);

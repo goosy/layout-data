@@ -323,6 +323,17 @@ layouts:
 
 片段中的条目也可以引用其他片段。
 
+条目有两种，类型声明里各有名字（`Layout_Item` 是两者之一）：
+
+| 条目 | 字段 | 声明 |
+| --- | --- | --- |
+| tag | `name`、`type`、`offset` 必填；`length`、`init_value`、`comment`、`is_combined`、`coupling` 可选；没有 `includes` | `Tag_Item` |
+| 包含 | `includes` 和 `offset` 必填；`name_prefix` 可选；没有 `name` 和 `type` | `Include_Item` |
+
+- `coupling` 是片段名或内联的 tag 条目列表，不能是名称列表：各位的名称是注册的结果（出现在 `Layout_Tag.coupling` 里，§6.6），不是输入；
+- 整份描述的声明是 `Layout_Description`：`layouts` 是布局名到条目列表的映射，每个片段是一个条目列表。布局来源的声明是 `Layout_Source`，即文件路径或描述。类型声明里 `register_layout` 的参数用它们标注，所以编辑器会补全条目的字段，拼错字段名时会提示；
+- `register_layout` 返回的 `fragments` 里是引用展开后的条目：`includes` 和 `coupling` 都是条目列表，不会是名称，每个 `length` 都存在。它们的声明仍然是 `Layout_Item`。
+
 ### 6.3 合法性
 
 - tag 名唯一，且不是保留名（§2.10）；

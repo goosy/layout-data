@@ -3,19 +3,44 @@
 // The types of the internals are in internal_types.js and are not exported.
 
 /**
- * One item of a layout description, as written by the user in a layout file
- * or given to register_layout_data (doc/spec-data-api.md §6).
+ * An entry of a layout description that defines a tag (doc/spec-data-api.md §6.2).
  *
- * @typedef {object} Layout_Item
- * @property {string} [name] - Tag name.
- * @property {string} type - Tag type, case-insensitive (see TYPE_BITS).
- * @property {number} offset - Bit offset, relative to the parent item until expanded.
+ * @typedef {object} Tag_Item
+ * @property {string} name - Tag name.
+ * @property {string} type - Tag type, case-insensitive (see Tag_Type).
+ * @property {number} offset - Bit offset, relative to the parent entry until expanded.
  * @property {number} [length] - Length in bits, filled in from the type when omitted.
  * @property {number | boolean} [init_value] - Initial value.
  * @property {string} [comment] - Description, rendered into the generated types.
- * @property {string} [name_prefix] - Prefix of the names of the included items.
- * @property {Layout_Item[] | string} [includes] - Included items, or a fragment name.
- * @property {Layout_Item[] | string[] | string} [coupling] - Coupled bits, or a fragment name; names after expansion.
+ * @property {boolean} [is_combined] - Descriptive mark of a combined word; the linkage is decided by `coupling`.
+ * @property {Tag_Item[] | string} [coupling] - The bits of a combined word, as an inline list or the name of a fragment.
+ * @property {never} [includes] - A tag entry does not include entries.
+ */
+
+/**
+ * An entry of a layout description that splices in other entries (doc/spec-data-api.md §6.2).
+ *
+ * @typedef {object} Include_Item
+ * @property {Layout_Item[] | string} includes - The entries to include, as an inline list or the name of a fragment.
+ * @property {number} offset - Bit offset by which the included entries are shifted as a whole.
+ * @property {string} [name_prefix] - Prefix of the names of the included entries.
+ * @property {never} [name] - An inclusion defines no tag.
+ * @property {never} [type] - An inclusion defines no tag.
+ */
+
+/**
+ * One entry of a layout description, as written by the user in a layout file
+ * or given to register_layout (doc/spec-data-api.md §6).
+ *
+ * @typedef {Tag_Item | Include_Item} Layout_Item
+ */
+
+/**
+ * A layout description: `layouts` maps layout names to lists of entries, and
+ * every other key is a fragment, a list of entries that can be named
+ * (doc/spec-data-api.md §6.1).
+ *
+ * @typedef {{ layouts?: Record<string, Layout_Item[]> } & Record<string, Layout_Item[] | Record<string, Layout_Item[]> | undefined>} Layout_Description
  */
 
 /**
@@ -57,10 +82,9 @@
 
 /**
  * A source of layouts: the path of a YAML 1.2 layout file, or a description
- * that is already parsed (the same structure as the file: `layouts` and the
- * fragments, doc/spec-data-api.md §6.1).
+ * that is already parsed (the same structure as the file, doc/spec-data-api.md §6.1).
  *
- * @typedef {string | Record<string, any>} Layout_Source
+ * @typedef {string | Layout_Description} Layout_Source
  */
 
 /**

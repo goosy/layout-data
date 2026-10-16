@@ -7,6 +7,7 @@ import {
 	register_layout, get_layout,
 	io_index_table, render_types,
 	type Layout, type Layout_Tag, type Layout_Item, type Layout_Source,
+	type Tag_Item, type Include_Item, type Layout_Description,
 	type Registered_Layouts, type Endian, type Tag_Type,
 } from "tagged-data";
 
@@ -39,6 +40,39 @@ assert_type<Equal<typeof fragment, Layout_Item[]>>();
 register_layout(1);
 // @ts-expect-error the sources are required
 register_layout();
+
+// the entries of a description: a tag, or an inclusion
+const tag_item: Tag_Item = { name: "a", type: "UInt", offset: 0, init_value: 1, comment: "first", length: 16 };
+const include_item: Include_Item = { includes: "common", offset: 16, name_prefix: "p_" };
+const combined: Tag_Item = {
+	name: "w", type: "Word", offset: 32, is_combined: true,
+	coupling: [{ name: "b", type: "Bool", offset: 0 }],
+};
+const coupled_by_name: Tag_Item = { name: "w2", type: "Word", offset: 48, coupling: "bits" };
+const inline_include: Include_Item = { includes: [tag_item, combined], offset: 0 };
+const either: Layout_Item[] = [tag_item, include_item, combined, coupled_by_name, inline_include];
+// @ts-expect-error an inclusion has no type
+const typed_include: Include_Item = { includes: "common", offset: 0, type: "UInt" };
+// @ts-expect-error an inclusion has no name
+const named_include: Include_Item = { includes: "common", offset: 0, name: "x" };
+// @ts-expect-error a tag does not include entries
+const including_tag: Tag_Item = { name: "a", type: "UInt", offset: 0, includes: "common" };
+// @ts-expect-error the bits of a combined word are entries or a fragment name, not a list of names
+const named_bits: Tag_Item = { name: "w", type: "Word", offset: 0, coupling: ["a", "b"] };
+// @ts-expect-error a tag needs a name
+const nameless: Layout_Item = { type: "UInt", offset: 0 };
+// @ts-expect-error a tag needs an offset
+const offsetless: Layout_Item = { name: "a", type: "UInt" };
+const description: Layout_Description = { layouts: { PUMP: either }, common: [tag_item] };
+register_layout(description);
+register_layout({ layouts: { PUMP: [{ name: "a", type: "UInt", offset: 0 }] }, common: [{ name: "b", type: "Byte", offset: 0 }] });
+// @ts-expect-error a field of an entry is misspelled
+register_layout({ layouts: { PUMP: [{ name: "a", type: "UInt", offest: 0 }] } });
+// @ts-expect-error layouts maps layout names to lists of entries
+register_layout({ layouts: [] });
+// @ts-expect-error a fragment is a list of entries
+register_layout({ layouts: {}, common: 3 });
+void [typed_include, named_include, including_tag, named_bits, nameless, offsetless];
 
 // items given in code are a description, registered and then used by name
 const items: Layout_Item[] = [{ name: "a", type: "word", offset: 0, init_value: 1 }];
