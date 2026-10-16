@@ -84,7 +84,7 @@
 ## 5. TData
 
 - `new TData(layout, name)` 接收已登记的布局或其名字（由 `get_layout` 解析），返回按布局名构建的子类（见 §4）的实例；构造函数先调用 `super()`，再返回该实例。传来的布局对象不是其名字下已登记的那个时抛出错误（只比较引用，不比较结构）。`TData` 本身不会是任何实例的直接类。该实例分配 `buffer`（`layout.size` 字节），按条目的 `init_value` 依次编码写入。
-- `name` 可写；`layout`、`size` 只读（只有 getter，赋值抛出 `TypeError`）。缓冲区是私有字段（`#buffer`），没有访问器，统一按大端存放；Observer 和事务所需的缓冲区由创建它们的 TData 传入。带类型的访问走 tag，不带类型的访问走字节：没有按宽度分类的原始方法。
+- `name`、`layout`、`size` 都只读（只有 getter，赋值抛出 `TypeError`）；`name` 是私有字段 `#name`，构造函数先于其他一切检查它是字符串（`TypeError`），再赋值。TData 的 `setMaxListeners(100)` 和 TTag 的 `setMaxListeners(20)` 固定写在各自的构造函数里。缓冲区是私有字段（`#buffer`），没有访问器，统一按大端存放；Observer 和事务所需的缓冲区由创建它们的 TData 传入。带类型的访问走 tag，不带类型的访问走字节：没有按宽度分类的原始方法。
 - 写缓冲区有两种途径，都经过 TData，任何时候都允许：
 
   | 途径 | 使用者 |

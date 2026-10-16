@@ -30,7 +30,7 @@ const data = new TData(layout, name);
 ```
 
 - `layout`: the name of a registered layout, which is the normal way (§6.4: register first, then create by name), or the registered layout object itself, which `get_layout(name)` returns or a registration result holds; a list of items is not accepted, and an unknown name or a layout object that is not the registered one of its name throws;
-- `name`: the name of the tdata, used in logs and error messages;
+- `name`: the name of the tdata, used in logs and error messages. It must be a string (any string, the empty one included), otherwise `TypeError`; it is given here and cannot be changed afterwards;
 - After creation every tag equals its initial value from the layout, and no change event is emitted;
 - A layout name identifies one layout for the life of the process: the data blocks of one layout share one class (§6.4).
 
@@ -38,7 +38,7 @@ const data = new TData(layout, name);
 
 | Property | Access | Description |
 | --- | --- | --- |
-| `name` | read/write | The name of the tdata |
+| `name` | read-only | The name of the tdata, as given at creation |
 | `layout` | read-only | The layout in use |
 | `size` | read-only | Size of the tdata in bytes |
 
@@ -119,7 +119,7 @@ Emitted when the value of any tag of the tdata changes. The arguments are the ta
 data.on("write", (data) => { /* ... */ });
 ```
 
-Emitted after every write, whether or not it changed a value. A write is a write by name, through a TTag, or a raw write (`write_bytes`, `write_bit`); a read does not emit it, and neither does a refused write (one that throws before it takes effect, §2.3, §5). It means "a write happened", for the user's scheduling and IO: they must handle every write, even one that wrote the same value; a change of value is what `change` stands for. It is emitted after the detection of that write and the `change` events it caused. Writes inside a transaction do not emit it at once, see §4.2. Any number of parties can listen, each with its own handler.
+Emitted after every write, whether or not it changed a value. A write is a write by name, through a TTag, or a raw write (`write_bytes`, `write_bit`); a read does not emit it, and neither does a refused write (one that throws before it takes effect, §2.3, §5). It means "a write happened", for the user's scheduling and IO: they must handle every write, even one that wrote the same value; a change of value is what `change` stands for. It is emitted after the detection of that write and the `change` events it caused. Writes inside a transaction do not emit it at once, see §4.2. Any number of parties can listen, each with its own handler. Node.js prints a warning (`MaxListenersExceededWarning`) when more than 100 listeners are subscribed to one event of a tdata, and 20 to the `change` of a TTag; the library fixes these limits, and a program that needs another one calls the inherited `setMaxListeners(n)` of that object.
 
 Event names:
 
@@ -271,6 +271,7 @@ The interface throws exceptions on errors. It does not log or exit the process; 
 | Writing a value that is not a number to an integer or `Real` tag | `TypeError`, the old value is kept, no event and no `write` |
 | Writing `NaN`, `Infinity`, a non-integer or an integer outside the range to an integer tag, or a finite number beyond float32 to a `Real` tag | `RangeError`, the old value is kept, no event and no `write` |
 | A handler throws | the first exception is thrown by the write statement after all events are dispatched; the value stands and `write` is emitted (§4.4) |
+| A tdata created with a name that is not a string | `TypeError` |
 | Invalid layout, or a reserved tag name (§2.10) | `Error` with `errors`, thrown by `register_layout`; nothing is registered (§6.4) |
 | `register_layout` called again after it registered layouts | `Error`, the layouts of the first call stay (§6.4) |
 | Writes triggered by handlers that do not settle | `Error`, thrown by the write statement after the events are dispatched (§4.4) |

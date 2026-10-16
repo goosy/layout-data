@@ -51,10 +51,12 @@ export class TData extends EventEmitter {
 		return this.#buffer.length;
 	}
 
-	/**
-	 * @type {string}
-	 */
-	name;
+	/** @type {string} */
+	#name;
+	/** @returns {string} The name given at creation, used in logs and error messages. */
+	get name() {
+		return this.#name;
+	}
 
 	/** @type {Layout} */
 	#layout;
@@ -462,16 +464,18 @@ export class TData extends EventEmitter {
 	 * accessors), building the class on the first use of the name.
 	 *
 	 * @param {Layout | string} layout - A registered layout, or its name (get_layout).
-	 * @param {string} name - The name of the TData instance.
+	 * @param {string} name - The name of the TData instance, a string that cannot be changed afterwards.
+	 * @throws {TypeError} When name is not a string.
 	 * @throws {Error} For an unknown layout name, or a layout that is not the registered one.
 	 */
 	constructor(layout, name) {
 		super();
+		if (typeof name !== "string") throw new TypeError("the name of a tdata must be a string");
 		if (new.target === TData) {
 			const registered = resolve_layout(layout);
 			return new (TData.#class_of(registered))(registered, name);
 		}
-		this.name = name;
+		this.#name = name;
 		this.#layout = new.target.layout;
 		this.#compiled = new.target.compiled;
 		this.setMaxListeners(100);

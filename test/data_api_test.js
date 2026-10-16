@@ -55,6 +55,25 @@ describe("2 TData", () => {
 		assert.throws(() => register_items("SAMPLE", changed), /another layout is already named SAMPLE/);
 	});
 
+	test("2.1 the name of a tdata must be a string, the empty one included", () => {
+		assert.equal(new TData(LAYOUT, "").name, "");
+		assert.equal(new TData("SAMPLE", "by name").name, "by name");
+		for (const name of [undefined, null, 1, {}, ["d"], Symbol("d"), true]) {
+			assert.throws(() => new TData(LAYOUT, name), TypeError, String(name));
+			assert.throws(() => new TData("SAMPLE", name), TypeError, String(name));
+		}
+		assert.throws(() => new TData(LAYOUT), TypeError);
+	});
+
+	test("2.7 the listener limits are fixed: 100 for a tdata, 20 for a TTag, and setMaxListeners changes one object", () => {
+		const data = new TData(LAYOUT, "d");
+		assert.equal(data.getMaxListeners(), 100);
+		assert.equal(data.get("id").getMaxListeners(), 20);
+		data.setMaxListeners(5);
+		assert.equal(data.getMaxListeners(), 5);
+		assert.equal(new TData(LAYOUT, "e").getMaxListeners(), 100);
+	});
+
 	test("2.1 a layout name stands for the registered layout", () => {
 		const data = new TData("SAMPLE", "d");
 		assert.equal(data.layout, LAYOUT);
@@ -95,11 +114,12 @@ describe("2 TData", () => {
 		assert.equal(other.pressure, 1.5); // the buffers stay separate
 	});
 
-	test("2.2 name is writable; layout and size are read-only; the bytes are not a property", () => {
+	test("2.2 name, layout and size are read-only; the bytes are not a property", () => {
 		const data = new TData(LAYOUT, "d");
-		data.name = "renamed";
-		assert.equal(data.name, "renamed");
+		assert.equal(data.name, "d");
 		// ES modules run in strict mode: assigning a getter-only property throws
+		assert.throws(() => { data.name = "renamed"; }, TypeError);
+		assert.equal(data.name, "d");
 		assert.throws(() => { data.layout = null; }, TypeError);
 		assert.throws(() => { data.size = 1; }, TypeError);
 		for (const member of ["buffer", "detect", "after_write", "write_words", "write_dwords"]) {

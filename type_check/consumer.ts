@@ -61,7 +61,11 @@ new TData(items, "block");
 const tag: TTag | undefined = tdata.get("a");
 assert_type<Equal<typeof tdata.size, number>>();
 assert_type<Equal<typeof tdata.layout, Layout>>();
+assert_type<Equal<typeof tdata.name, string>>();
+// @ts-expect-error name is read-only
 tdata.name = "renamed";
+// @ts-expect-error the name is a string
+new TData(same_layout, 1);
 const done: string = tdata.transaction(() => "done");
 assert_type<Equal<typeof done, string>>();
 // @ts-expect-error the transaction function is required

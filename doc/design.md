@@ -86,7 +86,7 @@ The layout rules are validated centrally at the layout stage, not spread over th
 ## 5. TData
 
 - `new TData(layout, name)` takes a registered layout, or the name of one (resolved by `get_layout`), and returns an instance of the subclass built for the layout name (see §4); the constructor calls `super()` first and then returns that instance. A layout object that is not the registered one of its name throws (an identity check, not a structural one). `TData` itself is never the direct class of an instance. The instance allocates `buffer` (`layout.size` bytes) and encodes the `init_value` of the entries in order.
-- `name` is writable; `layout` and `size` are read-only (getter only, assignment throws `TypeError`). The buffer is a private field (`#buffer`) with no accessor, always big-endian; the Observer and the transaction get it from the TData that creates them. Typed access goes through tags, untyped access through bytes: there are no raw methods classified by width.
+- `name`, `layout` and `size` are read-only (getter only, assignment throws `TypeError`); `name` is the private field `#name`, which the constructor sets after it has checked, before anything else, that it is a string (`TypeError`). `setMaxListeners(100)` of a TData and `setMaxListeners(20)` of a TTag are fixed in their constructors. The buffer is a private field (`#buffer`) with no accessor, always big-endian; the Observer and the transaction get it from the TData that creates them. Typed access goes through tags, untyped access through bytes: there are no raw methods classified by width.
 - There are two ways to write the buffer, both through TData and allowed at any time:
 
   | Way | Used by |
