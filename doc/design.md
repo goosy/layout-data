@@ -144,5 +144,5 @@ Every write path ends in the same private method of TData:
 ## 7. Build and test
 
 - `pnpm build`: rolldown bundles `src/index.js` into `dist/tagged-data.js` (`yaml` is bundled into the library);
-- `pnpm bench`: `bench/change_detection_bench.js` measures reading a block of 86 tags and 146 bytes (loading every tag from a device-ordered buffer, which detects and reports the changes). On a development machine, `load_tag` of every tag in one transaction takes one cycle about 2.5 µs with no change, 2.5–3.7 µs with a few changes, and 7.5–8 µs with every tag changed; copying the bytes with `io_index_table` and one `write_bytes` takes about 0.4–0.5 µs, 0.6–1.6 µs and 5.3–5.7 µs;
+- `pnpm bench`: `bench/change_detection_bench.js` measures reading a block of 86 tags and 146 bytes (loading every tag from a device-ordered buffer, which detects and reports the changes). On a development machine, `load_tag` of every tag in one transaction takes one cycle about 3.1–3.2 µs with no change, 3.1–4.5 µs with a few changes, and 8.5–8.6 µs with every tag changed (each `load_tag` also checks, once, whether an `access` listener exists, which is about 0.6 µs of the 86 tags); copying the bytes with `io_index_table` and one `write_bytes` takes about 0.4 µs, 0.6–1.7 µs and 5.7–5.9 µs;
 - `pnpm test`: builds first, then runs the type tests and `node --test`; `pnpm lint`: ESLint.

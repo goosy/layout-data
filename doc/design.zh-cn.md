@@ -142,5 +142,5 @@
 ## 7. 构建与测试
 
 - `pnpm build`：rolldown 把 `src/index.js` 打包为 `dist/tagged-data.js`（`yaml` 打进库）；
-- `pnpm bench`：`bench/change_detection_bench.js` 测量读取一个 86 个 tag、146 字节的数据块（从设备字节序缓冲装载每个 tag，并检测、报告变化）的开销。开发机上，在一个事务中对每个 tag 调用 `load_tag`，每周期无变化约 2.5 µs，少量变化 2.5–3.7 µs，全部变化 7.5–8 µs；用 `io_index_table` 按字节复制再一次 `write_bytes` 时分别约 0.4–0.5 µs、0.6–1.6 µs、5.3–5.7 µs；
+- `pnpm bench`：`bench/change_detection_bench.js` 测量读取一个 86 个 tag、146 字节的数据块（从设备字节序缓冲装载每个 tag，并检测、报告变化）的开销。开发机上，在一个事务中对每个 tag 调用 `load_tag`，每周期无变化约 3.1–3.2 µs，少量变化 3.1–4.5 µs，全部变化 8.5–8.6 µs（每次 `load_tag` 还要检查一次是否有 `access` 监听器，86 个 tag 合计约 0.6 µs）；用 `io_index_table` 按字节复制再一次 `write_bytes` 时分别约 0.4 µs、0.6–1.7 µs、5.7–5.9 µs；
 - `pnpm test`：先构建，再运行类型测试和 `node --test`；`pnpm lint`：ESLint。
