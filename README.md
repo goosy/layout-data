@@ -77,9 +77,30 @@ pump.transaction(() => {
 | --- | --- |
 | `TData`, `TTag` | The data object and the tag handle |
 | `register_layout(sources)` | Register the layouts of YAML files or parsed descriptions (a path, an object, or a list of them), once per process; then create `TData` by layout name |
-| `render_types(layouts, { source, tdata_module })` | Generate TypeScript interfaces for layouts |
+| `render_types(layouts, options)` | Generate TypeScript interfaces for layouts, for editor completion (see below) |
 | `get_layout(name)` | Look up a registered layout by name |
 | `io_index_table` | Byte index table for exchanging a whole block with a device (per-tag conversion is `load_tag` / `store_tag` of `TData`) |
+
+## Editor completion
+
+`new TData("PUMP", "pump_1")` is typed `TData`. To have the tags of the layout completed, generate the types of the registered layouts once, write them to a file beside your code, and name the type of the value with a JSDoc cast:
+
+```js
+import { writeFileSync } from "node:fs";
+import { register_layout, render_types } from "tagged-data";
+
+const { layouts } = register_layout("pump.yaml");
+writeFileSync("layout_types.d.ts", render_types(layouts, { source: "pump.yaml" }));
+```
+
+```js
+const pump = /** @type {import("./layout_types.js").PUMP_TData} */ (new TData("PUMP", "pump_1"));
+pump.pressure = 1.5;   // completed, and known to be a number
+```
+
+The parentheses are part of the cast. With `checkJs` or `// @ts-check` a misspelled tag or a value of the wrong type is reported too.
+
+The types are named after the layout: `PUMP_Tags` and `PUMP_TData` for the layout `PUMP`. In TypeScript write `new TData("PUMP", "pump_1") as PUMP_TData`.
 
 ## Documentation
 

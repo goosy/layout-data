@@ -8,9 +8,10 @@ import { is_reserved_name } from "./reserved.js";
 
 function add_item(data_struct, item, base_offset, name_prefix) {
 	const items = data_struct.items;
-	// duplicated names are kept and reported by validate_structure
-	if (item.name) items.push(item);
-	if (name_prefix) item.name = name_prefix + item.name;
+	// every entry that is not a pure inclusion is a tag, whatever its name: duplicated
+	// and invalid names are kept and reported by validate_structure
+	if (item.includes === undefined || item.name !== undefined) items.push(item);
+	if (name_prefix && typeof item.name === "string") item.name = name_prefix + item.name;
 
 	item.offset = item.offset + base_offset;
 	const length = item.offset + item.length;
@@ -110,6 +111,12 @@ export const TYPE_BITS = {
 	dint: 32, udint: 32, dword: 32, real: 32,
 };
 
+/**
+ * A tag name: letters, digits and `_`, not starting with a digit, an
+ * identifier in every language (doc/spec-data-api.md §6.2).
+ */
+const TAG_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
 // value range of each integer type
 const INTEGER_RANGES = {
 	byte: [0, 0xff], usint: [0, 0xff], sint: [-0x80, 0x7f],
@@ -144,7 +151,11 @@ export function validate_structure(data_struct) {
 	for (const item of items) {
 		if (by_name.has(item.name)) report(item, "duplicated name");
 		else by_name.set(item.name, item);
-		if (is_reserved_name(item.name)) report(item, "name is a reserved name");
+		if (typeof item.name !== "string" || !TAG_NAME.test(item.name)) {
+			report(item, "name is not an identifier (letters, digits and \"_\", not starting with a digit)");
+		} else if (is_reserved_name(item.name)) {
+			report(item, "name is a reserved name");
+		}
 	}
 
 	// type, length, alignment and init_value

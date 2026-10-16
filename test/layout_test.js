@@ -46,6 +46,39 @@ describe("layout validation", () => {
 		});
 	}
 
+	for (const name of ["a-b", "a.b", "a b", "1a", "40001", "", "压力", "$a", "a#", "a[0]", "%MW100"]) {
+		test(`tag name ${JSON.stringify(name)} is not an identifier and is reported`, () => {
+			assert_error([{ name, type: "UInt", offset: 0, length: 16, init_value: 0 }], "name is not an identifier");
+		});
+	}
+
+	for (const name of ["a", "_a", "A1", "pump_1_speed", "_", "__x", "Abc_Def"]) {
+		test(`tag name ${JSON.stringify(name)} is an identifier`, () => {
+			assert.deepEqual(errors_of([
+				{ name, type: "UInt", offset: 0, length: 16, init_value: 0 },
+				{ name: "pad", type: "UInt", offset: 16, length: 16, init_value: 0 },
+			]), []);
+		});
+	}
+
+	test("a tag name that is not a string, such as an unquoted number of YAML, is reported and does not crash", () => {
+		assert_error([{ name: 40001, type: "UInt", offset: 0, length: 16, init_value: 0 }], "name is not an identifier");
+		assert_error([{ name: true, type: "UInt", offset: 0, length: 16, init_value: 0 }], "name is not an identifier");
+		assert_error([{ name: null, type: "UInt", offset: 0, length: 16, init_value: 0 }], "name is not an identifier");
+	});
+
+	test("a tag entry without a name is reported, not dropped", () => {
+		assert_error([{ type: "UInt", offset: 0, length: 16, init_value: 0 }], "name is not an identifier");
+	});
+
+	test("an inclusion needs no name, and a prefix is put before the names of the included tags only", () => {
+		const struct = make_struct([
+			{ includes: [{ name: "x", type: "UInt", offset: 0, length: 16, init_value: 1 }], offset: 0, length: 16, name_prefix: "p_" },
+		], "T");
+		assert.deepEqual(struct.items.map((item) => item.name), ["p_x"]);
+		assert.deepEqual(validate_structure(struct), []);
+	});
+
 	test("unknown type is reported", () => {
 		assert_error([{ name: "a", type: "LReal", offset: 0, length: 16, init_value: 0 }], "unknown type");
 	});

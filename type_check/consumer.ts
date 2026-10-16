@@ -225,7 +225,12 @@ void (await import("tagged-data")).load_entry;
 
 // type rendering
 const text: string = render_types(compiled.layouts, { source: "layout.yaml", tdata_module: "tagged-data" });
-// @ts-expect-error the options are required
 render_types(compiled.layouts);
+render_types(compiled.layouts, { source: "layout.yaml" });
+render_types(compiled.layouts, { tdata_module: "../src/index.js" });
+// @ts-expect-error the source is a string
+render_types(compiled.layouts, { source: 1 });
+// @ts-expect-error the layouts are registered layouts
+render_types({ PUMP: 1 });
 
 export { bytes, table, text };

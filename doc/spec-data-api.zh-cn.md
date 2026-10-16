@@ -311,7 +311,7 @@ layouts:
 
 | 字段 | 说明 |
 | --- | --- |
-| `name` | tag 名，同一布局内唯一，不得是保留名（§2.10） |
+| `name` | tag 名：字母、数字和 `_`，不以数字开头，是所有语言都认的标识符，所以 tag 总能写成 `data.名字`，也与 PLC 数据块里的字段一致。同一布局内唯一，不得是保留名（§2.10）。设备点表里点位的名字若不同，把那个名字写进 `comment` |
 | `type` | §1 所列类型之一，大小写不敏感 |
 | `offset` | 位偏移；非 Bool 必须在整字节上，多字节类型必须从偶数字节开始 |
 | `length` | 位长，可省略，省略时由类型决定；写出时须与类型一致 |
@@ -336,7 +336,7 @@ layouts:
 
 ### 6.3 合法性
 
-- tag 名唯一，且不是保留名（§2.10）；
+- tag 名是标识符（字母、数字和 `_`，不以数字开头；数字、空名和缺少 name 都不是），唯一，且不是保留名（§2.10）；
 - 非 Bool 的 tag 之间字节范围互不重叠；每一位最多属于一个 Bool；
 - Bool 落在某个非 Bool tag 的字节范围内时，必须是该 tag（组合字）的组成位；组合字的每个组成位都必须落在该字的范围内；
 - 组合字与它的组成位只能由一方给出初值：组合字给出时，组成位的初值由整字决定；组合字不给出时，由各组成位给出（未给出的位为 `false`），整字的初值由它们合成；
@@ -398,6 +398,26 @@ const data = new TData("PUMP", "pump_1");
 - `items` 的每一项有：`name`；`type`（保持描述中的写法，不改大小写，而 `TTag.type` 总是小写）；`offset`（绝对位偏移，字节位置是 `offset >> 3`）；`length`（位）；`init_value`；`comment`（如果给出）；`coupling`（组合字：其组成位的 tag 名；组成位：它所属的组合字的 tag 名）。`includes` 和 `name_prefix` 已经展开，不再出现；
 - 布局及其 `items` 是深度冻结的，修改它们抛出 `TypeError`；
 - 布局不公开按名索引表、字节位置、位掩码、编解码器等内部数据，使用方不需要了解它们：按名访问用 `data.get(name)` 取得 TTag，与设备交换数据用 `load_tag` / `store_tag` 或 TTag 的 `load` / `store`（§2.9）。
+
+### 6.7 供编辑器使用的类型声明
+
+`render_types(layouts, options)` 返回一份 TypeScript 声明文件（`.d.ts`）的文本，让编辑器能补全数据块的 tag。它是构建程序时用的辅助：布局注册之后，程序把文本写到代码旁边的文件里，例如 `layout_types.d.ts`。`layouts` 就是 `register_layout` 返回的 `layouts`。
+
+- 每个布局生成 `<布局>_Tags` 和 `<布局>_TData`：前者是接口，每个 tag 一个属性（Bool 是 `boolean`，其余类型都是 `number`；`comment` 成为该属性的文档注释），后者是 `TData & <布局>_Tags`；
+- 布局名原样使用，大小写不变：布局 `PUMP` 生成 `PUMP_Tags` 和 `PUMP_TData`，`my_block` 生成 `my_block_Tags`，`Pump_Station` 生成 `Pump_Station_Tags`。大小写风格由调用者决定，建议用 `Snake_Pascal_Case`，也就是本包类型名的风格，库不强制。它就是 `new TData("PUMP", ...)` 里写的名字，名字不同的两个布局不会生成同名的类型；
+- 布局名必须是 JavaScript 的标识符（任何文字的字母、数字、`_` 和 `$`，且不以数字开头），因为它是类型名的一部分；否则抛出 `Error`，其 `errors` 列出全部这样的名字。tag 名一定是标识符（§6.2），所以原样作为属性名。注释里的 `*/` 会被转义，所以生成的文本总是合法的声明文件；
+- `options.source` 在文本的头部注释里写出布局文件的名字，省略时头部只说明这是生成的文本。`options.tdata_module` 是文本导入 `TData` 的模块说明符，相对于输出文件，默认是 `"tagged-data"`。两个选项以及 `options` 参数本身都可以省略。
+
+怎样使用这些类型。`new TData("PUMP", "pump_1")` 的类型是 `TData`：类的构造函数不能按参数返回别的类型，所以值的类型要手工指定一次。在 JavaScript 里用 JSDoc 类型转换就够了，编辑器能据此补全 tag；文件开启检查（`checkJs` 或 `// @ts-check`）时，还能指出拼错的 tag 和类型不对的值：
+
+```js
+const pump = /** @type {import("./layout_types.js").PUMP_TData} */ (new TData("PUMP", "pump_1"));
+pump.pressure = 1.5;   // 会补全，且知道它是数字
+```
+
+括号是 JSDoc 类型转换的一部分。把 `/** @type {...} */` 写在 `const pump = new TData(...)` 上面也能补全，但开启检查的文件会报“`TData` 不能赋给 `PUMP_TData`”。
+
+在 TypeScript 里写 `const pump = new TData("PUMP", "pump_1") as PUMP_TData;`。
 
 ## 7. 不在本接口内
 

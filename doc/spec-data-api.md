@@ -313,7 +313,7 @@ A file is complete in itself or is one of several sources (§6.4): a file may ho
 
 | Field | Description |
 | --- | --- |
-| `name` | The tag name, unique within a layout, not a reserved name (§2.10) |
+| `name` | The tag name: letters, digits and `_`, not starting with a digit, an identifier in every language, so that a tag is always written `data.name` and is the same as the field of a data block in a PLC. Unique within a layout, not a reserved name (§2.10). If the point table of a device names the point otherwise, put that name in the `comment` |
 | `type` | One of the types listed in §1, case-insensitive |
 | `offset` | Bit offset; a non-Bool must be on a whole byte, a multi-byte type must start at an even byte |
 | `length` | Length in bits; may be omitted, in which case the type decides it; when written it must match the type |
@@ -338,7 +338,7 @@ There are two kinds of entry, and the declarations name them (`Layout_Item` is e
 
 ### 6.3 Validity
 
-- Tag names are unique and are not reserved names (§2.10);
+- Tag names are identifiers (letters, digits and `_`, not starting with a digit; a number, an empty name or a missing name is not one), are unique and are not reserved names (§2.10);
 - The byte ranges of non-Bool tags do not overlap; each bit belongs to at most one Bool;
 - A Bool inside the byte range of a non-Bool tag must be a bit (`coupling`) of that tag; every bit of a combined word must lie inside the word;
 - Only one side of a combined word and its bits gives the initial value: if the word gives it, the initial values of the bits come from the whole word; otherwise they come from the bits (a bit without a value is `false`) and the word is composed from them;
@@ -400,6 +400,26 @@ A layout (`Layout`) is a read-only object that exposes only these members:
 - Every item of `items` has: `name`; `type` (as written in the description, the case unchanged, while `TTag.type` is always lower case); `offset` (the absolute bit offset; the byte position is `offset >> 3`); `length` (bits); `init_value`; `comment` (if given); `coupling` (for a combined word: the tag names of its bits; for a bit: the tag names of the combined words it belongs to). `includes` and `name_prefix` are expanded and no longer appear;
 - The layout and its `items` are deeply frozen: modifying them throws `TypeError`;
 - A layout does not expose the table by name, byte positions, bit masks, codecs or other internal data, and users need not know them: access by name goes through `data.get(name)`, which gives a TTag, and exchanging data with a device through `load_tag` / `store_tag` or `load` / `store` of a TTag (§2.9).
+
+### 6.7 Type declarations for the editor
+
+`render_types(layouts, options)` returns the text of a TypeScript declaration file (`.d.ts`) for layouts, so that an editor can complete the tags of a data block. It is a helper for building the program: after the layouts are registered, the program writes the text to a file beside its code, for example `layout_types.d.ts`. `layouts` is the `layouts` that `register_layout` returns.
+
+- For each layout it declares `<Layout>_Tags`, an interface with one property per tag (`boolean` for a Bool, `number` for every other type; a `comment` becomes the doc comment of the property), and `<Layout>_TData`, which is `TData & <Layout>_Tags`;
+- The layout name is used as it is, with the case it has: the layout `PUMP` gives `PUMP_Tags` and `PUMP_TData`, `my_block` gives `my_block_Tags`, `Pump_Station` gives `Pump_Station_Tags`. The case style is the choice of the caller, and `Snake_Pascal_Case` is recommended, the style of the type names of this package; the library does not require it. The name is the one written in `new TData("PUMP", ...)`, and two layouts with different names never give the same type name;
+- A layout name must be an identifier of JavaScript (letters of any script, digits, `_` and `$`, not starting with a digit), because it is part of a type name; otherwise `Error` is thrown, whose `errors` lists every such name. A tag name is always an identifier (§6.2), so it is written as the property name as it is. A `*/` in a comment is escaped, so the text is always a valid declaration file;
+- `options.source` names the layout file in the header comment of the text; without it the header only says that the text is generated. `options.tdata_module` is the module specifier the text imports `TData` from, relative to the output file; it is `"tagged-data"` by default. Both options, and the argument `options` itself, may be omitted.
+
+Using the types. `new TData("PUMP", "pump_1")` is typed `TData`: the constructor of a class cannot return another type according to its argument, so the type of the value is named by hand, once. In JavaScript a JSDoc cast, which is enough for an editor to complete the tags and, when the file is checked (`checkJs` or `// @ts-check`), to flag a misspelled tag or a value of the wrong type:
+
+```js
+const pump = /** @type {import("./layout_types.js").PUMP_TData} */ (new TData("PUMP", "pump_1"));
+pump.pressure = 1.5;   // completed, and known to be a number
+```
+
+The parentheses are part of the JSDoc cast. A `/** @type {...} */` written above `const pump = new TData(...)` also gives the completion, but a checked file then reports that `TData` is not assignable to `PUMP_TData`.
+
+In TypeScript: `const pump = new TData("PUMP", "pump_1") as PUMP_TData;`.
 
 ## 7. Outside this interface
 

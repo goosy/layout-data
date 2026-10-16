@@ -57,7 +57,7 @@
 
 - `validate_structure(data_struct)` 对 `build_structure` 展开后的扁平 `items` 做校验，返回违规描述的数组（空数组表示合法），不在发现第一个错误时退出。它是内部函数。
 - 校验内容：
-  - 名称：`items` 中名称重复；名称与 TData 的成员（`TData.prototype` 上的方法、getter，以及 `name` 等实例字段）冲突。
+  - 名称：不是匹配 `TAG_NAME`（`/^[A-Za-z_][A-Za-z0-9_]*$/`，各种语言和 PLC 都认的 ASCII 标识符）的字符串，所以 YAML 里的数字、空名、缺少 name 都在这里失败；`items` 中名称重复；名称与 TData 的成员（`TData.prototype` 上的方法、getter，以及 `name` 等实例字段）冲突。
   - 类型与长度：`type` 不在支持的类型中；`length` 与类型不符（Bool 1，Byte / SInt / USInt 8，Int / UInt / Word 16，DInt / UDInt / DWord / Real 32）。
   - 对齐：非 Bool 的 `offset` 必须是 8 的倍数；多字节类型的字节偏移必须是偶数。
   - 重叠：把非 Bool 条目按字节区间排序后检查相邻区间是否相交；Bool 按 `offset` 检查是否重复占用同一位；Bool 落在某个非 Bool 区间内时，要求该 Bool 条目的 `coupling`（展开后是它所属组合字的名称数组）包含这个非 Bool 条目的名称。
@@ -65,7 +65,7 @@
   - 总长：`length % 16 === 0`。
   - `init_value` 的类型与取值范围与 `type` 相符。
   - 组合字与它的组成位不同时给出 `init_value`（展开时记录冲突，由校验报告）。
-- `build_structure` 遇到重名时保留条目，交给校验报告。
+- `build_structure` 遇到重名或不合法的名字时保留条目，交给校验报告。只有纯包含条目（有 `includes` 且没有 name）才会被丢弃；其余条目都是 tag，所以缺少 name 的 tag 条目会被报告，不会丢失。名称前缀只加在字符串类型的名字前。
 - `register_layout` 对全部来源中的布局调用校验，有违规时抛出包含全部违规项的错误（`error.errors`）。
 - 校验通过后，TData 和 TTag 不重复做这些检查；`register_structure` 只保留防御性断言。
 
@@ -79,7 +79,7 @@
 - tag 名不得是保留名（spec-data-api.zh-cn.md §2.10），否则访问器会遮蔽成员。保留名是 `reserved.js` 里的静态集合：TData 的成员、Node.js 20.11 中 EventEmitter 的方法名与字段名、`Object.prototype` 的名字。运行时不做任何探测，所以集合不随 Node.js 版本而变。`reserved.js` 导出 `is_reserved_name(name)`，只供 `structure.js` 和 `TData.js` 使用；包不导出它，TData 也没有对应的静态方法。`validate_structure` 报告保留名，`TData` 构建子类时也会抛出错误。测试把该集合与运行中的 Node.js 里实例上能找到的名字比对，所以 EventEmitter 新增成员会使测试失败，那时再扩充集合。
 - 保留的事件名（`change`、`write`、`read`）是 `reserved.js` 里的常量 `RESERVED_EVENTS`，供测试和文档使用；这是对使用方的规则，运行时不强制。`TData` 和 `TTag` 覆盖 `on`、`once`、`off`（各自只调用 `EventEmitter` 的同名方法），仅为携带带类型的重载：处理器类型由事件名通过 `typedefs.js` 里的条件类型 `Data_Listener<E>` 和 `Tag_Listener<E>` 决定，所以 `change`、`write` 的处理器写错是编译期错误，其他名字可以用任意处理器。以后给 TData 增加的成员只用 `Symbol` 为键或静态方法。
 - `access` 事件（spec-data-api.zh-cn.md §2.8）取代了原来的全局函数 `set_access_tracer`。监听器有两种。实例监听器是数据块的 `EventEmitter` 上的监听器；类监听器单独存放在 `TData.js` 模块私有的一个 `Set` 里（`TData.on_access` 和 `TData.off_access` 往里加、从里删），所以 `removeAllListeners()` 或任何对实例的调用都碰不到它们。在构造任何东西之前，`#has_access_listeners()` 判断 `class_access_listeners.size > 0 || this.listenerCount("access") > 0`，所以没有监听器的数据块，每次访问只多一次开销很小的检查。实例部分不缓存成由 `newListener`、`removeListener` 事件维护的标志，因为 `removeAllListeners()` 会把这两个内部监听器一起移除，标志就会出错；类部分由 `Set` 自己计数，而它只被两个静态方法改动。`#emit_access(kind, tags, errors)` 先通过 `emit_all` 调用实例监听器，再调用类监听器（各自在自己的 `try` 里，参数是 `(this, kind, tags)`），它们抛出的东西推入 `errors`。模块标志 `in_access` 在这两次调用期间置位，监听器自己在此期间对任何 tdata 的访问都不触发。读取在监听器都调用完之后抛出 `errors[0]`；写入把 `errors` 交给 `#written()`，它在 `touch()` 之后、检测之前发出 `access`，最后才抛出第一个错误，这样缓冲区、快照和事件始终一致。tags 是 `get(name)` 的句柄（用到时才创建）：按名访问是那一个 tag；字节范围则由 `#tags_in(start, end, mask)` 遍历 `tags_at_byte`，去重、去掉位不在 `mask` 内的 Bool，并按条目的序号排序。
-- `render_types(layouts, { source, tdata_module })` 由布局生成类型声明（每个布局一个接口，tag 为属性，`comment` 作为注释），为按名访问提供编辑器补全。
+- `render_types(layouts, { source, tdata_module })`（spec-data-api.zh-cn.md §6.7）由布局生成类型声明：每个布局一个接口 `<布局>_Tags`（每个 tag 一个属性）和类型 `<布局>_TData = TData & <布局>_Tags`。布局名原样使用，不做大小写折叠（大小写风格由调用者决定），所以类型名就是 `new TData("<布局>", ...)` 里的名字，名字不同就不会冲突；它必须匹配 `IDENTIFIER`，否则把所有不合格的名字一起放进同一个 `Error` 的 `errors` 抛出。`IDENTIFIER` 使用 Unicode 属性 `ID_Start` 和 `ID_Continue`（加上 `_`、`$`），任何文字的名字都能接受。tag 名原样写出，因为校验已经保证它们是标识符。`doc_comment` 把 `comment` 写成单行或多行文档注释，并转义 `*/`。选项有默认值（`tdata_module` 是 `"tagged-data"`，没有 `source` 时头部不写文件名），头部注释给出为值指定类型的 JSDoc 类型转换写法。`TData` 的构造函数不改：由类生成的声明无法让 `new` 的返回类型随参数而变。
 
 ## 5. TData
 
