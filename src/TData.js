@@ -7,29 +7,23 @@ import { Observer } from "./observer.js";
 import { compiled_of, find_layout, get_layout } from "./registry.js";
 import { is_reserved_name } from "./reserved.js";
 
-/** @import { Access_Tracer, Data_Listener, Endian, Layout } from "./typedefs.js" */
-/** @import { Compiled_Layout } from "./internal_types.js" */
-
-/**
- * Called on every tag access while set (doc/design.md §4).
- *
- * @type {Access_Tracer | null}
- */
-let access_tracer = null;
-
-/**
- * Sets a function called on every tag access through the accessors, as
- * tracer(tdata, name, "read" | "write"), or clears it with null. For tests
- * that check declared dependencies; the data layer knows nothing else of it.
- *
- * @param {Access_Tracer | null} tracer
- */
-export function set_access_tracer(tracer) {
-	access_tracer = tracer;
-}
+/** @import { Class_Access_Listener, Data_Listener, Endian, Layout } from "./typedefs.js" */
+/** @import { Compiled_Layout, Layout_Entry } from "./internal_types.js" */
 
 /** The classes built so far, by layout name (doc/design.md §4). */
 const classes = new Map();
+
+/**
+ * The class-level access listeners (doc/spec-data-api.md §2.8). They are kept
+ * here and not on the data blocks, so that nothing done to a data block
+ * removes them.
+ *
+ * @type {Set<Class_Access_Listener>}
+ */
+const class_access_listeners = new Set();
+
+/** Set while an access listener runs: the accesses made meanwhile emit nothing. */
+let in_access = false;
 
 /**
  * The registered layout a TData argument stands for.
@@ -177,7 +171,9 @@ export class TData extends EventEmitter {
 	 */
 	read_bytes(offset = 0, length = this.#buffer.length - offset) {
 		this.#check_range(offset, length);
-		return Buffer.from(this.#buffer.subarray(offset, offset + length));
+		const bytes = Buffer.from(this.#buffer.subarray(offset, offset + length));
+		if (length > 0 && this.#has_access_listeners()) this.#accessed("read", this.#tags_in(offset, offset + length));
+		return bytes;
 	}
 
 	/**
@@ -213,7 +209,7 @@ export class TData extends EventEmitter {
 		}
 		const buffer = this.#buffer;
 		buffer[offset] = value ? buffer[offset] | mask : buffer[offset] & ~mask;
-		this.#written(offset, offset + 1);
+		this.#written(offset, offset + 1, null, mask);
 	}
 
 	/**
@@ -231,7 +227,7 @@ export class TData extends EventEmitter {
 	load_tag(name, io_buffer, endian) {
 		const entry = this.#entry_for_io(name, io_buffer, endian);
 		load_entry(entry, io_buffer, this.#buffer, endian);
-		this.#written(entry.byte, entry.byte + entry.size);
+		this.#written(entry.byte, entry.byte + entry.size, entry);
 	}
 
 	/**
@@ -249,6 +245,7 @@ export class TData extends EventEmitter {
 	store_tag(name, io_buffer, endian) {
 		const entry = this.#entry_for_io(name, io_buffer, endian);
 		store_entry(entry, this.#buffer, io_buffer, endian);
+		if (this.#has_access_listeners()) this.#accessed("read", [this.get(name)]);
 	}
 
 	/**
@@ -294,17 +291,87 @@ export class TData extends EventEmitter {
 	 *
 	 * @param {number} start
 	 * @param {number} end - Exclusive.
+	 * @param {Layout_Entry | null} [entry] - The tag written by name, null for a raw write.
+	 * @param {number} [mask] - The bits written by write_bit.
 	 */
-	#written(start, end) {
+	#written(start, end, entry = null, mask = 0xff) {
 		this.#observer.touch(start, end);
+		const errors = [];
+		if (this.#has_access_listeners()) {
+			const tags = entry ? [this.get(entry.name)] : this.#tags_in(start, end, mask);
+			this.#emit_access("write", tags, errors);
+		}
 		if (this.#transaction) {
 			this.#transaction.written = true;
+			if (errors.length > 0) throw errors[0];
 			return;
 		}
-		const errors = [];
 		this.#observer.diff(errors);
 		emit_all(this, "write", [this], errors);
 		if (errors.length > 0) throw errors[0];
+	}
+
+	/** Whether an access would reach a listener of the instance or of the class. */
+	#has_access_listeners() {
+		return class_access_listeners.size > 0 || this.listenerCount("access") > 0;
+	}
+
+	/**
+	 * Emits `access` (doc/spec-data-api.md §2.8) and throws the first
+	 * exception of the listeners, for a read.
+	 *
+	 * @param {"read" | "write"} kind
+	 * @param {TTag[]} tags
+	 */
+	#accessed(kind, tags) {
+		const errors = [];
+		this.#emit_access(kind, tags, errors);
+		if (errors.length > 0) throw errors[0];
+	}
+
+	/**
+	 * Calls the `access` listeners, pushing what they throw to `errors`.
+	 *
+	 * @param {"read" | "write"} kind
+	 * @param {TTag[]} tags
+	 * @param {unknown[]} errors
+	 */
+	#emit_access(kind, tags, errors) {
+		if (in_access || tags.length === 0) return;
+		in_access = true;
+		try {
+			emit_all(this, "access", [kind, tags], errors);
+			for (const listener of [...class_access_listeners]) {
+				try {
+					listener(this, kind, tags);
+				} catch (error) {
+					errors.push(error);
+				}
+			}
+		} finally {
+			in_access = false;
+		}
+	}
+
+	/**
+	 * The tags that have a byte in the range [start, end), in layout order and
+	 * without repeats; the Bools whose bit is not in `mask` are left out.
+	 *
+	 * @param {number} start
+	 * @param {number} end - Exclusive.
+	 * @param {number} [mask] - The bits of the bytes that are accessed.
+	 * @returns {TTag[]}
+	 */
+	#tags_in(start, end, mask = 0xff) {
+		const entries = new Set();
+		const tags_at_byte = this.#compiled.tags_at_byte;
+		for (let i = start; i < end; i++) {
+			for (const entry of tags_at_byte[i]) {
+				if (entry.type === "bool" && (entry.mask & mask) === 0) continue;
+				entries.add(entry);
+			}
+		}
+		return [...entries].sort((a, b) => a.index - b.index).map((entry) => this.get(entry.name));
 	}
 
 	/**
@@ -342,18 +409,18 @@ export class TData extends EventEmitter {
 			}
 			Object.defineProperty(Layout_Data.prototype, name, {
 				get() {
-					if (access_tracer) access_tracer(this, name, "read");
-					return codec.get(this.#buffer, byte, mask);
+					const value = codec.get(this.#buffer, byte, mask);
+					if (this.#has_access_listeners()) this.#accessed("read", [this.get(name)]);
+					return value;
 				},
 				set(value) {
-					if (access_tracer) access_tracer(this, name, "write");
 					const reason = codec.check(value);
 					if (reason !== null) {
 						const Refused_Error = typeof value === "number" ? RangeError : TypeError;
 						throw new Refused_Error(`${this.name}.${name}: ${reason}`);
 					}
 					codec.set(this.#buffer, byte, mask, value);
-					this.#written(byte, byte + size);
+					this.#written(byte, byte + size, entry);
 				},
 				enumerable: true,
 				configurable: false,
@@ -362,6 +429,29 @@ export class TData extends EventEmitter {
 		Layout_Data.layout = layout;
 		Layout_Data.compiled = compiled;
 		return Layout_Data;
+	}
+
+	/**
+	 * Subscribes a function called for the accesses to every data block, with
+	 * (data, kind, tags); the same function twice is one subscription
+	 * (doc/spec-data-api.md §2.8).
+	 *
+	 * @param {Class_Access_Listener} listener
+	 * @throws {TypeError} When listener is not a function.
+	 */
+	static on_access(listener) {
+		if (typeof listener !== "function") throw new TypeError("an access listener must be a function");
+		class_access_listeners.add(listener);
+	}
+
+	/**
+	 * Cancels a subscription of on_access; nothing happens for a function that
+	 * is not subscribed.
+	 *
+	 * @param {Class_Access_Listener} listener
+	 */
+	static off_access(listener) {
+		class_access_listeners.delete(listener);
 	}
 
 	/**

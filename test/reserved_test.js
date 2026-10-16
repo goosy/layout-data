@@ -38,8 +38,8 @@ describe("2.10 reserved names", () => {
 		assert.equal(TData.is_reserved_name, undefined);
 	});
 
-	test("the reserved event names are change, write and read", () => {
-		assert.deepEqual([...RESERVED_EVENTS], ["change", "write", "read"]);
+	test("the reserved event names are change, write, access and read", () => {
+		assert.deepEqual([...RESERVED_EVENTS], ["change", "write", "access", "read"]);
 	});
 
 	test("an event of the user's own is delivered to its listeners", () => {

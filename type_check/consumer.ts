@@ -4,10 +4,10 @@
 import { Buffer } from "node:buffer";
 import {
 	TData, TTag,
-	register_layout, get_layout, set_access_tracer,
+	register_layout, get_layout,
 	io_index_table, render_types,
 	type Layout, type Layout_Tag, type Layout_Item, type Layout_Source,
-	type Registered_Layouts, type Access_Tracer, type Endian, type Tag_Type,
+	type Registered_Layouts, type Endian, type Tag_Type,
 } from "tagged-data";
 
 type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends (<T>() => T extends B ? 1 : 2) ? true : false;
@@ -138,12 +138,31 @@ if (tag) {
 	tag.name = "x";
 }
 
-// access tracer
-const tracer: Access_Tracer = (_tdata, _name, kind) => void kind.length;
-set_access_tracer(tracer);
-set_access_tracer(null);
+// observing the accesses
+tdata.on("access", (kind, tags) => {
+	assert_type<Equal<typeof kind, "read" | "write">>();
+	assert_type<Equal<typeof tags, TTag[]>>();
+});
+tdata.once("access", (kind: "read" | "write", tags: TTag[]) => void [kind, tags.length]);
 // @ts-expect-error the kind is "read" or "write"
-set_access_tracer((_tdata: TData, _name: string, kind: "erase") => void kind);
+tdata.on("access", (kind: "erase") => void kind);
+// @ts-expect-error the tags are TTag handles, not names
+tdata.on("access", (_kind, tags: string[]) => void tags);
+// class-level listeners see every tdata
+const class_listener = (data: TData, kind: "read" | "write", tags: TTag[]) => void [data.size, kind, tags.length];
+TData.on_access(class_listener);
+TData.on_access((data, kind, tags) => {
+	assert_type<Equal<typeof data, TData>>();
+	assert_type<Equal<typeof kind, "read" | "write">>();
+	assert_type<Equal<typeof tags, TTag[]>>();
+});
+TData.off_access(class_listener);
+// @ts-expect-error the class listener gets the tdata first
+TData.on_access((kind: "read" | "write") => void kind);
+// @ts-expect-error a listener is a function
+TData.on_access("x");
+// @ts-expect-error the global single-slot tracer is gone
+void (await import("tagged-data")).set_access_tracer;
 
 // device byte order
 const endian: Endian = "LEBS";

@@ -59,7 +59,6 @@ tagged-data 是一个结构化数据块库：提供基于 `Buffer`、面向数�
 | `TData`、`TTag` | 数据对象和 tag 句柄（[spec-data-api.zh-cn.md](spec-data-api.zh-cn.md) §2 和 §3） |
 | `register_layout` | 注册各来源中的布局：YAML 文件或已解析的描述（在代码里给条目也用它），每个进程一次；先注册，再按布局名创建 `TData`（[spec-data-api.zh-cn.md](spec-data-api.zh-cn.md) §6） |
 | `get_layout` | 按名取得已登记的布局（[spec-data-api.zh-cn.md](spec-data-api.zh-cn.md) §6.4） |
-| `set_access_tracer` | 追踪 tag 的读写（[spec-data-api.zh-cn.md](spec-data-api.zh-cn.md) §2.8） |
 | `io_index_table` | 与设备整块交换用的字节下标表（[spec-data-api.zh-cn.md](spec-data-api.zh-cn.md) §2.9）；按 tag 的转换是 TData 的 `load_tag` / `store_tag` |
 | `render_types` | 由已注册的布局生成 TypeScript 类型声明 |
 

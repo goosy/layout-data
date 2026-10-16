@@ -121,13 +121,43 @@ data.on("write", (data) => { /* ... */ });
 
 事件名：
 
-- `change`、`write`、`read` 是库保留的事件名。库发出 `change` 和 `write`；`read` 留给以后的读钩子，现在不发出。使用方不得用 `emit` 自行发出这些事件，也不得把它们用作自己的事件；
+- `change`、`write`、`access`、`read` 是库保留的事件名。库发出 `change`、`write` 和 `access`（§2.8）；`read` 留给以后的读钩子，现在不发出。使用方不得用 `emit` 自行发出这些事件，也不得把它们用作自己的事件；
 - 其他名字归使用方的自定义事件使用：`on`、`once`、`off` 对它们接受任意字符串或 symbol，处理器可以是任意签名；
-- 类型声明中，`on`、`once`、`off` 对保留名带类型：`change` 的处理器是 `(name: string, old_value: number | boolean, new_value: number | boolean) => void`，`write` 的处理器是 `(data: TData) => void`，处理器类型不符是编译期错误。TTag 的 `change` 同样带类型 `(old_value, new_value)`（§3）。
+- 类型声明中，`on`、`once`、`off` 对保留名带类型：`change` 的处理器是 `(name: string, old_value: number | boolean, new_value: number | boolean) => void`，`write` 的处理器是 `(data: TData) => void`，`access` 的处理器是 `(kind: "read" | "write", tags: TTag[]) => void`，处理器类型不符是编译期错误。TTag 的 `change` 同样带类型 `(old_value, new_value)`（§3）。
 
-### 2.8 追踪访问
+### 2.8 观察访问
 
-`set_access_tracer(tracer)` 设置一个函数，每次通过属性访问器读写 tag 时按 `tracer(tdata, name, "read" | "write")` 调用；`set_access_tracer(null)` 取消。供检查一段代码碰了哪些 tag 的工具使用。追踪器对整个进程全局有效，未设置时每次访问只多一次判断。
+```js
+data.on("access", (kind, tags) => { /* kind 是 "read" 或 "write"；tags 是 TTag 数组 */ });
+```
+
+tdata 的 tag 每被访问一次就发出一次，供工具查出一段代码碰了哪些 tag，例如把一条规则声明的依赖与它实际的依赖核对。它是开发和测试用的诊断手段，不观察访问的程序用不到它：tdata 没有 `access` 监听器时，每次访问只多一次判断。
+
+- `kind` 是 `"read"` 或 `"write"`，`tags` 是被访问的 tag，即 `data.get(name)` 的 TTag，按布局顺序排列，不重复；
+- 哪些访问发出它，它指出哪些 tag：
+
+  | 访问 | kind | tags |
+  | --- | --- | --- |
+  | 按名读取（`data.pressure`、`tag.value`） | `read` | 该 tag |
+  | 按名写入（`data.pressure = v`、`tag.value = v`） | `write` | 该 tag |
+  | `load_tag`、`tag.load` | `write` | 该 tag |
+  | `store_tag`、`tag.store` | `read` | 该 tag |
+  | `read_bytes(offset, length)` | `read` | 在该范围内有字节的 tag |
+  | `write_bytes(offset, source)` | `write` | 在该范围内有字节的 tag |
+  | `write_bit(offset, mask, value)` | `write` | 该字节上的 tag，但位不在 `mask` 内的 Bool 除外 |
+
+  组合字和它的组成位共用字节，所以对这些字节的原始访问会同时指出组合字和它的组成位，而按名读写组合字只指出组合字。没有触及任何字节的原始访问（空范围或空 `source`）不指出任何 tag，也不发出；
+- 只有生效了的访问才发出：被拒绝的写入（§2.3、§5）和因参数错误而抛出的访问都不发出。写入在新值生效之后、本次写入的检测以及它的 `change`、`write` 事件之前发出；事务里的读写照常立即发出；事务回滚时对内容的恢复不算访问；
+- 监听器里可以读写任何 tag，但 `access` 监听器运行期间发生的访问（它自己对任何 tdata 的访问）不发出任何事件，否则永远不会结束；
+- 监听器抛出的异常按 §4.4 处理：所有监听器都被调用，写入继续做它的检测和事件，之后由该语句抛出第一个异常；读取则抛出异常而不返回值；
+- 实例上的监听器只看得到订阅它的那个 tdata。要观察进程里的所有 tdata，包括还没有创建的，就在类上订阅（见下）。
+
+```js
+TData.on_access((data, kind, tags) => { /* 对每个 tdata 的每次访问 */ });
+TData.off_access(listener);
+```
+
+`TData.on_access(listener)` 订阅一个函数，对所有 tdata 的访问都会调用它，不论布局是什么、何时创建；监听器先收到 tdata，再是上面的 `kind` 和 `tags`。`TData.off_access(listener)` 取消订阅，对没有订阅过的函数什么都不做。可以有任意多方订阅，各用各的函数，互不覆盖。同一个函数订阅两次只算一次。类级监听器与各实例自己的事件分开保存，所以 `data.removeAllListeners()` 不会把它们移除。同一次访问，先调用实例上的监听器，再调用类上的，上面的异常规则对两者都适用。两种监听器都没有时，每次访问只多一次检查。用它做观察的工具，用完应取消自己的监听器。
 
 ### 2.9 设备字节序
 

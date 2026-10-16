@@ -79,7 +79,6 @@ pump.transaction(() => {
 | `register_layout(sources)` | Register the layouts of YAML files or parsed descriptions (a path, an object, or a list of them), once per process; then create `TData` by layout name |
 | `render_types(layouts, { source, tdata_module })` | Generate TypeScript interfaces for layouts |
 | `get_layout(name)` | Look up a registered layout by name |
-| `set_access_tracer` | Trace the reads and writes of tags |
 | `io_index_table` | Byte index table for exchanging a whole block with a device (per-tag conversion is `load_tag` / `store_tag` of `TData`) |
 
 ## Documentation

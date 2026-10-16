@@ -22,7 +22,7 @@ const RESERVED_NAMES = new Set([
 ]);
 
 /** Event names of the library; a user does not emit them or use them for its own events. */
-export const RESERVED_EVENTS = Object.freeze(["change", "write", "read"]);
+export const RESERVED_EVENTS = Object.freeze(["change", "write", "access", "read"]);
 
 /**
  * Whether a tag name would shadow a member of a data block.

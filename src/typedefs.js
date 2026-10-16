@@ -72,10 +72,6 @@
  */
 
 /**
- * @typedef {(tdata: import("./TData.js").TData, name: string, kind: "read" | "write") => void} Access_Tracer
- */
-
-/**
  * Type of a tag, in lower case: the type of `TTag.type` (doc/spec-data-api.md §1).
  *
  * @typedef {"bool" | "byte" | "usint" | "sint" | "int" | "uint" | "word" | "dint" | "udint" | "dword" | "real"} Tag_Type
@@ -87,6 +83,14 @@
  * @typedef {object} Data_Events
  * @property {(name: string, old_value: number | boolean, new_value: number | boolean) => void} change
  * @property {(data: import("./TData.js").TData) => void} write
+ * @property {(kind: "read" | "write", tags: import("./TTag.js").TTag[]) => void} access
+ */
+
+/**
+ * A class-level access listener: called for the accesses to every TData
+ * (doc/spec-data-api.md §2.8).
+ *
+ * @typedef {(data: import("./TData.js").TData, kind: "read" | "write", tags: import("./TTag.js").TTag[]) => void} Class_Access_Listener
  */
 
 /**

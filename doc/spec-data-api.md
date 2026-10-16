@@ -123,13 +123,43 @@ Emitted after every write, whether or not it changed a value. A write is a write
 
 Event names:
 
-- `change`, `write` and `read` are reserved event names of the library. The library emits `change` and `write`; `read` is kept for a future read hook and is not emitted now. A user must not emit them with `emit` and must not use them for events of its own;
+- `change`, `write`, `access` and `read` are reserved event names of the library. The library emits `change`, `write` and `access` (§2.8); `read` is kept for a future read hook and is not emitted now. A user must not emit them with `emit` and must not use them for events of its own;
 - Any other name is free for the user's own events: `on`, `once` and `off` accept any string or symbol for it, with a listener of any signature;
-- In the declarations `on`, `once` and `off` are typed for the reserved names: the listener of `change` is `(name: string, old_value: number | boolean, new_value: number | boolean) => void` and that of `write` is `(data: TData) => void`; a listener of another type is a compile-time error. The `change` of a TTag is typed `(old_value, new_value)` the same way (§3).
+- In the declarations `on`, `once` and `off` are typed for the reserved names: the listener of `change` is `(name: string, old_value: number | boolean, new_value: number | boolean) => void`, that of `write` is `(data: TData) => void` and that of `access` is `(kind: "read" | "write", tags: TTag[]) => void`; a listener of another type is a compile-time error. The `change` of a TTag is typed `(old_value, new_value)` the same way (§3).
 
-### 2.8 Tracing accesses
+### 2.8 Observing accesses
 
-`set_access_tracer(tracer)` sets a function called on every read and write of a tag through the property accessors, as `tracer(tdata, name, "read" | "write")`; `set_access_tracer(null)` clears it. For tools that check which tags a piece of code touches. The tracer is global to the process and costs one check per access while unset.
+```js
+data.on("access", (kind, tags) => { /* kind is "read" or "write"; tags is an array of TTag */ });
+```
+
+Emitted on every access to the tags of the tdata, so that a tool can find out which tags a piece of code touches, for example to check the dependencies a rule declares against the ones it really has. It is a diagnostic for development and tests, and is not needed in a program that does not observe accesses: while the tdata has no `access` listener, an access pays one extra check.
+
+- `kind` is `"read"` or `"write"`, and `tags` are the tags accessed, as the TTag of `data.get(name)`, in layout order, without repeats;
+- Which accesses emit it, and which tags it names:
+
+  | Access | kind | tags |
+  | --- | --- | --- |
+  | Read by name (`data.pressure`, `tag.value`) | `read` | that tag |
+  | Write by name (`data.pressure = v`, `tag.value = v`) | `write` | that tag |
+  | `load_tag`, `tag.load` | `write` | that tag |
+  | `store_tag`, `tag.store` | `read` | that tag |
+  | `read_bytes(offset, length)` | `read` | the tags that have a byte in the range |
+  | `write_bytes(offset, source)` | `write` | the tags that have a byte in the range |
+  | `write_bit(offset, mask, value)` | `write` | the tags of that byte, except the Bools whose bit is not in `mask` |
+
+  A combined word and its bits share bytes, so a raw access to those bytes names the word and its bits, while a read or write by name of the word names the word only. A raw access that touches no byte (an empty range or source) names no tag and emits nothing;
+- It is emitted only for an access that took effect: a refused write (§2.3, §5) and an access that throws an argument error emit nothing. A write emits it right after the new value has taken effect, before the detection of the write and its `change` and `write` events; reading and writing inside a transaction emit it at once, as usual. The restoring of a rolled-back transaction is not an access;
+- A listener may read and write any tag, but the accesses made while an `access` listener runs (by the listener itself, to any tdata) emit nothing, which would never end;
+- An exception thrown by a listener follows §4.4: every listener is called, the write goes on to its detection and its events, and the first exception is thrown by the statement afterwards; a read throws it instead of returning the value;
+- An instance listener sees only the tdata it is subscribed on. To observe every tdata of the process, including those not created yet, subscribe on the class (below).
+
+```js
+TData.on_access((data, kind, tags) => { /* every access to every tdata */ });
+TData.off_access(listener);
+```
+
+`TData.on_access(listener)` subscribes a function that is called for the accesses to all tdatas, whichever layout they have and whenever they were created; the listener gets the tdata first, then `kind` and `tags` as above. `TData.off_access(listener)` cancels it, and does nothing for a function that is not subscribed. Any number of parties can subscribe, each with its own function, and none overrides another. Subscribing a function twice is one subscription. The class-level listeners live apart from the events of the instances, so `data.removeAllListeners()` does not remove them. For one access, the listeners of the instance are called first, then those of the class, and the exception rule above covers both. While no listener of either kind exists, an access pays one extra check. A tool that observes with it should remove its listener when it is done.
 
 ### 2.9 Device byte order
 
