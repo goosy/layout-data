@@ -33,7 +33,7 @@ export default defineConfig({
 	input: "src/index.js",
 	platform: "node",
 	output: {
-		file: "dist/tagged-data.js",
+		file: "dist/layout-data.js",
 		format: "es",
 	},
 	plugins: [emit_declarations()],

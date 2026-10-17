@@ -1,8 +1,8 @@
 // Conversion between the device byte order of an IO buffer and the big-endian
-// buffer of a TData, per compiled layout entry (doc/spec-data-api.md §2.9,
+// buffer of an Ldata, per compiled layout entry (doc/spec-data-api.md §2.9,
 // doc/design.md §6). Device byte order acts per 16-bit register and per 32-bit
-// value; the IO buffer is indexed like the TData buffer. Only io_index_table is
-// exported by the package: TData calls the other functions with its own buffer.
+// value; the IO buffer is indexed like the Ldata buffer. Only io_index_table is
+// exported by the package: Ldata calls the other functions with its own buffer.
 import { compiled_of } from "./registry.js";
 
 /** @import { Endian, Layout } from "./typedefs.js" */
@@ -153,7 +153,7 @@ export function io_range(entry, endian) {
 /**
  * Copies an entry from a device-ordered IO buffer into a big-endian buffer.
  * A Bool only changes its own bit. No change is detected here, and the byte
- * order and the range in the IO buffer are not checked (TData does).
+ * order and the range in the IO buffer are not checked (Ldata does).
  *
  * @param {Layout_Entry} entry
  * @param {Uint8Array} io_buffer - The device-ordered source.

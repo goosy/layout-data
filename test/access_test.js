@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import test, { describe } from "node:test";
-import { TData } from "../src/TData.js";
-import { TTag } from "../src/TTag.js";
+import { Ldata } from "../src/Ldata.js";
+import { Ltag } from "../src/Ltag.js";
 import { register_items } from "./share.js";
 
 // bytes: id 0-1, status 2-3 (fault is bit 0 of byte 2, run is bit 0 of byte 3), pressure 4-7
-const LAYOUT = register_items("ACCESS_SAMPLE", [
+const LAYOUT = register_items("Access_Sample", [
 	{ name: "id", type: "UInt", offset: 0, init_value: 7 },
 	{
 		name: "status", type: "Word", offset: 16,
@@ -19,7 +19,7 @@ const LAYOUT = register_items("ACCESS_SAMPLE", [
 
 /** A data block that records its accesses as [kind, names]. */
 function watched() {
-	const data = new TData(LAYOUT, "d");
+	const data = new Ldata(LAYOUT, "d");
 	const seen = [];
 	data.on("access", (kind, tags) => seen.push([kind, tags.map((tag) => tag.name)]));
 	return { data, seen };
@@ -33,14 +33,14 @@ describe("2.8 the access event", () => {
 		assert.deepEqual(seen, [["read", ["id"]], ["write", ["pressure"]]]);
 	});
 
-	test("tag.value reads and writes by name too, and the tags are the TTag handles of get()", () => {
+	test("tag.value reads and writes by name too, and the tags are the Ltag handles of get()", () => {
 		const { data } = watched();
 		const handles = [];
 		data.on("access", (_kind, tags) => handles.push(...tags));
 		void data.get("id").value;
 		data.get("id").value = 1;
 		assert.equal(handles.length, 2);
-		assert.ok(handles[0] instanceof TTag);
+		assert.ok(handles[0] instanceof Ltag);
 		assert.equal(handles[0], data.get("id"));
 		assert.equal(handles[1], data.get("id"));
 	});
@@ -133,7 +133,7 @@ describe("2.8 the access event", () => {
 	});
 
 	test("the accesses of a listener do not emit again", () => {
-		const data = new TData(LAYOUT, "d");
+		const data = new Ldata(LAYOUT, "d");
 		const seen = [];
 		data.on("access", (kind, tags) => {
 			seen.push([kind, tags[0].name]);
@@ -143,12 +143,12 @@ describe("2.8 the access event", () => {
 		void data.status;
 		assert.deepEqual(seen, [["read", "status"]]);
 		assert.equal(data.pressure, 3);
-		data.id = 4; // the listener runs again for an access of its own tdata, and only once
+		data.id = 4; // the listener runs again for an access of its own ldata, and only once
 		assert.deepEqual(seen.at(-1), ["write", "id"]);
 	});
 
 	test("an exception of a listener: all listeners run, then the read throws, or the write after its events", () => {
-		const data = new TData(LAYOUT, "d");
+		const data = new Ldata(LAYOUT, "d");
 		const seen = [];
 		data.on("access", () => { throw new Error("first"); });
 		data.on("access", (kind) => seen.push(`second ${kind}`));
@@ -162,7 +162,7 @@ describe("2.8 the access event", () => {
 	});
 
 	test("without a listener nothing is built, and removing the listener stops it", () => {
-		const data = new TData(LAYOUT, "d");
+		const data = new Ldata(LAYOUT, "d");
 		const seen = [];
 		const listener = (kind) => seen.push(kind);
 		data.on("access", listener);
@@ -180,9 +180,9 @@ describe("2.8 the access event", () => {
 		assert.deepEqual(seen, ["read", "read"]);
 	});
 
-	test("it sees only the tdata it is subscribed on", () => {
-		const first = new TData(LAYOUT, "a");
-		const second = new TData(LAYOUT, "b");
+	test("it sees only the ldata it is subscribed on", () => {
+		const first = new Ldata(LAYOUT, "a");
+		const second = new Ldata(LAYOUT, "b");
 		const seen = [];
 		first.on("access", (kind, tags) => seen.push([kind, tags[0].name]));
 		void second.id;
@@ -202,24 +202,24 @@ describe("2.8 class-level access listeners", () => {
 	function observe(t) {
 		const seen = [];
 		const listener = (data, kind, tags) => seen.push([data.name, kind, tags.map((tag) => tag.name)]);
-		TData.on_access(listener);
-		t.after(() => TData.off_access(listener));
+		Ldata.on_access(listener);
+		t.after(() => Ldata.off_access(listener));
 		return { seen, listener };
 	}
 
-	test("it sees every tdata, including one created afterwards, with the tdata first", (t) => {
+	test("it sees every ldata, including one created afterwards, with the ldata first", (t) => {
 		const { seen } = observe(t);
-		const first = new TData(LAYOUT, "first");
-		const second = new TData(LAYOUT, "second");
+		const first = new Ldata(LAYOUT, "first");
+		const second = new Ldata(LAYOUT, "second");
 		void first.id;
 		second.pressure = 2;
 		first.read_bytes(0, 2);
 		assert.deepEqual(seen, [["first", "read", ["id"]], ["second", "write", ["pressure"]], ["first", "read", ["id"]]]);
 	});
 
-	test("it needs no subscription on the tdata and cannot be removed through it", (t) => {
+	test("it needs no subscription on the ldata and cannot be removed through it", (t) => {
 		const { seen } = observe(t);
-		const data = new TData(LAYOUT, "d");
+		const data = new Ldata(LAYOUT, "d");
 		data.on("access", () => {});
 		data.removeAllListeners();
 		data.removeAllListeners("access");
@@ -228,74 +228,74 @@ describe("2.8 class-level access listeners", () => {
 	});
 
 	test("off_access cancels it, and does nothing for a function that is not subscribed", () => {
-		const data = new TData(LAYOUT, "d");
+		const data = new Ldata(LAYOUT, "d");
 		const seen = [];
 		const listener = () => seen.push("called");
-		TData.on_access(listener);
+		Ldata.on_access(listener);
 		void data.id;
-		TData.off_access(listener);
-		TData.off_access(listener);
-		TData.off_access(() => {});
+		Ldata.off_access(listener);
+		Ldata.off_access(listener);
+		Ldata.off_access(() => {});
 		void data.id;
 		assert.deepEqual(seen, ["called"]);
 	});
 
 	test("several parties subscribe without overriding each other, and one function twice is one subscription", () => {
-		const data = new TData(LAYOUT, "d");
+		const data = new Ldata(LAYOUT, "d");
 		const calls = [];
 		const one = () => calls.push("one");
 		const two = () => calls.push("two");
-		TData.on_access(one);
-		TData.on_access(one);
-		TData.on_access(two);
+		Ldata.on_access(one);
+		Ldata.on_access(one);
+		Ldata.on_access(two);
 		void data.id;
-		TData.off_access(one);
+		Ldata.off_access(one);
 		void data.id;
-		TData.off_access(two);
+		Ldata.off_access(two);
 		assert.deepEqual(calls, ["one", "two", "two"]);
 	});
 
 	test("the listeners of the instance are called before those of the class, for the same access", (t) => {
-		const data = new TData(LAYOUT, "d");
+		const data = new Ldata(LAYOUT, "d");
 		const order = [];
 		data.on("access", () => order.push("instance"));
 		const listener = () => order.push("class");
-		TData.on_access(listener);
-		t.after(() => TData.off_access(listener));
+		Ldata.on_access(listener);
+		t.after(() => Ldata.off_access(listener));
 		void data.id;
 		assert.deepEqual(order, ["instance", "class"]);
 	});
 
-	test("the accesses made by an access listener, to any tdata, emit nothing", (t) => {
-		const other = new TData(LAYOUT, "other");
-		const data = new TData(LAYOUT, "data");
+	test("the accesses made by an access listener, to any ldata, emit nothing", (t) => {
+		const other = new Ldata(LAYOUT, "other");
+		const data = new Ldata(LAYOUT, "data");
 		const seen = [];
 		other.on("access", (kind) => seen.push(`other ${kind}`));
-		const listener = (tdata, kind) => {
-			seen.push(`class ${tdata.name} ${kind}`);
+		const listener = (ldata, kind) => {
+			seen.push(`class ${ldata.name} ${kind}`);
 			void other.id;
 			other.pressure = 4;
-			void tdata.id;
+			void ldata.id;
 		};
-		TData.on_access(listener);
-		t.after(() => TData.off_access(listener));
+		Ldata.on_access(listener);
+		t.after(() => Ldata.off_access(listener));
 		void data.status;
 		assert.deepEqual(seen, ["class data read"]);
 		assert.equal(other.pressure, 4);
 	});
 
 	test("an exception of a class listener: all listeners run, the first exception is thrown after the events", (t) => {
-		const data = new TData(LAYOUT, "d");
+		const data = new Ldata(LAYOUT, "d");
 		const seen = [];
 		data.on("access", () => { throw new Error("instance"); });
 		const bad = () => { throw new Error("class"); };
-		const good = (_tdata, kind) => seen.push(`good ${kind}`);
+		const good = (_ldata, kind) => seen.push(`good ${kind}`);
 		data.on("change", (name) => seen.push(`change ${name}`));
-		TData.on_access(bad);
-		TData.on_access(good);
+		Ldata.on_access(bad);
+		Ldata.on_access(good);
 		t.after(() => {
-			TData.off_access(bad);
-			TData.off_access(good);
+			Ldata.off_access(bad);
+			Ldata.off_access(good);
 		});
 		assert.throws(() => { data.id = 3; }, /instance/);
 		assert.throws(() => data.pressure, /instance/);
@@ -305,29 +305,29 @@ describe("2.8 class-level access listeners", () => {
 	});
 
 	test("the guard is released after an exception", (t) => {
-		const data = new TData(LAYOUT, "d");
+		const data = new Ldata(LAYOUT, "d");
 		const seen = [];
 		const bad = () => { throw new Error("bad"); };
-		TData.on_access(bad);
+		Ldata.on_access(bad);
 		assert.throws(() => data.id, /bad/);
-		TData.off_access(bad);
-		const listener = (_tdata, kind) => seen.push(kind);
-		TData.on_access(listener);
-		t.after(() => TData.off_access(listener));
+		Ldata.off_access(bad);
+		const listener = (_ldata, kind) => seen.push(kind);
+		Ldata.on_access(listener);
+		t.after(() => Ldata.off_access(listener));
 		void data.id;
 		assert.deepEqual(seen, ["read"]);
 	});
 
 	test("a listener must be a function", () => {
 		for (const value of [undefined, null, "x", {}, 1]) {
-			assert.throws(() => TData.on_access(value), TypeError, String(value));
+			assert.throws(() => Ldata.on_access(value), TypeError, String(value));
 		}
 	});
 
 	test("it is a static member: no tag name and no instance member is affected", () => {
-		const data = new TData(LAYOUT, "d");
+		const data = new Ldata(LAYOUT, "d");
 		assert.equal("on_access" in data, false);
-		assert.equal(typeof TData.on_access, "function");
-		assert.equal(typeof TData.off_access, "function");
+		assert.equal(typeof Ldata.on_access, "function");
+		assert.equal(typeof Ldata.off_access, "function");
 	});
 });

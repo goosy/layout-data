@@ -1,7 +1,7 @@
 import { one_tag } from "./share.js";
 import assert from "node:assert/strict";
 import test, { describe } from "node:test";
-import { TData } from "../src/TData.js";
+import { Ldata } from "../src/Ldata.js";
 import { RESERVED_EVENTS, is_reserved_name } from "../src/reserved.js";
 
 /** The string names found on an object and along its prototype chain. */
@@ -34,8 +34,8 @@ describe("2.10 reserved names", () => {
 		for (const name of ["buffer", "detect", "pressure", "id", "length"]) assert.equal(is_reserved_name(name), false, name);
 	});
 
-	test("the check is not a public static method of TData", () => {
-		assert.equal(TData.is_reserved_name, undefined);
+	test("the check is not a public static method of Ldata", () => {
+		assert.equal(Ldata.is_reserved_name, undefined);
 	});
 
 	test("the reserved event names are change, write, access and read", () => {

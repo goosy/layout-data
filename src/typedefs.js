@@ -96,29 +96,29 @@
  */
 
 /**
- * Type of a tag, in lower case: the type of `TTag.type` (doc/spec-data-api.md §1).
+ * Type of a tag, in lower case: the type of `Ltag.type` (doc/spec-data-api.md §1).
  *
  * @typedef {"bool" | "byte" | "usint" | "sint" | "int" | "uint" | "word" | "dint" | "udint" | "dword" | "real"} Tag_Type
  */
 
 /**
- * The listeners of the events of a TData that the library emits.
+ * The listeners of the events of an Ldata that the library emits.
  *
  * @typedef {object} Data_Events
  * @property {(name: string, old_value: number | boolean, new_value: number | boolean) => void} change
- * @property {(data: import("./TData.js").TData) => void} write
- * @property {(kind: "read" | "write", tags: import("./TTag.js").TTag[]) => void} access
+ * @property {(data: import("./Ldata.js").Ldata) => void} write
+ * @property {(kind: "read" | "write", tags: import("./Ltag.js").Ltag[]) => void} access
  */
 
 /**
- * A class-level access listener: called for the accesses to every TData
+ * A class-level access listener: called for the accesses to every Ldata
  * (doc/spec-data-api.md §2.8).
  *
- * @typedef {(data: import("./TData.js").TData, kind: "read" | "write", tags: import("./TTag.js").TTag[]) => void} Class_Access_Listener
+ * @typedef {(data: import("./Ldata.js").Ldata, kind: "read" | "write", tags: import("./Ltag.js").Ltag[]) => void} Class_Access_Listener
  */
 
 /**
- * The listener of an event of a TData: typed for `change` and `write`, any
+ * The listener of an event of an Ldata: typed for `change` and `write`, any
  * listener for another name (doc/spec-data-api.md §2.7).
  *
  * @template {string | symbol} E
@@ -126,14 +126,14 @@
  */
 
 /**
- * The listeners of the events of a TTag that the library emits.
+ * The listeners of the events of an Ltag that the library emits.
  *
  * @typedef {object} Tag_Events
  * @property {(old_value: number | boolean, new_value: number | boolean) => void} change
  */
 
 /**
- * The listener of an event of a TTag: typed for `change`, any listener for
+ * The listener of an event of an Ltag: typed for `change`, any listener for
  * another name (doc/spec-data-api.md §3).
  *
  * @template {string | symbol} E

@@ -1,7 +1,7 @@
 import { one_tag } from "./share.js";
 import assert from "node:assert/strict";
 import test, { describe } from "node:test";
-import { TTag } from "../src/TTag.js";
+import { Ltag } from "../src/Ltag.js";
 import { compiled_of } from "../src/registry.js";
 
 describe("tag storage", () => {
@@ -165,11 +165,11 @@ describe("tag change event", () => {
 	});
 });
 
-describe("TTag handle", () => {
+describe("Ltag handle", () => {
 	test("is created once per tag and holds no value of its own", () => {
 		const data = one_tag("Int", 3);
 		const tag = data.get("tag");
-		assert.ok(tag instanceof TTag);
+		assert.ok(tag instanceof Ltag);
 		assert.equal(data.get("tag"), tag);
 		assert.equal(tag.name, "tag");
 		data.write_bytes(0, Uint8Array.of(0xff, 0xfc));

@@ -1,6 +1,6 @@
 // The registry of the compiled layouts, by layout name (doc/design.md §3).
-// A name identifies one layout: it is the only source of the layouts a TData
-// is created from. Written by register_structure (layout.js), read by TData.
+// A name identifies one layout: it is the only source of the layouts an Ldata
+// is created from. Written by register_structure (layout.js), read by Ldata.
 
 /** @import { Layout } from "./typedefs.js" */
 /** @import { Compiled_Layout } from "./internal_types.js" */

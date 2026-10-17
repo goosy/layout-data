@@ -24,7 +24,7 @@ function canonical(value, key) {
 /**
  * Compiles an expanded structure (the result of build_structure) into a Layout
  * (doc/design.md §3) and registers it under its name, the one source of the
- * layouts a TData is created from. Registering a structure whose canonical
+ * layouts an Ldata is created from. Registering a structure whose canonical
  * text equals the registered one of that name gives the registered Layout, so
  * the same layout described twice is compiled once; another structure under a
  * used name throws. Throws on an unknown type or a duplicated tag name; the
@@ -65,7 +65,7 @@ function compile_structure(data_struct) {
 		};
 		if (!codec) fail(`unknown tag type ${item.type}`);
 		if (entries.has(name)) fail("duplicated tag name");
-		// defensive checks of what a TData relies on; validate_structure reports them all
+		// defensive checks of what an Ldata relies on; validate_structure reports them all
 		if (type !== "bool" && offset % 8 !== 0) fail(`bit offset ${offset % 8} on a ${item.type}`);
 		if (codec.size > 1 && (offset >> 3) % 2 !== 0) fail(`${item.type} at the odd byte ${offset >> 3}`);
 		if (!["number", "boolean"].includes(typeof init_value)) fail(`init_value ${init_value} is not a number or boolean`);

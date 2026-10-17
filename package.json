@@ -1,12 +1,12 @@
 {
-	"name": "tagged-data",
+	"name": "layout-data",
 	"version": "0.1.0",
 	"description": "Structured, reactive, buffer-based data blocks with named, typed tags",
 	"type": "module",
 	"exports": {
 		".": {
 			"types": "./dist/types/index.d.ts",
-			"default": "./dist/tagged-data.js"
+			"default": "./dist/layout-data.js"
 		}
 	},
 	"files": [
@@ -42,6 +42,10 @@
 		"layout"
 	],
 	"author": "",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/goosy/layout-data.git"
+	},
 	"license": "MPL-2.0",
 	"packageManager": "pnpm@12.5.1"
 }

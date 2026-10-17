@@ -1,6 +1,6 @@
 // Public interface of the package (doc/design.md §1).
-export { TData } from "./TData.js";
-export { TTag } from "./TTag.js";
+export { Ldata } from "./Ldata.js";
+export { Ltag } from "./Ltag.js";
 export { register_layout } from "./layout.js";
 export { get_layout } from "./registry.js";
 export { io_index_table } from "./endian.js";

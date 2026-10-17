@@ -2,12 +2,12 @@
 // index.js does not export this file.
 
 /**
- * Names a tag must not have: the members of TData, the method and field names
+ * Names a tag must not have: the members of Ldata, the method and field names
  * of EventEmitter in Node.js 20.11 and the names of Object.prototype. A static
  * list, so that it does not depend on the Node.js version that runs the program.
  */
 const RESERVED_NAMES = new Set([
-	// members of TData
+	// members of Ldata
 	"name", "layout", "size", "get", "transaction",
 	"read_bytes", "write_bytes", "write_bit", "load_tag", "store_tag",
 	// EventEmitter

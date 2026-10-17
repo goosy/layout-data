@@ -45,7 +45,7 @@ describe("2.3 values of a write", () => {
 		});
 	}
 
-	test("the error names the tdata and the tag", () => {
+	test("the error names the ldata and the tag", () => {
 		const data = one_tag("Int", 0);
 		assert.throws(() => { data.tag = 1.5; }, /t\.tag: 1\.5 is not an integer/);
 		assert.throws(() => { data.tag = "x"; }, /t\.tag: a string is not a number/);

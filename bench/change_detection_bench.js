@@ -4,7 +4,7 @@
 // index table and one write_bytes.
 // Not part of `pnpm test`. Run: pnpm bench
 import { Buffer } from "node:buffer";
-import { TData, io_index_table, register_layout } from "../src/index.js";
+import { Ldata, io_index_table, register_layout } from "../src/index.js";
 
 const ITER = 200_000;
 const TAG_COUNT = 65;
@@ -22,11 +22,11 @@ const items = [
 	{ name: "flowmeter", type: "Real", offset: 96, length: 32, init_value: 0 },
 ];
 for (let i = 0; i < TAG_COUNT; i++) items.push({ name: `word_${i}`, type: "UInt", offset: 128 + i * 16, length: 16, init_value: 0 });
-const layout = register_layout({ layouts: { BENCH: items } }).layouts.BENCH;
+const layout = register_layout({ layouts: { Bench: items } }).layouts.Bench;
 const size = layout.size;
 
 function make_reader(endian, method) {
-	const data = new TData(layout, "bench");
+	const data = new Ldata(layout, "bench");
 	let events = 0;
 	data.on("change", () => { events++; });
 	const names = layout.items.map((item) => item.name);

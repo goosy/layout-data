@@ -8,10 +8,10 @@ const MAX_DIFF_ROUNDS = 16;
 const same_value = (a, b) => a === b || (Number.isNaN(a) && Number.isNaN(b));
 
 /**
- * Detects the changes of a TData buffer by comparing it with a snapshot
+ * Detects the changes of an Ldata buffer by comparing it with a snapshot
  * (doc/design.md §5.1) and reports each changed tag once.
  *
- * Every write path of the TData registers the byte range it wrote with
+ * Every write path of the Ldata registers the byte range it wrote with
  * touch(), then calls diff() (in a transaction: at its commit). Only the
  * registered range is compared, the other bytes equal the snapshot by
  * construction. A diff() called while the changes are being reported, by a
@@ -39,9 +39,9 @@ export class Observer {
 	#mark = 0;
 
 	/**
-	 * @param {Buffer} buffer - The buffer of the TData.
+	 * @param {Buffer} buffer - The buffer of the Ldata.
 	 * @param {string} name - The layout name, for errors.
-	 * @param {Compiled_Layout} compiled - The compiled data of the layout of the TData.
+	 * @param {Compiled_Layout} compiled - The compiled data of the layout of the Ldata.
 	 * @param {(entry: Layout_Entry, old_value: any, new_value: any, errors: unknown[]) => void} report - Called for each change; what a handler throws goes to `errors`.
 	 */
 	constructor(buffer, name, compiled, report) {

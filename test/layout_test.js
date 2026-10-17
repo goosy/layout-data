@@ -255,7 +255,7 @@ describe("the layout object (doc/spec-data-api.md §6.6)", () => {
 	});
 
 	test("the length is filled in from the type, and a comment is kept", () => {
-		const made = register_items("NO_LENGTH", [{ name: "a", type: "UInt", offset: 0, init_value: 0, comment: "first" }]);
+		const made = register_items("No_Length", [{ name: "a", type: "UInt", offset: 0, init_value: 0, comment: "first" }]);
 		assert.equal(made.items[0].length, 16);
 		assert.equal(made.items[0].comment, "first");
 	});

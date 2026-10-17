@@ -1,36 +1,36 @@
-# Data Object Interface Specification (TData / TTag)
+# Data Object Interface Specification (Ldata / Ltag)
 
 > English version of [spec-data-api.zh-cn.md](spec-data-api.zh-cn.md), the primary Chinese version. When the two differ, update both.
 >
-> This document defines the programming interface that TData and TTag promise to their users. It refines [spec.md](spec.md). The implementation is described in §2 of [design.md](design.md).
-> TData and TTag are general data objects for programmers: values can be read and written at any time, and a change event is emitted when a value changes. They do not depend on how the user schedules work; scan-style data flow is only one way to use them and does not limit what they can do.
+> This document defines the programming interface that Ldata and Ltag promise to their users. It refines [spec.md](spec.md). The implementation is described in §2 of [design.md](design.md).
+> Ldata and Ltag are general data objects for programmers: values can be read and written at any time, and a change event is emitted when a value changes. They do not depend on how the user schedules work; scan-style data flow is only one way to use them and does not limit what they can do.
 
 ## 1. Concepts
 
 | Name | Meaning |
 | --- | --- |
 | Layout | The fixed format of a data block: name, type, bit offset and initial value of every tag, given by a layout description (§6) and immutable once registered |
-| TData / tdata | TData is the class of data objects, a tdata is an instance: a block of data allocated for a layout, stored big-endian internally, with access by name and change events |
-| TTag | The interface of one named tag of a tdata: read and write its value, subscribe to its changes |
+| Ldata / ldata | Ldata is the class of data objects, an ldata is an instance: a block of data allocated for a layout, stored big-endian internally, with access by name and change events |
+| Ltag | The interface of one named tag of an ldata: read and write its value, subscribe to its changes |
 
-The T in TData and TTag stands for Typed: a tdata is stored in a fixed layout and every tag has a definite type and position.
+The L in Ldata and Ltag stands for Layout: an ldata is stored in the fixed layout it is created from, and every tag has a definite type and position.
 
 Tag types: `Bool`, `Byte`, `SInt`, `USInt`, `Int`, `UInt`, `Word`, `DInt`, `UDInt`, `DWord`, `Real`. The value of a `Bool` is `true` / `false`, all others are numbers. A `Word` made of several `Bool`s is called a combined word; it shares its data with its bits.
 
-`Tag_Type` is the exported TypeScript type of the lower case type names (`"bool" | "byte" | "usint" | "sint" | "int" | "uint" | "word" | "dint" | "udint" | "dword" | "real"`). Only `TTag.type` (§3) has it, so that `switch (tag.type)` is checked. The `type` of a layout description and of the items of a layout (§6) is the text of the description (`string`).
+`Tag_Type` is the exported TypeScript type of the lower case type names (`"bool" | "byte" | "usint" | "sint" | "int" | "uint" | "word" | "dint" | "udint" | "dword" | "real"`). Only `Ltag.type` (§3) has it, so that `switch (tag.type)` is checked. The `type` of a layout description and of the items of a layout (§6) is the text of the description (`string`).
 
-Units: a `length` is in bits and a `size` is in bytes, everywhere in this interface (`Layout.length` and `Layout.size`, the `length` of a layout item, `TData.size`, `TTag.size`).
+Units: a `length` is in bits and a `size` is in bytes, everywhere in this interface (`Layout.length` and `Layout.size`, the `length` of a layout item, `Ldata.size`, `Ltag.size`).
 
-## 2. TData
+## 2. Ldata
 
 ### 2.1 Creating
 
 ```js
-const data = new TData(layout, name);
+const data = new Ldata(layout, name);
 ```
 
 - `layout`: the name of a registered layout, which is the normal way (§6.4: register first, then create by name), or the registered layout object itself, which `get_layout(name)` returns or a registration result holds; a list of items is not accepted, and an unknown name or a layout object that is not the registered one of its name throws;
-- `name`: the name of the tdata, used in logs and error messages. It must be a string (any string, the empty one included), otherwise `TypeError`; it is given here and cannot be changed afterwards;
+- `name`: the name of the ldata, used in logs and error messages. It must be a string (any string, the empty one included), otherwise `TypeError`; it is given here and cannot be changed afterwards;
 - After creation every tag equals its initial value from the layout, and no change event is emitted;
 - A layout name identifies one layout for the life of the process: the data blocks of one layout share one class (§6.4).
 
@@ -38,13 +38,13 @@ const data = new TData(layout, name);
 
 | Property | Access | Description |
 | --- | --- | --- |
-| `name` | read-only | The name of the tdata, as given at creation |
+| `name` | read-only | The name of the ldata, as given at creation |
 | `layout` | read-only | The layout in use |
-| `size` | read-only | Size of the tdata in bytes |
+| `size` | read-only | Size of the ldata in bytes |
 
 Assigning to a read-only property throws `TypeError`.
 
-The bytes of a tdata (stored big-endian internally) are not exposed as a property: they are reached only by access by name (§2.3), through a TTag (§3) and by raw reads and writes (§2.5). Every write therefore goes through TData and no change is missed.
+The bytes of an ldata (stored big-endian internally) are not exposed as a property: they are reached only by access by name (§2.3), through an Ltag (§3) and by raw reads and writes (§2.5). Every write therefore goes through Ldata and no change is missed.
 
 ### 2.3 Access by name
 
@@ -53,8 +53,8 @@ data.pressure = 1.5;          // write
 const value = data.pressure;  // read
 ```
 
-- Every tag name is a property of the tdata, readable and writable at any time; a tag name must not be a reserved name (§2.10);
-- A write takes effect at once: after it, reading gives the new value, and so does the `value` of the TTag;
+- Every tag name is a property of the ldata, readable and writable at any time; a tag name must not be a reserved name (§2.10);
+- A write takes effect at once: after it, reading gives the new value, and so does the `value` of the Ltag;
 - Writing a combined word changes its bits; writing a bit changes the combined word;
 - A value is checked before it is written, and a value that is refused throws, keeps the old value, emits no event and no `write`:
 
@@ -66,13 +66,13 @@ const value = data.pressure;  // read
 
   The `init_value` of a layout is stricter (§6.2): for a `Real` it must be a finite number inside the same range.
 
-### 2.4 Getting a TTag
+### 2.4 Getting an Ltag
 
 ```js
 const tag = data.get("pressure");
 ```
 
-Returns the TTag of the tag; the same tdata always returns the same TTag for the same name. Returns `undefined` if the name does not exist.
+Returns the Ltag of the tag; the same ldata always returns the same Ltag for the same name. Returns `undefined` if the name does not exist.
 
 ### 2.5 Raw reads and writes
 
@@ -82,7 +82,7 @@ Untyped access to the bytes, for users that do not access by tag name (such as a
 
 | Method | Description |
 | --- | --- |
-| `read_bytes(offset = 0, length = size - offset)` | Read `length` bytes starting at `offset` and return a copy (a `Buffer`); changing the copy does not affect the tdata |
+| `read_bytes(offset = 0, length = size - offset)` | Read `length` bytes starting at `offset` and return a copy (a `Buffer`); changing the copy does not affect the ldata |
 | `write_bytes(offset, source)` | Write all the bytes of `source` (a `Uint8Array`) starting at `offset`; an empty `source` writes nothing, is not a write and emits no `write` |
 | `write_bit(offset, mask, value)` | Write the bits of the byte at `offset` selected by `mask`; `value` is taken by truthiness and the other bits are unchanged |
 
@@ -113,29 +113,29 @@ const result = data.transaction(() => {
 data.on("change", (name, old_value, new_value) => { /* ... */ });
 ```
 
-Emitted when the value of any tag of the tdata changes. The arguments are the tag name, the old value and the new value.
+Emitted when the value of any tag of the ldata changes. The arguments are the tag name, the old value and the new value.
 
 ```js
 data.on("write", (data) => { /* ... */ });
 ```
 
-Emitted after every write, whether or not it changed a value. A write is a write by name, through a TTag, or a raw write (`write_bytes`, `write_bit`); a read does not emit it, and neither does a refused write (one that throws before it takes effect, §2.3, §5). It means "a write happened", for the user's scheduling and IO: they must handle every write, even one that wrote the same value; a change of value is what `change` stands for. It is emitted after the detection of that write and the `change` events it caused. Writes inside a transaction do not emit it at once, see §4.2. Any number of parties can listen, each with its own handler. Node.js prints a warning (`MaxListenersExceededWarning`) when more than 100 listeners are subscribed to one event of a tdata, and 20 to the `change` of a TTag; the library fixes these limits, and a program that needs another one calls the inherited `setMaxListeners(n)` of that object.
+Emitted after every write, whether or not it changed a value. A write is a write by name, through an Ltag, or a raw write (`write_bytes`, `write_bit`); a read does not emit it, and neither does a refused write (one that throws before it takes effect, §2.3, §5). It means "a write happened", for the user's scheduling and IO: they must handle every write, even one that wrote the same value; a change of value is what `change` stands for. It is emitted after the detection of that write and the `change` events it caused. Writes inside a transaction do not emit it at once, see §4.2. Any number of parties can listen, each with its own handler. Node.js prints a warning (`MaxListenersExceededWarning`) when more than 100 listeners are subscribed to one event of an ldata, and 20 to the `change` of an Ltag; the library fixes these limits, and a program that needs another one calls the inherited `setMaxListeners(n)` of that object.
 
 Event names:
 
 - `change`, `write`, `access` and `read` are reserved event names of the library. The library emits `change`, `write` and `access` (§2.8); `read` is kept for a future read hook and is not emitted now. A user must not emit them with `emit` and must not use them for events of its own;
 - Any other name is free for the user's own events: `on`, `once` and `off` accept any string or symbol for it, with a listener of any signature;
-- In the declarations `on`, `once` and `off` are typed for the reserved names: the listener of `change` is `(name: string, old_value: number | boolean, new_value: number | boolean) => void`, that of `write` is `(data: TData) => void` and that of `access` is `(kind: "read" | "write", tags: TTag[]) => void`; a listener of another type is a compile-time error. The `change` of a TTag is typed `(old_value, new_value)` the same way (§3).
+- In the declarations `on`, `once` and `off` are typed for the reserved names: the listener of `change` is `(name: string, old_value: number | boolean, new_value: number | boolean) => void`, that of `write` is `(data: Ldata) => void` and that of `access` is `(kind: "read" | "write", tags: Ltag[]) => void`; a listener of another type is a compile-time error. The `change` of an Ltag is typed `(old_value, new_value)` the same way (§3).
 
 ### 2.8 Observing accesses
 
 ```js
-data.on("access", (kind, tags) => { /* kind is "read" or "write"; tags is an array of TTag */ });
+data.on("access", (kind, tags) => { /* kind is "read" or "write"; tags is an array of Ltag */ });
 ```
 
-Emitted on every access to the tags of the tdata, so that a tool can find out which tags a piece of code touches, for example to check the dependencies a rule declares against the ones it really has. It is a diagnostic for development and tests, and is not needed in a program that does not observe accesses: while the tdata has no `access` listener, an access pays one extra check.
+Emitted on every access to the tags of the ldata, so that a tool can find out which tags a piece of code touches, for example to check the dependencies a rule declares against the ones it really has. It is a diagnostic for development and tests, and is not needed in a program that does not observe accesses: while the ldata has no `access` listener, an access pays one extra check.
 
-- `kind` is `"read"` or `"write"`, and `tags` are the tags accessed, as the TTag of `data.get(name)`, in layout order, without repeats;
+- `kind` is `"read"` or `"write"`, and `tags` are the tags accessed, as the Ltag of `data.get(name)`, in layout order, without repeats;
 - Which accesses emit it, and which tags it names:
 
   | Access | kind | tags |
@@ -150,28 +150,28 @@ Emitted on every access to the tags of the tdata, so that a tool can find out wh
 
   A combined word and its bits share bytes, so a raw access to those bytes names the word and its bits, while a read or write by name of the word names the word only. A raw access that touches no byte (an empty range or source) names no tag and emits nothing;
 - It is emitted only for an access that took effect: a refused write (§2.3, §5) and an access that throws an argument error emit nothing. A write emits it right after the new value has taken effect, before the detection of the write and its `change` and `write` events; reading and writing inside a transaction emit it at once, as usual. The restoring of a rolled-back transaction is not an access;
-- A listener may read and write any tag, but the accesses made while an `access` listener runs (by the listener itself, to any tdata) emit nothing, which would never end;
+- A listener may read and write any tag, but the accesses made while an `access` listener runs (by the listener itself, to any ldata) emit nothing, which would never end;
 - An exception thrown by a listener follows §4.4: every listener is called, the write goes on to its detection and its events, and the first exception is thrown by the statement afterwards; a read throws it instead of returning the value;
-- An instance listener sees only the tdata it is subscribed on. To observe every tdata of the process, including those not created yet, subscribe on the class (below).
+- An instance listener sees only the ldata it is subscribed on. To observe every ldata of the process, including those not created yet, subscribe on the class (below).
 
 ```js
-TData.on_access((data, kind, tags) => { /* every access to every tdata */ });
-TData.off_access(listener);
+Ldata.on_access((data, kind, tags) => { /* every access to every ldata */ });
+Ldata.off_access(listener);
 ```
 
-`TData.on_access(listener)` subscribes a function that is called for the accesses to all tdatas, whichever layout they have and whenever they were created; the listener gets the tdata first, then `kind` and `tags` as above. `TData.off_access(listener)` cancels it, and does nothing for a function that is not subscribed. Any number of parties can subscribe, each with its own function, and none overrides another. Subscribing a function twice is one subscription. The class-level listeners live apart from the events of the instances, so `data.removeAllListeners()` does not remove them. For one access, the listeners of the instance are called first, then those of the class, and the exception rule above covers both. While no listener of either kind exists, an access pays one extra check. A tool that observes with it should remove its listener when it is done.
+`Ldata.on_access(listener)` subscribes a function that is called for the accesses to all ldatas, whichever layout they have and whenever they were created; the listener gets the ldata first, then `kind` and `tags` as above. `Ldata.off_access(listener)` cancels it, and does nothing for a function that is not subscribed. Any number of parties can subscribe, each with its own function, and none overrides another. Subscribing a function twice is one subscription. The class-level listeners live apart from the events of the instances, so `data.removeAllListeners()` does not remove them. For one access, the listeners of the instance are called first, then those of the class, and the exception rule above covers both. While no listener of either kind exists, an access pays one extra check. A tool that observes with it should remove its listener when it is done.
 
 ### 2.9 Device byte order
 
-A tdata is stored big-endian internally. To exchange data with a device, convert per tag between the tdata and an IO buffer in the byte order of the device:
+An ldata is stored big-endian internally. To exchange data with a device, convert per tag between the ldata and an IO buffer in the byte order of the device:
 
 | Method | Description |
 | --- | --- |
-| `load_tag(name, io_buffer, endian)` | Convert the bytes of the tag named `name` from `io_buffer` and write them into the tdata; this is a write |
-| `store_tag(name, io_buffer, endian)` | Convert the bytes of the tag named `name` in the tdata and write them into `io_buffer`; the tdata is unchanged and no event is emitted |
+| `load_tag(name, io_buffer, endian)` | Convert the bytes of the tag named `name` from `io_buffer` and write them into the ldata; this is a write |
+| `store_tag(name, io_buffer, endian)` | Convert the bytes of the tag named `name` in the ldata and write them into `io_buffer`; the ldata is unchanged and no event is emitted |
 
-- `name`: the tag name. When you already hold a TTag, use its `load` / `store` (§3), which do the same; for a batch use names directly, which needs no TTag created for each tag;
-- `io_buffer`: a `Uint8Array` indexed like the byte offsets of the tdata (a mirror of the same size as the data block); the range of the tag in it must lie inside it;
+- `name`: the tag name. When you already hold an Ltag, use its `load` / `store` (§3), which do the same; for a batch use names directly, which needs no Ltag created for each tag;
+- `io_buffer`: a `Uint8Array` indexed like the byte offsets of the ldata (a mirror of the same size as the data block); the range of the tag in it must lie inside it;
 - `endian`: the device byte order; only `"BE"`, `"LE"`, `"BEBS"` and `"LEBS"` are accepted (ABCD stands for the four bytes in big-endian):
 
   | Byte order | 2 bytes | 4 bytes |
@@ -184,25 +184,25 @@ A tdata is stored big-endian internally. To exchange data with a device, convert
   A Bool and a single-byte tag (Byte, SInt, USInt) go by the 16-bit register they lie in: for `LE` and `BEBS` they sit in the other byte of the register, for `BE` and `LEBS` in place; a Bool changes only its own bit;
 - `load_tag` is the same as a write by name: it takes effect at once, detects, emits `change` and then `write`; inside a transaction it is handled at the commit. Put a batch of loads into a transaction (§2.6): one detection and one `write` at the commit;
 - Exchanging a whole block at once: `io_index_table(layout, endian)` returns the table of byte indexes; byte `i` of the data block is byte `table[i]` of the IO buffer. The user copies the bytes by it, then writes them with one `write_bytes` (§2.5);
-- Errors are checked before anything is changed: the tdata is unchanged and `load_tag` emits no `write` (errors in §5).
+- Errors are checked before anything is changed: the ldata is unchanged and `load_tag` emits no `write` (errors in §5).
 
 ### 2.10 Reserved names
 
-A tdata is one object that holds both the tags (as properties) and its own methods, so the names of the two must not meet. The reserved names are a fixed list, given here, and do not depend on the Node.js version that runs the program:
+An ldata is one object that holds both the tags (as properties) and its own methods, so the names of the two must not meet. The reserved names are a fixed list, given here, and do not depend on the Node.js version that runs the program:
 
 | Source | Reserved names |
 | --- | --- |
-| Members of TData | `name`, `layout`, `size`, `get`, `transaction`, `read_bytes`, `write_bytes`, `write_bit`, `load_tag`, `store_tag` |
+| Members of Ldata | `name`, `layout`, `size`, `get`, `transaction`, `read_bytes`, `write_bytes`, `write_bit`, `load_tag`, `store_tag` |
 | EventEmitter (Node.js 20.11) | `addListener`, `emit`, `eventNames`, `getMaxListeners`, `listenerCount`, `listeners`, `off`, `on`, `once`, `prependListener`, `prependOnceListener`, `rawListeners`, `removeAllListeners`, `removeListener`, `setMaxListeners`, `_events`, `_eventsCount`, `_maxListeners` |
 | Object | `constructor`, `hasOwnProperty`, `isPrototypeOf`, `propertyIsEnumerable`, `toLocaleString`, `toString`, `valueOf`, `__proto__`, `__defineGetter__`, `__defineSetter__`, `__lookupGetter__`, `__lookupSetter__` |
 
-- A tag with a reserved name is a violation of the layout (§6.3): registering such a layout throws `Error` (§6.4), so a tdata of it never exists;
-- TData stays a subclass of EventEmitter. A later version of Node.js may add methods to EventEmitter; the list does not follow them, so a tag named like such a method would hide it. The test suite compares the list with the running Node.js;
-- A later version of this package adds members to TData only as `Symbol`-keyed members or static methods, never as a new string-named member of an instance, so a tag name that is valid now stays valid;
+- A tag with a reserved name is a violation of the layout (§6.3): registering such a layout throws `Error` (§6.4), so an ldata of it never exists;
+- Ldata stays a subclass of EventEmitter. A later version of Node.js may add methods to EventEmitter; the list does not follow them, so a tag named like such a method would hide it. The test suite compares the list with the running Node.js;
+- A later version of this package adds members to Ldata only as `Symbol`-keyed members or static methods, never as a new string-named member of an instance, so a tag name that is valid now stays valid;
 - The reserved event names are in §2.7. Whether a name is reserved is not queryable: there is no public function for it;
-- A TTag has no tag names, so its members (§3) are not a list to avoid.
+- An Ltag has no tag names, so its members (§3) are not a list to avoid.
 
-## 3. TTag
+## 3. Ltag
 
 | Member | Description |
 | --- | --- |
@@ -210,46 +210,46 @@ A tdata is one object that holds both the tags (as properties) and its own metho
 | `type` | The type (lower case), of the type `Tag_Type` (§1) |
 | `size` | Number of bytes it occupies; a Bool occupies the byte it lies in, so its `size` is 1 |
 | `value` | The current value, readable and writable; writing it is exactly equivalent to `data[name] = v` |
-| `on("change", (old_value, new_value) => ...)` | Subscribe to changes of this tag; `change` is the only event of a TTag and its reserved name |
+| `on("change", (old_value, new_value) => ...)` | Subscribe to changes of this tag; `change` is the only event of an Ltag and its reserved name |
 | `load(io_buffer, endian)` | Equivalent to `data.load_tag(name, io_buffer, endian)` (§2.9) |
 | `store(io_buffer, endian)` | Equivalent to `data.store_tag(name, io_buffer, endian)` (§2.9) |
 
-A TTag stores no value; reads and writes act directly on the tdata it belongs to.
+An Ltag stores no value; reads and writes act directly on the ldata it belongs to.
 
 ## 4. Changes and events
 
 ### 4.1 Detection
 
-A **detection** compares the current value of every tag of the tdata with its value at the previous detection, and emits a `change` event for every tag whose value differs. After the detection the current values become the baseline for the next one. The initial values at creation are the baseline of the first detection.
+A **detection** compares the current value of every tag of the ldata with its value at the previous detection, and emits a `change` event for every tag whose value differs. After the detection the current values become the baseline for the next one. The initial values at creation are the baseline of the first detection.
 
 How many times a tag is written between two detections does not matter: a detection compares only the values at the two moments. Several writes are merged into one event whose old value is the value at the previous detection; a value that changed and was restored emits no event.
 
-A detection is run by TData itself after every write (inside a transaction, at its commit, see §4.2). It is not a public interface: users neither need to nor can trigger it.
+A detection is run by Ldata itself after every write (inside a transaction, at its commit, see §4.2). It is not a public interface: users neither need to nor can trigger it.
 
 ### 4.2 Transactions
 
 Because a detection runs right after every write, the several writes of one logical step let subscribers see a half-updated intermediate state. A **transaction** makes a group of writes one whole: no event is emitted during it, and at its end it is either committed at once or undone entirely.
 
 - Start and end: `transaction(fn)` calls `fn()` synchronously and commits when `fn` returns; its return value is the return value of `transaction`;
-- Inside a transaction every read and write is allowed: by name, through a TTag, raw reads and writes. A write takes effect at once and reads give the uncommitted current value; a write triggers no detection and emits neither `change` nor `write`;
-- Commit: after the transaction is closed, one detection (§4.1) runs and emits the `change` events. Its baseline is the values at the last detection before the transaction, so several writes in the transaction merge into one event, and a value changed and restored emits none. Then, if the transaction contained a write by name, through a TTag or a raw write, one `write` (§2.7) is emitted, however many such writes there were;
-- Rollback: when `fn` throws, the content of the tdata is restored to what it was at the start of the transaction and no event is emitted; the original exception is rethrown;
+- Inside a transaction every read and write is allowed: by name, through an Ltag, raw reads and writes. A write takes effect at once and reads give the uncommitted current value; a write triggers no detection and emits neither `change` nor `write`;
+- Commit: after the transaction is closed, one detection (§4.1) runs and emits the `change` events. Its baseline is the values at the last detection before the transaction, so several writes in the transaction merge into one event, and a value changed and restored emits none. Then, if the transaction contained a write by name, through an Ltag or a raw write, one `write` (§2.7) is emitted, however many such writes there were;
+- Rollback: when `fn` throws, the content of the ldata is restored to what it was at the start of the transaction and no event is emitted; the original exception is rethrown;
 - Starting another transaction inside a transaction throws `Error`; if `fn` does not handle it, the transaction rolls back;
 - Events are emitted after the transaction is closed, so writes and transactions in handlers are ordinary ones. An exception thrown by a handler at commit propagates out of `transaction` as in §4.4, but the transaction is already committed and is not rolled back.
 
 Boundaries of a transaction:
 
-- A transaction guarantees atomicity only for the synchronous part of `fn` and does not inspect its return value: `fn` should be a synchronous function; if it returns a Promise, no error is raised and the Promise is not awaited. Node.js runs no other JS code while `fn` executes, so no other code on the thread can read or write this tdata. The continuation of an asynchronous operation started inside `fn` runs after the transaction is closed; it is an ordinary write, does not belong to the transaction and is never rolled back;
-- A transaction guarantees only the content of this tdata. Writes to other tdatas inside it emit their events as usual; side effects such as event handlers are not undone by a rollback;
-- A copy of the content of the tdata is made when the transaction starts; its cost is proportional to the size of the data block.
+- A transaction guarantees atomicity only for the synchronous part of `fn` and does not inspect its return value: `fn` should be a synchronous function; if it returns a Promise, no error is raised and the Promise is not awaited. Node.js runs no other JS code while `fn` executes, so no other code on the thread can read or write this ldata. The continuation of an asynchronous operation started inside `fn` runs after the transaction is closed; it is an ordinary write, does not belong to the transaction and is never rolled back;
+- A transaction guarantees only the content of this ldata. Writes to other ldatas inside it emit their events as usual; side effects such as event handlers are not undone by a rollback;
+- A copy of the content of the ldata is made when the transaction starts; its cost is proportional to the size of the data block.
 
 ### 4.3 Common conventions
 
-- Wherever a change comes from (a write by name, a write through a TTag, a raw write) an event is emitted; none is missed;
+- Wherever a change comes from (a write by name, a write through an Ltag, a raw write) an event is emitted; none is missed;
 - Events are emitted after the new value has taken effect: handlers read the new value;
 - An event is emitted only when the value really changes: writing the same value emits none; writing `NaN` over `NaN` counts as unchanged;
 - A combined word and its bits emit their own events: when one write changes the word and some of its bits, the word and those bits all emit;
-- The changes of one detection are emitted in layout order (a combined word before its bits); for each change the `change` of the tdata is emitted first, then the `change` of the TTag;
+- The changes of one detection are emitted in layout order (a combined word before its bits); for each change the `change` of the ldata is emitted first, then the `change` of the Ltag;
 - Handlers may write any tag: the changes caused by that write are emitted after the current batch has been emitted;
 - If writes triggered by handlers keep causing new changes for 16 rounds in a row, the detection stops and throws an exception to prevent endless oscillation (an exception like those of §4.4); changes not yet emitted are not lost and are emitted at the next detection.
 
@@ -271,19 +271,19 @@ The interface throws exceptions on errors. It does not log or exit the process; 
 | Writing a value that is not a number to an integer or `Real` tag | `TypeError`, the old value is kept, no event and no `write` |
 | Writing `NaN`, `Infinity`, a non-integer or an integer outside the range to an integer tag, or a finite number beyond float32 to a `Real` tag | `RangeError`, the old value is kept, no event and no `write` |
 | A handler throws | the first exception is thrown by the write statement after all events are dispatched; the value stands and `write` is emitted (§4.4) |
-| A tdata created with a name that is not a string | `TypeError` |
+| An ldata created with a name that is not a string | `TypeError` |
 | Invalid layout, or a reserved tag name (§2.10) | `Error` with `errors`, thrown by `register_layout`; nothing is registered (§6.4) |
 | `register_layout` called again after it registered layouts | `Error`, the layouts of the first call stay (§6.4) |
 | Writes triggered by handlers that do not settle | `Error`, thrown by the write statement after the events are dispatched (§4.4) |
 | Starting another transaction inside a transaction | `Error` |
 | A raw read or write whose offset, length or mask is out of range, or that writes past the end of the data block | `RangeError`, the data is unchanged and no `write` is emitted |
 | A raw write whose `source`, or `load_tag` / `store_tag` whose `io_buffer`, is not a `Uint8Array` | `TypeError` |
-| `load_tag` / `store_tag` with an unknown tag name | `Error`, the tdata is unchanged and no `write` is emitted |
-| A byte order other than `BE`, `LE`, `BEBS`, `LEBS`, or a tag whose range in `io_buffer` is out of bounds | `RangeError`, the tdata is unchanged and no `write` is emitted |
+| `load_tag` / `store_tag` with an unknown tag name | `Error`, the ldata is unchanged and no `write` is emitted |
+| A byte order other than `BE`, `LE`, `BEBS`, `LEBS`, or a tag whose range in `io_buffer` is out of bounds | `RangeError`, the ldata is unchanged and no `write` is emitted |
 
 ## 6. Layout description
 
-The flow is **register once, then use by name**: the layouts are described (§6.1 to §6.3), all of them are registered by one call of `register_layout` (§6.4), and from then on `new TData("PUMP", "pump_1")` creates data blocks of a layout by its name. The user needs to know how to express a layout as a YAML structure and which name it has; whether it is compiled, and into what, is not part of the flow.
+The flow is **register once, then use by name**: the layouts are described (§6.1 to §6.3), all of them are registered by one call of `register_layout` (§6.4), and from then on `new Ldata("Pump", "pump_1")` creates data blocks of a layout by its name. The user needs to know how to express a layout as a YAML structure and which name it has; whether it is compiled, and into what, is not part of the flow.
 
 ### 6.1 File
 
@@ -351,7 +351,7 @@ There are two kinds of entry, and the declarations name them (`Layout_Item` is e
 register_layout("pump.yaml");                                     // one file
 register_layout(["common.yaml", "pump.yaml", "valve.yaml"]);      // several files
 register_layout(["common.yaml", { layouts: { INLINE: [...] } }]); // files and descriptions
-const pump = new TData("PUMP", "pump_1");                         // from then on, by the layout name
+const pump = new Ldata("Pump", "pump_1");                         // from then on, by the layout name
 ```
 
 `register_layout(sources)` registers the layouts of its sources. A layout can be used only after it is registered.
@@ -363,8 +363,8 @@ const pump = new TData("PUMP", "pump_1");                         // from then o
 - Every layout is validated (§6.3), the omitted `length`s are filled in, and the sources are not changed;
 - Any violation throws an `Error` whose `errors` property lists all violations of all sources, and nothing is registered: the sources are registered all or none. An unreadable file and a YAML syntax error are violations too. The layout and fragment errors name the layout or fragment, not the file;
 - Return value: `{ layouts, fragments }` for all the sources. `layouts` holds the registered layouts by name, as `get_layout(name)` returns them; `fragments` holds the entry lists by fragment name (references expanded, offsets relative to the start of the fragment), for the user to query, for example to get all tag names of a parameter block. Neither is needed for the flow above;
-- A layout name stays registered for the life of the process. `get_layout(name)` returns the registered layout (read-only, §6.6) and throws `unknown layout X` for a name that is not registered, as `new TData(name, ...)` does;
-- Consequences of registering once: a changed layout file takes effect only in a new process (no hot reload, and a REPL or a test cannot register a changed layout again); a library built on tagged-data cannot call `register_layout` itself, it can only export the paths of its layout files for the application to put in `sources`; when two copies of the package are installed, each has its own registry and its own single call, and neither sees the layouts of the other.
+- A layout name stays registered for the life of the process. `get_layout(name)` returns the registered layout (read-only, §6.6) and throws `unknown layout X` for a name that is not registered, as `new Ldata(name, ...)` does;
+- Consequences of registering once: a changed layout file takes effect only in a new process (no hot reload, and a REPL or a test cannot register a changed layout again); a library built on layout-data cannot call `register_layout` itself, it can only export the paths of its layout files for the application to put in `sources`; when two copies of the package are installed, each has its own registry and its own single call, and neither sees the layouts of the other.
 
 ### 6.5 Defining a layout in code
 
@@ -373,13 +373,13 @@ A layout needs no file. Give a description, the structure of §6.1, to `register
 ```js
 register_layout({
   layouts: {
-    PUMP: [
+    Pump: [
       { name: "id", type: "UInt", offset: 0, init_value: 0 },
       { name: "pressure", type: "Real", offset: 32, init_value: 0 },
     ],
   },
 });
-const data = new TData("PUMP", "pump_1");
+const data = new Ldata("Pump", "pump_1");
 ```
 
 - the items are the entries of §6.2; `length` may be omitted; `coupling` and `includes` take an inline list or the name of a fragment of any of the sources;
@@ -397,31 +397,31 @@ A layout (`Layout`) is a read-only object that exposes only these members:
 | `size` | Total size in bytes |
 | `items` | The expanded descriptions of the tags, in layout order (a combined word before its bits) |
 
-- Every item of `items` has: `name`; `type` (as written in the description, the case unchanged, while `TTag.type` is always lower case); `offset` (the absolute bit offset; the byte position is `offset >> 3`); `length` (bits); `init_value`; `comment` (if given); `coupling` (for a combined word: the tag names of its bits; for a bit: the tag names of the combined words it belongs to). `includes` and `name_prefix` are expanded and no longer appear;
+- Every item of `items` has: `name`; `type` (as written in the description, the case unchanged, while `Ltag.type` is always lower case); `offset` (the absolute bit offset; the byte position is `offset >> 3`); `length` (bits); `init_value`; `comment` (if given); `coupling` (for a combined word: the tag names of its bits; for a bit: the tag names of the combined words it belongs to). `includes` and `name_prefix` are expanded and no longer appear;
 - The layout and its `items` are deeply frozen: modifying them throws `TypeError`;
-- A layout does not expose the table by name, byte positions, bit masks, codecs or other internal data, and users need not know them: access by name goes through `data.get(name)`, which gives a TTag, and exchanging data with a device through `load_tag` / `store_tag` or `load` / `store` of a TTag (§2.9).
+- A layout does not expose the table by name, byte positions, bit masks, codecs or other internal data, and users need not know them: access by name goes through `data.get(name)`, which gives an Ltag, and exchanging data with a device through `load_tag` / `store_tag` or `load` / `store` of an Ltag (§2.9).
 
 ### 6.7 Type declarations for the editor
 
 `render_types(layouts, options)` returns the text of a TypeScript declaration file (`.d.ts`) for layouts, so that an editor can complete the tags of a data block. It is a helper for building the program: after the layouts are registered, the program writes the text to a file beside its code, for example `layout_types.d.ts`. `layouts` is the `layouts` that `register_layout` returns.
 
-- For each layout it declares `<Layout>_Tags`, an interface with one property per tag (`boolean` for a Bool, `number` for every other type; a `comment` becomes the doc comment of the property), and `<Layout>_TData`, which is `TData & <Layout>_Tags`;
-- The layout name is used as it is, with the case it has: the layout `PUMP` gives `PUMP_Tags` and `PUMP_TData`, `my_block` gives `my_block_Tags`, `Pump_Station` gives `Pump_Station_Tags`. The case style is the choice of the caller, and `Snake_Pascal_Case` is recommended, the style of the type names of this package; the library does not require it. The name is the one written in `new TData("PUMP", ...)`, and two layouts with different names never give the same type name;
+- For each layout it declares `<Layout>_Tags`, an interface with one property per tag (`boolean` for a Bool, `number` for every other type; a `comment` becomes the doc comment of the property), and `<Layout>_Ldata`, which is `Ldata & <Layout>_Tags`;
+- The layout name is used as it is, with the case it has: the layout `Pump` gives `Pump_Tags` and `Pump_Ldata`, `my_block` gives `my_block_Tags`, `Pump_Station` gives `Pump_Station_Tags`. The case style is the choice of the caller, and `Snake_Pascal_Case` is recommended, the style of the type names of this package; the library does not require it. The name is the one written in `new Ldata("Pump", ...)`, and two layouts with different names never give the same type name;
 - A layout name must be an identifier of JavaScript (letters of any script, digits, `_` and `$`, not starting with a digit), because it is part of a type name; otherwise `Error` is thrown, whose `errors` lists every such name. A tag name is always an identifier (§6.2), so it is written as the property name as it is. A `*/` in a comment is escaped, so the text is always a valid declaration file;
-- `options.source` names the layout file in the header comment of the text; without it the header only says that the text is generated. `options.tdata_module` is the module specifier the text imports `TData` from, relative to the output file; it is `"tagged-data"` by default. Both options, and the argument `options` itself, may be omitted.
+- `options.source` names the layout file in the header comment of the text; without it the header only says that the text is generated. `options.ldata_module` is the module specifier the text imports `Ldata` from, relative to the output file; it is `"layout-data"` by default. Both options, and the argument `options` itself, may be omitted.
 
-Using the types. `new TData("PUMP", "pump_1")` is typed `TData`: the constructor of a class cannot return another type according to its argument, so the type of the value is named by hand, once. In JavaScript a JSDoc cast, which is enough for an editor to complete the tags and, when the file is checked (`checkJs` or `// @ts-check`), to flag a misspelled tag or a value of the wrong type:
+Using the types. `new Ldata("Pump", "pump_1")` is typed `Ldata`: the constructor of a class cannot return another type according to its argument, so the type of the value is named by hand, once. In JavaScript a JSDoc cast, which is enough for an editor to complete the tags and, when the file is checked (`checkJs` or `// @ts-check`), to flag a misspelled tag or a value of the wrong type:
 
 ```js
-const pump = /** @type {import("./layout_types.js").PUMP_TData} */ (new TData("PUMP", "pump_1"));
+const pump = /** @type {import("./layout_types.js").Pump_Ldata} */ (new Ldata("Pump", "pump_1"));
 pump.pressure = 1.5;   // completed, and known to be a number
 ```
 
-The parentheses are part of the JSDoc cast. A `/** @type {...} */` written above `const pump = new TData(...)` also gives the completion, but a checked file then reports that `TData` is not assignable to `PUMP_TData`.
+The parentheses are part of the JSDoc cast. A `/** @type {...} */` written above `const pump = new Ldata(...)` also gives the completion, but a checked file then reports that `Ldata` is not assignable to `Pump_Ldata`.
 
-In TypeScript: `const pump = new TData("PUMP", "pump_1") as PUMP_TData;`.
+In TypeScript: `const pump = new Ldata("Pump", "pump_1") as Pump_Ldata;`.
 
 ## 7. Outside this interface
 
-- Exchanging data with devices (driver binding, the orchestration of reads and writes) is the job of the user's IO layer, which operates the tdata through this interface: `load_tag` / `store_tag` convert the byte order per tag (§2.9), a whole block is exchanged with `io_index_table` plus `read_bytes` / `write_bytes` (§2.5), and a batch of loads goes into a transaction (§2.6);
+- Exchanging data with devices (driver binding, the orchestration of reads and writes) is the job of the user's IO layer, which operates the ldata through this interface: `load_tag` / `store_tag` convert the byte order per tag (§2.9), a whole block is exchanged with `io_index_table` plus `read_bytes` / `write_bytes` (§2.5), and a batch of loads goes into a transaction (§2.6);
 - Scheduling, rules and timing do not belong to this interface.

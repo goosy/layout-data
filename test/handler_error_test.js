@@ -1,7 +1,7 @@
 import { register_items } from "./share.js";
 import assert from "node:assert/strict";
 import test, { describe } from "node:test";
-import { TData } from "../src/TData.js";
+import { Ldata } from "../src/Ldata.js";
 
 const LAYOUT = register_items("HANDLER_ERRORS", [
 	{ name: "a", type: "UInt", offset: 0, length: 16, init_value: 0 },
@@ -9,7 +9,7 @@ const LAYOUT = register_items("HANDLER_ERRORS", [
 	{ name: "c", type: "UInt", offset: 32, length: 16, init_value: 0 },
 ]);
 
-const create = () => new TData(LAYOUT, "d");
+const create = () => new Ldata(LAYOUT, "d");
 
 describe("4.4 exceptions thrown by handlers", () => {
 	test("the first exception is thrown after every event is dispatched, and the value stands", () => {

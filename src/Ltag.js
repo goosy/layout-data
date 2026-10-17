@@ -4,25 +4,25 @@ import { EventEmitter } from "node:events";
 /** @import { Layout_Entry } from "./internal_types.js" */
 
 /**
- * The interface of one tag of a TData (doc/spec-data-api.md §3). It holds no
- * value: reading `value` decodes it from the buffer of the TData, writing it
- * is the same as `tdata[name] = value`, and `load` / `store` are `load_tag` /
- * `store_tag` of the TData for the name of the tag. `change` events
- * (old_value, new_value) are emitted by the Observer of the TData.
+ * The interface of one tag of an Ldata (doc/spec-data-api.md §3). It holds no
+ * value: reading `value` decodes it from the buffer of the Ldata, writing it
+ * is the same as `ldata[name] = value`, and `load` / `store` are `load_tag` /
+ * `store_tag` of the Ldata for the name of the tag. `change` events
+ * (old_value, new_value) are emitted by the Observer of the Ldata.
  */
-export class TTag extends EventEmitter {
-	/** @type {import("./TData.js").TData} */
-	#tdata;
+export class Ltag extends EventEmitter {
+	/** @type {import("./Ldata.js").Ldata} */
+	#ldata;
 	/** @type {Layout_Entry} */
 	#entry;
 
 	/**
-	 * @param {import("./TData.js").TData} tdata - The TData the tag belongs to.
+	 * @param {import("./Ldata.js").Ldata} ldata - The Ldata the tag belongs to.
 	 * @param {Layout_Entry} entry - The compiled entry of the tag.
 	 */
-	constructor(tdata, entry) {
+	constructor(ldata, entry) {
 		super();
-		this.#tdata = tdata;
+		this.#ldata = ldata;
 		this.#entry = entry;
 		this.setMaxListeners(20);
 	}
@@ -65,23 +65,23 @@ export class TTag extends EventEmitter {
 	/** @returns {number} Size in bytes; a Bool has the byte it lies in. */
 	get size() { return this.#entry.size; }
 	/** @returns {number | boolean} */
-	get value() { return this.#tdata[this.#entry.name]; }
+	get value() { return this.#ldata[this.#entry.name]; }
 	/** @param {number | boolean} value */
-	set value(value) { this.#tdata[this.#entry.name] = value; }
+	set value(value) { this.#ldata[this.#entry.name] = value; }
 
 	/**
-	 * Same as `tdata.load_tag(name, io_buffer, endian)` (doc/spec-data-api.md §2.9).
+	 * Same as `ldata.load_tag(name, io_buffer, endian)` (doc/spec-data-api.md §2.9).
 	 *
 	 * @param {Uint8Array} io_buffer
 	 * @param {Endian} endian
 	 */
-	load(io_buffer, endian) { this.#tdata.load_tag(this.#entry.name, io_buffer, endian); }
+	load(io_buffer, endian) { this.#ldata.load_tag(this.#entry.name, io_buffer, endian); }
 
 	/**
-	 * Same as `tdata.store_tag(name, io_buffer, endian)` (doc/spec-data-api.md §2.9).
+	 * Same as `ldata.store_tag(name, io_buffer, endian)` (doc/spec-data-api.md §2.9).
 	 *
 	 * @param {Uint8Array} io_buffer
 	 * @param {Endian} endian
 	 */
-	store(io_buffer, endian) { this.#tdata.store_tag(this.#entry.name, io_buffer, endian); }
+	store(io_buffer, endian) { this.#ldata.store_tag(this.#entry.name, io_buffer, endian); }
 }

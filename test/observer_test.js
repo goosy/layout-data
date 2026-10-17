@@ -1,7 +1,7 @@
 import { register_items } from "./share.js";
 import assert from "node:assert/strict";
 import test, { describe } from "node:test";
-import { TData } from "../src/TData.js";
+import { Ldata } from "../src/Ldata.js";
 
 const ITEMS = [
 	{ name: "a", type: "UInt", offset: 0, length: 16, init_value: 0 },
@@ -15,8 +15,8 @@ const ITEMS = [
 	{ name: "b", type: "UInt", offset: 32, length: 16, init_value: 0 },
 ];
 
-const LAYOUT = register_items("SAMPLE", ITEMS);
-const create = () => new TData(LAYOUT, "sample");
+const LAYOUT = register_items("Sample", ITEMS);
+const create = () => new Ldata(LAYOUT, "sample");
 
 const record = (data) => {
 	const events = [];

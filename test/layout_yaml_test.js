@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test, { describe } from "node:test";
 import { register_layout_data, register_sources } from "../src/layout.js";
-import { TData } from "../src/TData.js";
+import { Ldata } from "../src/Ldata.js";
 import { compiled_of, get_layout } from "../src/registry.js";
 
 const dir = mkdtempSync(join(tmpdir(), "tlms-layout-"));
@@ -27,7 +27,7 @@ function errors_of(yaml) {
 	assert.fail("the layout was accepted");
 }
 
-const SAMPLE = `
+const Sample = `
 flags:
   - { name: f0, type: Bool, offset: 8, init_value: true }
   - { name: f8, type: Bool, offset: 0, init_value: false, comment: high byte bit }
@@ -57,7 +57,7 @@ layouts:
 
 describe("YAML layout file", () => {
 	test("fragments are referenced by name from coupling and includes", () => {
-		const { layouts, fragments } = compile(SAMPLE);
+		const { layouts, fragments } = compile(Sample);
 		const { T } = layouts;
 		const offset_of = (name) => T.items.find((it) => it.name === name).offset;
 		assert.equal(offset_of("f0"), 24);
@@ -72,7 +72,7 @@ describe("YAML layout file", () => {
 	});
 
 	test("an omitted length follows the type, comments are kept", () => {
-		const { T } = compile(SAMPLE).layouts;
+		const { T } = compile(Sample).layouts;
 		const item = (name) => T.items.find((it) => it.name === name);
 		assert.equal(item("id").length, 16);
 		assert.equal(item("f8").length, 1);
@@ -81,8 +81,8 @@ describe("YAML layout file", () => {
 	});
 
 	test("the compiled layout constructs data blocks", () => {
-		const { T } = compile(SAMPLE).layouts;
-		const data = new TData(T, "t");
+		const { T } = compile(Sample).layouts;
+		const data = new Ldata(T, "t");
 		assert.equal(data.layout, T);
 		assert.equal(data.id, 7);
 		// status is composed from its bits, the bits of inline from the word
@@ -95,7 +95,7 @@ describe("YAML layout file", () => {
 	});
 
 	test("tags_at_byte lists the tags of each byte, a word before its bits", () => {
-		const { T } = compile(SAMPLE).layouts;
+		const { T } = compile(Sample).layouts;
 		const names = (byte) => compiled_of(T).tags_at_byte[byte].map((entry) => entry.name);
 		assert.deepEqual(names(0), ["id"]);
 		assert.deepEqual(names(2), ["status", "f8"]);
@@ -159,7 +159,7 @@ describe("parsed layout description", () => {
 			layouts: { PARSED: [{ name: "a", type: "UInt", offset: 0, init_value: 3 }, { includes: "tail", offset: 16 }] },
 			tail: [{ name: "b", type: "UInt", offset: 0, init_value: 4 }],
 		});
-		assert.equal(new TData(layouts.PARSED, "t").b, 4);
+		assert.equal(new Ldata(layouts.PARSED, "t").b, 4);
 		assert.equal(fragments.tail.length, 1);
 	});
 
@@ -176,43 +176,43 @@ describe("layout registry", () => {
 `;
 
 	test("a file with the same layouts gives the same Layout objects, whatever its path", () => {
-		const first = compile(source("REG_SAME"));
-		const second = compile(source("REG_SAME"));
-		assert.equal(second.layouts.REG_SAME, first.layouts.REG_SAME);
-		assert.equal(get_layout("REG_SAME"), first.layouts.REG_SAME);
-		assert.equal(new TData("REG_SAME", "t").a, 1);
+		const first = compile(source("Reg_Same"));
+		const second = compile(source("Reg_Same"));
+		assert.equal(second.layouts.Reg_Same, first.layouts.Reg_Same);
+		assert.equal(get_layout("Reg_Same"), first.layouts.Reg_Same);
+		assert.equal(new Ldata("Reg_Same", "t").a, 1);
 	});
 
 	test("a layout shared by two descriptions is one Layout whatever else they hold", () => {
-		const first = register_layout_data({ layouts: { REG_SHARED: [{ name: "a", type: "UInt", offset: 0, init_value: 1 }] } });
+		const first = register_layout_data({ layouts: { Reg_Shared: [{ name: "a", type: "UInt", offset: 0, init_value: 1 }] } });
 		const second = register_layout_data({
 			layouts: {
-				REG_SHARED: [{ name: "a", type: "UInt", offset: 0, init_value: 1 }],
-				REG_OTHER: [{ name: "b", type: "UInt", offset: 0, init_value: 2 }],
+				Reg_Shared: [{ name: "a", type: "UInt", offset: 0, init_value: 1 }],
+				Reg_Other: [{ name: "b", type: "UInt", offset: 0, init_value: 2 }],
 			},
 		});
-		assert.equal(second.layouts.REG_SHARED, first.layouts.REG_SHARED);
+		assert.equal(second.layouts.Reg_Shared, first.layouts.Reg_Shared);
 	});
 
 	test("the comment and the case of the type do not make another layout", () => {
-		const first = compile(source("REG_TEXT"));
+		const first = compile(source("Reg_Text"));
 		const second = compile(`layouts:
-  REG_TEXT:
+  Reg_Text:
     - { name: a, type: uint, offset: 0, init_value: 1, comment: described }
 `);
-		assert.equal(second.layouts.REG_TEXT, first.layouts.REG_TEXT);
+		assert.equal(second.layouts.Reg_Text, first.layouts.Reg_Text);
 	});
 
 	test("another layout under a used name is an error, and nothing of the file is registered", () => {
-		compile(source("REG_USED"));
+		compile(source("Reg_Used"));
 		const errors = errors_of(`layouts:
-  REG_NEW:
+  Reg_New:
     - { name: a, type: UInt, offset: 0, init_value: 1 }
-  REG_USED:
+  Reg_Used:
     - { name: a, type: UInt, offset: 0, init_value: 2 }
 `);
-		assert.deepEqual(errors, ["layout REG_USED: another layout is already named REG_USED"]);
-		assert.throws(() => get_layout("REG_NEW"), /unknown layout REG_NEW/);
+		assert.deepEqual(errors, ["layout Reg_Used: another layout is already named Reg_Used"]);
+		assert.throws(() => get_layout("Reg_New"), /unknown layout Reg_New/);
 	});
 
 	test("an invalid file registers nothing", () => {

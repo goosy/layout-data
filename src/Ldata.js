@@ -1,6 +1,6 @@
 import { Buffer } from "node:buffer";
 import { EventEmitter } from "node:events";
-import { TTag } from "./TTag.js";
+import { Ltag } from "./Ltag.js";
 import { emit_all } from "./dispatch.js";
 import { check_endian, io_range, load_entry, store_entry } from "./endian.js";
 import { Observer } from "./observer.js";
@@ -26,7 +26,7 @@ const class_access_listeners = new Set();
 let in_access = false;
 
 /**
- * The registered layout a TData argument stands for.
+ * The registered layout an Ldata argument stands for.
  *
  * @param {Layout | string} layout - A layout name, or the registered layout of its name.
  * @returns {Layout}
@@ -38,7 +38,7 @@ function resolve_layout(layout) {
 	return layout;
 }
 
-export class TData extends EventEmitter {
+export class Ldata extends EventEmitter {
 	/**
 	 * @type {Buffer}
 	 * @description Internal buffer, private (doc/spec-data-api.md §2.2).
@@ -79,7 +79,7 @@ export class TData extends EventEmitter {
 	 */
 	#transaction = null;
 	/**
-	 * @type {Map<string, TTag>}
+	 * @type {Map<string, Ltag>}
 	 * @description The tag handles created so far, by tag name.
 	 */
 	#handles = new Map();
@@ -117,14 +117,14 @@ export class TData extends EventEmitter {
 	/**
 	 * Retrieves the handle of a tag, creating it on first use.
 	 * @param {string} tagname - The name of the tag to retrieve.
-	 * @returns {TTag|undefined} The TTag handle, undefined for an unknown name.
+	 * @returns {Ltag|undefined} The Ltag handle, undefined for an unknown name.
 	 */
 	get(tagname) {
 		let tag = this.#handles.get(tagname);
 		if (tag) return tag;
 		const entry = this.#compiled.entries.get(tagname);
 		if (!entry) return undefined;
-		tag = new TTag(this, entry);
+		tag = new Ltag(this, entry);
 		this.#handles.set(tagname, tag);
 		return tag;
 	}
@@ -323,7 +323,7 @@ export class TData extends EventEmitter {
 	 * exception of the listeners, for a read.
 	 *
 	 * @param {"read" | "write"} kind
-	 * @param {TTag[]} tags
+	 * @param {Ltag[]} tags
 	 */
 	#accessed(kind, tags) {
 		const errors = [];
@@ -335,7 +335,7 @@ export class TData extends EventEmitter {
 	 * Calls the `access` listeners, pushing what they throw to `errors`.
 	 *
 	 * @param {"read" | "write"} kind
-	 * @param {TTag[]} tags
+	 * @param {Ltag[]} tags
 	 * @param {unknown[]} errors
 	 */
 	#emit_access(kind, tags, errors) {
@@ -362,7 +362,7 @@ export class TData extends EventEmitter {
 	 * @param {number} start
 	 * @param {number} end - Exclusive.
 	 * @param {number} [mask] - The bits of the bytes that are accessed.
-	 * @returns {TTag[]}
+	 * @returns {Ltag[]}
 	 */
 	#tags_in(start, end, mask = 0xff) {
 		const entries = new Set();
@@ -381,28 +381,28 @@ export class TData extends EventEmitter {
 	 * the layouts apart, as the registry holds one layout per name.
 	 *
 	 * @param {Layout} layout - A registered layout.
-	 * @returns {typeof TData}
+	 * @returns {typeof Ldata}
 	 */
 	static #class_of(layout) {
 		let Layout_Data = classes.get(layout.name);
 		if (!Layout_Data) {
-			Layout_Data = TData.#build_class(layout);
+			Layout_Data = Ldata.#build_class(layout);
 			classes.set(layout.name, Layout_Data);
 		}
 		return Layout_Data;
 	}
 
 	/**
-	 * Builds the class of a layout: a subclass of TData whose prototype holds
+	 * Builds the class of a layout: a subclass of Ldata whose prototype holds
 	 * the accessor of every tag, shared by all instances of the layout. The
 	 * accessors are defined here so that they reach the private buffer.
 	 *
 	 * @param {Layout} layout
-	 * @returns {typeof TData}
+	 * @returns {typeof Ldata}
 	 */
 	static #build_class(layout) {
-		const Layout_Data = class extends TData { };
-		Object.defineProperty(Layout_Data, "name", { value: `TData_${layout.name}` });
+		const Layout_Data = class extends Ldata { };
+		Object.defineProperty(Layout_Data, "name", { value: `Ldata_${layout.name}` });
 		const compiled = compiled_of(layout);
 		for (const entry of compiled.entries.values()) {
 			const { name, codec, byte, mask, size } = entry;
@@ -459,21 +459,21 @@ export class TData extends EventEmitter {
 	/**
 	 * Creates a data block of a layout (doc/spec-data-api.md §2.1).
 	 *
-	 * `new TData(layout, name)` returns an instance of the class built for the
-	 * layout name (a subclass of TData whose prototype holds the tag
+	 * `new Ldata(layout, name)` returns an instance of the class built for the
+	 * layout name (a subclass of Ldata whose prototype holds the tag
 	 * accessors), building the class on the first use of the name.
 	 *
 	 * @param {Layout | string} layout - A registered layout, or its name (get_layout).
-	 * @param {string} name - The name of the TData instance, a string that cannot be changed afterwards.
+	 * @param {string} name - The name of the Ldata instance, a string that cannot be changed afterwards.
 	 * @throws {TypeError} When name is not a string.
 	 * @throws {Error} For an unknown layout name, or a layout that is not the registered one.
 	 */
 	constructor(layout, name) {
 		super();
-		if (typeof name !== "string") throw new TypeError("the name of a tdata must be a string");
-		if (new.target === TData) {
+		if (typeof name !== "string") throw new TypeError("the name of an ldata must be a string");
+		if (new.target === Ldata) {
 			const registered = resolve_layout(layout);
-			return new (TData.#class_of(registered))(registered, name);
+			return new (Ldata.#class_of(registered))(registered, name);
 		}
 		this.#name = name;
 		this.#layout = new.target.layout;
