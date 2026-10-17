@@ -19,7 +19,7 @@
 | `src/endian.js` | Device byte order conversion of one entry and of a whole block (only `io_index_table` is exported) |
 | `src/types.js` | TypeScript declaration generation from layouts (`render_types`) |
 | `src/typedefs.js` | JSDoc definitions of the public types (the only source of the types, no run-time content) |
-| `dist/types/` | Declaration files generated from the JSDoc by `tsc`, called from a plugin in `rolldown.config.js` during the build (`tsconfig.json`); not committed |
+| `dist/types/` | Declaration files generated from the JSDoc by `tsc` during the build (`tsconfig.json`); not committed |
 | `type_check/consumer.ts` | Type test: imports the generated declarations by package name and checks the public interface with `Equal` assertions and `@ts-expect-error` (`pnpm test:types`, included in `pnpm test`) |
 
 ## 2. Parts
@@ -143,6 +143,6 @@ Every write path ends in the same private method of Ldata:
 
 ## 7. Build and test
 
-- `pnpm build`: rolldown bundles `src/index.js` into `dist/layout-data.js` (`yaml` is bundled into the library);
+- `pnpm build`: `tsc` generates the declarations in `dist/types` from the JSDoc (no bundler: the package ships `src` and depends on `yaml`);
 - `pnpm bench`: `bench/change_detection_bench.js` measures reading a block of 86 tags and 146 bytes (loading every tag from a device-ordered buffer, which detects and reports the changes). On a development machine, `load_tag` of every tag in one transaction takes one cycle about 3.1–3.2 µs with no change, 3.1–4.5 µs with a few changes, and 8.5–8.6 µs with every tag changed (each `load_tag` also checks, once, whether an `access` listener exists, which is about 0.6 µs of the 86 tags); copying the bytes with `io_index_table` and one `write_bytes` takes about 0.4 µs, 0.6–1.7 µs and 5.7–5.9 µs;
 - `pnpm test`: builds first, then runs the type tests and `node --test`; `pnpm lint`: ESLint.

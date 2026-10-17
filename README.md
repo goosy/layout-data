@@ -22,8 +22,6 @@ Requires Node.js >= 20.11. The package is ESM only.
 pnpm add layout-data
 ```
 
-`yaml` is bundled into the library, so nothing else needs to be installed.
-
 ## Usage
 
 Describe the layout (`pump.yaml`). Entries other than `layouts` are fragments that entries can reference by name. Offsets are in bits.
@@ -114,7 +112,7 @@ The specification and design documents are in [doc/](doc/spec.md) (English, `*.m
 
 ```bash
 pnpm install
-pnpm build      # bundle to dist/ and generate dist/types
+pnpm build      # generate dist/types
 pnpm test       # build, type tests, node --test
 pnpm lint
 ```

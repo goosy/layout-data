@@ -48,7 +48,7 @@ A layout is given by a YAML 1.2 file; see §6 of [spec-data-api.md](spec-data-ap
 
 ## 5. Distribution
 
-- Published as an ES module library with the entry `layout-data`. `yaml` is bundled, so users need not install it;
+- Published as an ES module library with the entry `layout-data`. `yaml` is a run-time dependency installed with it;
 - Type declarations are generated from the JSDoc of the source (`src/typedefs.js` and the comments of the functions are the only source). They are emitted to `dist/types` by the build; no hand-written `.d.ts`;
 - Node.js >= 20.11;
 - License: MPL-2.0 (see `LICENSE`). The library may be used as a component of products under any license; modifications to its files must be published under MPL-2.0, and copyright notices must be kept. The name "layout-data" is not covered by the license (MPL-2.0 §2.3).

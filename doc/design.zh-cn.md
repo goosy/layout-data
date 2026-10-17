@@ -17,7 +17,7 @@
 | `src/endian.js` | 单个条目和整块数据的设备字节序转换（只导出 `io_index_table`） |
 | `src/types.js` | 由布局生成 TypeScript 类型声明（`render_types`） |
 | `src/typedefs.js` | 公开类型的 JSDoc 定义（类型的唯一来源，无运行时内容） |
-| `dist/types/` | 构建时由 `rolldown.config.js` 中的插件调用 `tsc` 从 JSDoc 生成的声明文件（`tsconfig.json`），不入库 |
+| `dist/types/` | 构建时由 `tsc` 从 JSDoc 生成的声明文件（`tsconfig.json`），不入库 |
 | `type_check/consumer.ts` | 类型测试：以包名导入生成的声明，用 `Equal` 断言和 `@ts-expect-error` 检查公开接口（`pnpm test:types`，已包含在 `pnpm test` 中） |
 
 ## 2. 组成
@@ -141,6 +141,6 @@
 
 ## 7. 构建与测试
 
-- `pnpm build`：rolldown 把 `src/index.js` 打包为 `dist/layout-data.js`（`yaml` 打进库）；
+- `pnpm build`：`tsc` 从 JSDoc 生成 `dist/types` 中的声明文件（不使用打包工具：包直接发布 `src`，并依赖 `yaml`）；
 - `pnpm bench`：`bench/change_detection_bench.js` 测量读取一个 86 个 tag、146 字节的数据块（从设备字节序缓冲装载每个 tag，并检测、报告变化）的开销。开发机上，在一个事务中对每个 tag 调用 `load_tag`，每周期无变化约 3.1–3.2 µs，少量变化 3.1–4.5 µs，全部变化 8.5–8.6 µs（每次 `load_tag` 还要检查一次是否有 `access` 监听器，86 个 tag 合计约 0.6 µs）；用 `io_index_table` 按字节复制再一次 `write_bytes` 时分别约 0.4 µs、0.6–1.7 µs、5.7–5.9 µs；
 - `pnpm test`：先构建，再运行类型测试和 `node --test`；`pnpm lint`：ESLint。
