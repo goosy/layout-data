@@ -117,10 +117,11 @@ Every write path ends in the same private method of Ldata:
 - Outside a transaction, `diff()` is called synchronously inside the write statement, then `write` is emitted.
 - `diff()` is internal: no public method triggers a detection. Every write path reaches it through `#written()`, so the buffer never differs from the snapshot outside a write or a transaction.
 
-**Transactions.** `transaction(fn)` throws `Error` if a transaction is already open; otherwise it copies the buffer, registers the transaction state `{ written: false }` and calls `fn()` synchronously:
+**Transactions.** `transaction(fn)` throws `Error` if a transaction is already open; otherwise it copies the buffer, registers the transaction state `{ written: false, read: Set, write: Set }` and calls `fn()` synchronously:
 
-- `fn` returns normally: the transaction is closed, `diff()` is called once, one `write` is emitted if `written` is true, and the return value of `fn` is returned (it is not checked for being a Promise);
-- `fn` throws: the transaction is closed, the copy is written back to the buffer, no event is emitted, and the original exception is rethrown;
+- Accesses: inside a transaction `#emit_access` adds the tags to the `read` or `write` set of the state instead of calling the listeners. It is reached only when `#has_access_listeners()` was true, and it returns first while `in_access` is set, so nothing is gathered without a listener or during a listener. `#in_layout_order(tags)` sorts a set by the index of the entries at the end;
+- `fn` returns normally: the transaction is closed, the gathered `access` of kind `read` and then of kind `write` is emitted, `diff()` is called once, one `write` is emitted if `written` is true, and the return value of `fn` is returned (it is not checked for being a Promise);
+- `fn` throws: the transaction is closed, the copy is written back to the buffer, only the gathered `access` of kind `read` is emitted (what its listeners throw is dropped), and the original exception is rethrown;
 - The snapshot of the Observer stays untouched during the transaction: the `diff()` at commit is exactly the net change between the last detection before the transaction and now. After a rollback the buffer is back to its content at the start, equal to the snapshot again;
 - Events are emitted after the transaction is closed, so writes and transactions in handlers are ordinary ones; an exception thrown by a handler at commit is thrown by `transaction` after all events and `write` are dispatched (see the dispatch below) and does not roll back;
 - Node.js runs no other JS code during the transaction, so no other code on the thread can access the ldata and the transaction needs no lock or isolation. `written` is a boolean flag, not a count, because the `write` event carries nothing beyond the ldata.

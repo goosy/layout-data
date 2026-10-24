@@ -1,9 +1,9 @@
 ---
 id: jt0zxgth
 opened: 2026-10-24T02:34:21.133Z
-closed:
+closed: 2026-10-24T05:06:41.000Z
 title: 把 access 纳入 transaction
-status: open        # open | accepted | fixed | rejected | wontfix
+status: fixed       # open | accepted | fixed | rejected | wontfix
 fixed_in: []        # commit IDs, backfilled at version commit time
 labels: []
 remote:
@@ -49,3 +49,12 @@ spec-data-api §2.8 规定：事务内的读写"emit it at once, as usual"，即
 这是对已发布版本的行为变化，需修改 §2.8、§4.2、§4.4 并写入 CHANGELOG。
 
 ## 裁定
+
+接受，按提案实现。事务内立即发出 `access` 与事务按整体发出 `change`、`write` 不一致，回滚后仍报告写依赖是错误的诊断。推迟后 `access read` 监听器不能再否决事务内的读取：`access` 定位于诊断，读前介入另设读钩子，所以放弃这种能力。
+
+提案未写明的两点，一并确定：
+
+- 只有访问发生时有 `access` 监听器（实例的或类级的），这次访问才累积，所以没有监听器时每次访问仍只多一次检查；提交时发给当时已订阅的监听器，与提交时的 `change`、`write` 相同。
+- `access` 监听器运行期间的访问不发出事件，也不累积；监听器内开启的事务，提交时不发出 `access`。
+
+提交时 `access` 监听器写同一个 ldata 会提前触发检测，这在事务外已是如此，不属于本 issue。

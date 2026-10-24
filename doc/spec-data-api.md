@@ -151,9 +151,9 @@ Emitted on every access to the tags of the ldata, so that a tool can find out wh
   | `write_bit(offset, mask, value)` | `write` | the tags of that byte, except the Bools whose bit is not in `mask` |
 
   A combined word and its bits share bytes, so a raw access to those bytes names the word and its bits, while a read or write by name of the word names the word only. A raw access that touches no byte (an empty range or source) names no tag and emits nothing;
-- It is emitted only for an access that took effect: a refused write (§2.3, §5) and an access that throws an argument error emit nothing. A write emits it right after the new value has taken effect, before the detection of the write and its `change` and `write` events; reading and writing inside a transaction emit it at once, as usual. The restoring of a rolled-back transaction is not an access;
-- A listener may read and write any tag, but the accesses made while an `access` listener runs (by the listener itself, to any ldata) emit nothing, which would never end;
-- An exception thrown by a listener follows §4.4: every listener is called, the write goes on to its detection and its events, and the first exception is thrown by the statement afterwards; a read throws it instead of returning the value;
+- It is emitted only for an access that took effect: a refused write (§2.3, §5) and an access that throws an argument error emit nothing. A write emits it right after the new value has taken effect, before the detection of the write and its `change` and `write` events. Inside a transaction it is not emitted at once: the accesses are gathered and emitted at the end of the transaction (§4.2). The restoring of a rolled-back transaction is not an access;
+- A listener may read and write any tag, but the accesses made while an `access` listener runs (by the listener itself, to any ldata) emit nothing, which would never end; a transaction does not gather them either;
+- An exception thrown by a listener follows §4.4: every listener is called, the write goes on to its detection and its events, and the first exception is thrown by the statement afterwards; a read throws it instead of returning the value. The accesses inside a transaction call the listeners at its end, and their exceptions follow §4.2;
 - An instance listener sees only the ldata it is subscribed on. To observe every ldata of the process, including those not created yet, subscribe on the class (below).
 
 ```js
@@ -233,9 +233,11 @@ A detection is run by Ldata itself after every write (inside a transaction, at i
 Because a detection runs right after every write, the several writes of one logical step let subscribers see a half-updated intermediate state. A **transaction** makes a group of writes one whole: no event is emitted during it, and at its end it is either committed at once or undone entirely.
 
 - Start and end: `transaction(fn)` calls `fn()` synchronously and commits when `fn` returns; its return value is the return value of `transaction`;
-- Inside a transaction every read and write is allowed: by name, through an Ltag, raw reads and writes. A write takes effect at once and reads give the uncommitted current value; a write triggers no detection and emits neither `change` nor `write`;
+- Inside a transaction every read and write is allowed: by name, through an Ltag, raw reads and writes. A write takes effect at once and reads give the uncommitted current value; a write triggers no detection and emits neither `change` nor `write`, and no access emits `access`;
 - Commit: after the transaction is closed, one detection (§4.1) runs and emits the `change` events. Its baseline is the values at the last detection before the transaction, so several writes in the transaction merge into one event, and a value changed and restored emits none. Then, if the transaction contained a write by name, through an Ltag or a raw write, one `write` (§2.7) is emitted, however many such writes there were;
-- Rollback: when `fn` throws, the content of the ldata is restored to what it was at the start of the transaction and no event is emitted; the original exception is rethrown;
+- Accesses: `access` (§2.8) is not emitted during the transaction. The tags read and the tags written are gathered apart, each as a union; an access is gathered only when the ldata or the class has an `access` listener at that moment. At the end they are emitted to the listeners subscribed then: at most one `access` of kind `read` and one of kind `write`, each with its tags in layout order and without repeats, and none for a kind with no tag;
+- Commit order: the gathered `access` of kind `read`, then that of kind `write`, then the detection and its `change` events, then `write`, as an access outside a transaction comes before its detection;
+- Rollback: when `fn` throws, the content of the ldata is restored to what it was at the start of the transaction, and then only the gathered `access` of kind `read` is emitted, as those reads did happen; the writes were undone, so neither their `access` nor `change` nor `write` is emitted. What the `access` listeners throw is dropped and the original exception is rethrown;
 - Starting another transaction inside a transaction throws `Error`; if `fn` does not handle it, the transaction rolls back;
 - Events are emitted after the transaction is closed, so writes and transactions in handlers are ordinary ones. An exception thrown by a handler at commit propagates out of `transaction` as in §4.4, but the transaction is already committed and is not rolled back.
 
@@ -257,12 +259,12 @@ Boundaries of a transaction:
 
 ### 4.4 Exceptions thrown by handlers
 
-A handler (a listener of `change` or `write`) may throw. The library never logs it and emits no `error` event; the rules are:
+A handler (a listener of `change`, `write` or `access`) may throw. The library never logs it and emits no `error` event; the rules are:
 
 - **No event is lost**: a write is dispatched completely. All the `change` events of its detection are emitted in the order of §4.3, then `write`; every listener of every event is called, in the order it subscribed. A listener that throws does not stop the others, the later listeners of the same event, the later events and `write` are still delivered;
 - **The first exception is thrown**: when the dispatch is complete, the write statement (an assignment by name, `tag.value = v`, a raw write, `load_tag`) throws the first exception caught. The other exceptions are dropped;
 - **The value stands**: the new value has taken effect before any event, so it is not rolled back, and `write` is emitted even though the statement throws. A refused write (§2.3) is the only write that throws without taking effect;
-- **A transaction** at its commit follows the same rules, and the first exception propagates out of `transaction`, which has been committed (§4.2). When `fn` itself throws, nothing is emitted and the changes are rolled back, as before;
+- **A transaction** at its commit follows the same rules, the `access` listeners included, and the first exception propagates out of `transaction`, which has been committed (§4.2). When `fn` itself throws, the changes are rolled back and only the gathered `access` of kind `read` is emitted; what its listeners throw is dropped and the exception of `fn` is rethrown;
 - **Nested writes**: a write made by a handler is an ordinary write; the exception it throws goes into the handler that made it, and it is the handler's own exception if the handler does not catch it. The oscillation exception of §4.3 counts as an exception of the dispatch under the same rules.
 ## 5. Errors
 

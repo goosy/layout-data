@@ -130,19 +130,110 @@ describe("2.8 the access event", () => {
 		assert.deepEqual(order.filter((line) => line !== "access read 9"), ["access write 9", "change id", "write"]);
 	});
 
-	test("it is emitted inside a transaction at once, and a rollback is not an access", () => {
+	test("a transaction gathers its accesses and emits one read and one write at the commit", () => {
 		const { data, seen } = watched();
+		const order = [];
+		data.on("access", (kind) => order.push(`access ${kind}`));
+		data.on("change", (name) => order.push(`change ${name}`));
+		data.on("write", () => order.push("write"));
 		data.transaction(() => {
+			data.pressure = 2.5;
 			data.id = 1;
 			void data.pressure;
+			void data.id;
+			data.read_bytes(2, 1); // the word and fault
+			data.id = 2;
+			assert.deepEqual(seen, []);
 		});
-		assert.deepEqual(seen, [["write", ["id"]], ["read", ["pressure"]]]);
-		seen.length = 0;
+		assert.deepEqual(seen, [["read", ["id", "status", "fault", "pressure"]], ["write", ["id", "pressure"]]]);
+		assert.deepEqual(order, ["access read", "access write", "change id", "change pressure", "write"]);
+	});
+
+	test("a transaction that only reads emits no write access, and one with no access emits none", () => {
+		const { data, seen } = watched();
+		data.transaction(() => void data.id);
+		data.transaction(() => {});
+		assert.deepEqual(seen, [["read", ["id"]]]);
+	});
+
+	test("read_bit bit by bit in a transaction names only the Bools read, once", () => {
+		const { data, seen } = watched();
+		data.transaction(() => {
+			data.read_bit(2, 0x01); // fault
+			data.read_bit(3, 0x01); // run
+			data.read_bit(3, 0x02); // only the word
+		});
+		assert.deepEqual(seen, [["read", ["status", "run", "fault"]]]);
+	});
+
+	test("a rollback emits the reads, not the writes, and rethrows the exception of fn", () => {
+		const { data, seen } = watched();
+		data.on("access", () => { throw new Error("listener"); });
 		assert.throws(() => data.transaction(() => {
+			void data.pressure;
 			data.id = 2;
 			throw new Error("rollback");
 		}), /rollback/);
-		assert.deepEqual(seen, [["write", ["id"]]]);
+		assert.deepEqual(seen, [["read", ["pressure"]]]);
+		data.removeAllListeners("access");
+		assert.equal(data.id, 7);
+	});
+
+	test("an exception of a listener does not fail a read in a transaction; transaction throws it after the commit", () => {
+		const { data, seen } = watched();
+		const order = [];
+		data.on("access", () => { throw new Error("first"); });
+		data.on("change", (name) => order.push(`change ${name}`));
+		data.on("write", () => order.push("write"));
+		let read;
+		assert.throws(() => data.transaction(() => {
+			read = data.id;
+			data.id = 3;
+		}), /first/);
+		assert.equal(read, 7);
+		assert.deepEqual(seen, [["read", ["id"]], ["write", ["id"]]]);
+		assert.deepEqual(order, ["change id", "write"]);
+		data.removeAllListeners("access");
+		assert.equal(data.id, 3);
+	});
+
+	test("an access is gathered only while a listener exists, and goes to the listeners of the commit", () => {
+		const data = new Ldata(LAYOUT, "d");
+		const seen = [];
+		const gone = () => seen.push("gone");
+		data.on("access", gone);
+		data.transaction(() => {
+			data.off("access", gone);
+			void data.id; // no listener: not gathered
+			data.on("access", (kind, tags) => seen.push([kind, tags.map((tag) => tag.name)]));
+			void data.pressure;
+		});
+		assert.deepEqual(seen, [["read", ["pressure"]]]);
+	});
+
+	test("the accesses to another ldata in a transaction are emitted at once", () => {
+		const { data, seen } = watched();
+		const other = watched();
+		data.transaction(() => {
+			void other.data.id;
+			assert.deepEqual(other.seen, [["read", ["id"]]]);
+		});
+		assert.deepEqual(seen, []);
+	});
+
+	test("a transaction inside an access listener gathers nothing", () => {
+		const data = new Ldata(LAYOUT, "d");
+		const seen = [];
+		data.on("access", (kind, tags) => {
+			seen.push([kind, tags.map((tag) => tag.name)]);
+			data.transaction(() => {
+				void data.pressure;
+				data.pressure = 4;
+			});
+		});
+		void data.id;
+		assert.deepEqual(seen, [["read", ["id"]]]);
+		assert.equal(data.pressure, 4);
 	});
 
 	test("the accesses of a listener do not emit again", () => {
@@ -329,6 +420,18 @@ describe("2.8 class-level access listeners", () => {
 		t.after(() => Ldata.off_access(listener));
 		void data.id;
 		assert.deepEqual(seen, ["read"]);
+	});
+
+	test("a transaction defers it as well, to the commit", (t) => {
+		const { seen } = observe(t);
+		const data = new Ldata(LAYOUT, "d");
+		data.transaction(() => {
+			data.id = 1;
+			data.id = 2;
+			void data.pressure;
+			assert.deepEqual(seen, []);
+		});
+		assert.deepEqual(seen, [["d", "read", ["pressure"]], ["d", "write", ["id"]]]);
 	});
 
 	test("a listener must be a function", () => {

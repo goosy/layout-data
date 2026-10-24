@@ -73,9 +73,10 @@ export class Ldata extends EventEmitter {
 	/** @type {Observer} */
 	#observer;
 	/**
-	 * The open transaction, null outside one (doc/spec-data-api.md §4.2).
+	 * The open transaction, null outside one (doc/spec-data-api.md §4.2): whether
+	 * it wrote, and the tags it read and wrote, gathered for `access`.
 	 *
-	 * @type {{ written: boolean } | null}
+	 * @type {{ written: boolean, read: Set<Ltag>, write: Set<Ltag> } | null}
 	 */
 	#transaction = null;
 	/**
@@ -130,11 +131,12 @@ export class Ldata extends EventEmitter {
 	}
 
 	/**
-	 * Runs fn synchronously and makes its writes one whole: no event is emitted
-	 * during it; when fn returns, one detection runs and one `write` is emitted
-	 * if fn wrote; when fn throws, the buffer is restored and no event is
-	 * emitted (doc/spec-data-api.md §4.2). The return value of fn is not
-	 * inspected: a Promise is neither awaited nor rejected.
+	 * Runs fn synchronously and makes its accesses and writes one whole: no
+	 * event is emitted during it; when fn returns, the gathered `access` is
+	 * emitted, one detection runs and one `write` is emitted if fn wrote; when
+	 * fn throws, the buffer is restored and only the gathered `access` of kind
+	 * `read` is emitted (doc/spec-data-api.md §4.2). The return value of fn is
+	 * not inspected: a Promise is neither awaited nor rejected.
 	 *
 	 * @template T
 	 * @param {() => T} fn
@@ -144,7 +146,7 @@ export class Ldata extends EventEmitter {
 	transaction(fn) {
 		if (this.#transaction) throw new Error(`${this.name}: a transaction is already open`);
 		const saved = Buffer.from(this.#buffer);
-		const state = { written: false };
+		const state = { written: false, read: new Set(), write: new Set() };
 		this.#transaction = state;
 		let result;
 		try {
@@ -153,10 +155,13 @@ export class Ldata extends EventEmitter {
 			this.#transaction = null;
 			saved.copy(this.#buffer);
 			this.#observer.discard();
+			this.#emit_access("read", this.#in_layout_order(state.read), []); // the writes were undone, the reads were not
 			throw error;
 		}
 		this.#transaction = null;
 		const errors = [];
+		this.#emit_access("read", this.#in_layout_order(state.read), errors);
+		this.#emit_access("write", this.#in_layout_order(state.write), errors);
 		this.#observer.diff(errors);
 		if (state.written) emit_all(this, "write", [this], errors);
 		if (errors.length > 0) throw errors[0];
@@ -332,7 +337,6 @@ export class Ldata extends EventEmitter {
 		}
 		if (this.#transaction) {
 			this.#transaction.written = true;
-			if (errors.length > 0) throw errors[0];
 			return;
 		}
 		this.#observer.diff(errors);
@@ -359,7 +363,8 @@ export class Ldata extends EventEmitter {
 	}
 
 	/**
-	 * Calls the `access` listeners, pushing what they throw to `errors`.
+	 * Calls the `access` listeners, pushing what they throw to `errors`; inside
+	 * a transaction only gathers the tags (doc/spec-data-api.md §4.2).
 	 *
 	 * @param {"read" | "write"} kind
 	 * @param {Ltag[]} tags
@@ -367,6 +372,11 @@ export class Ldata extends EventEmitter {
 	 */
 	#emit_access(kind, tags, errors) {
 		if (in_access || tags.length === 0) return;
+		if (this.#transaction) {
+			const gathered = this.#transaction[kind];
+			for (const tag of tags) gathered.add(tag);
+			return;
+		}
 		in_access = true;
 		try {
 			emit_all(this, "access", [kind, tags], errors);
@@ -401,6 +411,17 @@ export class Ldata extends EventEmitter {
 			}
 		}
 		return [...entries].sort((a, b) => a.index - b.index).map((entry) => this.get(entry.name));
+	}
+
+	/**
+	 * The gathered tags of a transaction, in layout order.
+	 *
+	 * @param {Set<Ltag>} tags
+	 * @returns {Ltag[]}
+	 */
+	#in_layout_order(tags) {
+		const entries = this.#compiled.entries;
+		return [...tags].sort((a, b) => entries.get(a.name).index - entries.get(b.name).index);
 	}
 
 	/**
