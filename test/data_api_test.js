@@ -310,6 +310,16 @@ describe("2.5 raw reads and writes", () => {
 		assert.deepEqual(events.map(([name]) => name), ["status", "status", "run", "status", "run"]);
 	});
 
+	test("read_bit tells whether any of the masked bits is set", () => {
+		const data = new Ldata(LAYOUT, "d");
+		data.write_bit(3, 0x81, true);
+		assert.equal(data.read_bit(3, 0x01), true);
+		assert.equal(data.read_bit(3, 0x02), false);
+		assert.equal(data.read_bit(3, 0x82), true);
+		assert.equal(data.read_bit(3, 0x7e), false);
+		assert.equal(data.read_bit(2, 0xff), false);
+	});
+
 	test("every raw write emits write, also one that changes nothing; a read does not", () => {
 		const data = new Ldata(LAYOUT, "d");
 		let writes = 0;
@@ -317,6 +327,7 @@ describe("2.5 raw reads and writes", () => {
 		data.write_bytes(0, data.read_bytes(0, 2));
 		data.write_bit(3, 0x01, true);
 		data.read_bytes();
+		data.read_bit(3, 0x01);
 		assert.equal(writes, 2);
 	});
 
@@ -346,8 +357,11 @@ describe("2.5 raw reads and writes", () => {
 		assert.throws(() => data.write_bytes(0, [1, 2]), TypeError);
 		assert.throws(() => data.write_bit(8, 0x01, true), RangeError);
 		assert.throws(() => data.write_bit(-1, 0x01, true), RangeError);
+		assert.throws(() => data.read_bit(8, 0x01), RangeError);
+		assert.throws(() => data.read_bit(-1, 0x01), RangeError);
 		for (const mask of [0, 0x100, -1, 1.5, "1", Number.NaN]) {
 			assert.throws(() => data.write_bit(0, mask, true), RangeError, String(mask));
+			assert.throws(() => data.read_bit(0, mask), RangeError, String(mask));
 		}
 		assert.deepEqual(data.read_bytes(), before);
 		assert.equal(writes, 0);

@@ -79,6 +79,17 @@ describe("2.8 the access event", () => {
 		assert.deepEqual(seen, [["write", ["status", "fault"]], ["write", ["status", "run"]], ["write", ["status"]]]);
 	});
 
+	test("read_bit names the tags of the byte, but not the Bools of the other bits", () => {
+		const { data, seen } = watched();
+		data.read_bit(2, 0x01); // bit 0 of byte 2: fault
+		data.read_bit(3, 0x03); // bits 0 and 1 of byte 3: run
+		data.read_bit(3, 0x02); // another bit of byte 3: only the word
+		data.read_bit(4, 0x01); // a byte of pressure
+		assert.deepEqual(seen, [
+			["read", ["status", "fault"]], ["read", ["status", "run"]], ["read", ["status"]], ["read", ["pressure"]],
+		]);
+	});
+
 	test("load_tag is a write and store_tag a read of that tag", () => {
 		const { data, seen } = watched();
 		const io = new Uint8Array(8);
@@ -102,6 +113,8 @@ describe("2.8 the access event", () => {
 		assert.throws(() => data.read_bytes(0, 99), RangeError);
 		assert.throws(() => data.write_bytes(9, Uint8Array.of(1)), RangeError);
 		assert.throws(() => data.write_bit(0, 0, true), RangeError);
+		assert.throws(() => data.read_bit(0, 0), RangeError);
+		assert.throws(() => data.read_bit(8, 0x01), RangeError);
 		assert.throws(() => data.load_tag("nope", new Uint8Array(8), "BE"), /unknown tag/);
 		assert.throws(() => data.store_tag("id", new Uint8Array(1), "BE"), RangeError);
 		assert.deepEqual(seen, []);

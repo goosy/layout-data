@@ -110,6 +110,7 @@ assert_type<Equal<ReturnType<typeof ldata.read_bytes>, Buffer>>();
 ldata.read_bytes(2);
 ldata.read_bytes(0, 2);
 ldata.write_bit(0, 0x01, true);
+assert_type<Equal<ReturnType<typeof ldata.read_bit>, boolean>>();
 ldata.write_bytes(0, Buffer.alloc(2));
 ldata.write_bytes(0, new Uint8Array(2));
 ldata.on("change", () => {});
@@ -143,6 +144,8 @@ ldata.write_bytes(0, [1, 2]);
 ldata.read_bytes(0, "2");
 // @ts-expect-error a bit value is a boolean
 ldata.write_bit(0, 1, 1);
+// @ts-expect-error the mask is required
+ldata.read_bit(0);
 
 // Ltag
 if (tag) {

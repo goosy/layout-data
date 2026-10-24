@@ -196,6 +196,22 @@ export class Ldata extends EventEmitter {
 	}
 
 	/**
+	 * Reads the bits selected by mask of the byte at offset
+	 * (doc/spec-data-api.md §2.5); `access` names only the Bools of those bits.
+	 *
+	 * @param {number} offset - Byte offset.
+	 * @param {number} mask - An integer from 1 to 0xff.
+	 * @returns {boolean} Whether any of the bits is set.
+	 * @throws {RangeError} For an offset out of range, or a mask that is not an integer from 1 to 0xff.
+	 */
+	read_bit(offset, mask) {
+		this.#check_bit(offset, mask);
+		const value = (this.#buffer[offset] & mask) !== 0;
+		if (this.#has_access_listeners()) this.#accessed("read", this.#tags_in(offset, offset + 1, mask));
+		return value;
+	}
+
+	/**
 	 * Writes the bits selected by mask of the byte at offset; the other bits
 	 * are unchanged (doc/spec-data-api.md §2.5).
 	 *
@@ -205,10 +221,7 @@ export class Ldata extends EventEmitter {
 	 * @throws {RangeError} For an offset out of range, or a mask that is not an integer from 1 to 0xff.
 	 */
 	write_bit(offset, mask, value) {
-		this.#check_range(offset, 1);
-		if (!Number.isInteger(mask) || mask < 1 || mask > 0xff) {
-			throw new RangeError(`${this.name}: mask ${mask} must be an integer from 1 to 0xff`);
-		}
+		this.#check_bit(offset, mask);
 		const buffer = this.#buffer;
 		buffer[offset] = value ? buffer[offset] | mask : buffer[offset] & ~mask;
 		this.#written(offset, offset + 1, null, mask);
@@ -283,6 +296,20 @@ export class Ldata extends EventEmitter {
 		}
 		if (!Number.isInteger(length) || length < 0 || offset + length > this.#buffer.length) {
 			throw new RangeError(`${this.name}: length ${length} at offset ${offset} exceeds the data block`);
+		}
+	}
+
+	/**
+	 * Checks the arguments of read_bit and write_bit.
+	 *
+	 * @param {number} offset
+	 * @param {number} mask
+	 * @throws {RangeError}
+	 */
+	#check_bit(offset, mask) {
+		this.#check_range(offset, 1);
+		if (!Number.isInteger(mask) || mask < 1 || mask > 0xff) {
+			throw new RangeError(`${this.name}: mask ${mask} must be an integer from 1 to 0xff`);
 		}
 	}
 

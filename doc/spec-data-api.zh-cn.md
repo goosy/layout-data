@@ -82,6 +82,7 @@ const tag = data.get("pressure");
 | --- | --- |
 | `read_bytes(offset = 0, length = size - offset)` | 从 `offset` 起读 `length` 个字节，返回副本（`Buffer`）；改动副本不影响 ldata |
 | `write_bytes(offset, source)` | 从 `offset` 起写入 `source`（`Uint8Array`）的全部字节；`source` 为空时什么也不写，不算一次写入，不发出 `write` |
+| `read_bit(offset, mask)` | 读 `offset` 处字节中由 `mask` 指定的位，其中任一位被置位时返回 `true` |
 | `write_bit(offset, mask, value)` | 写 `offset` 处字节中由 `mask` 指定的位，`value` 按真假值处理，其余位不变 |
 
 ```js
@@ -90,7 +91,7 @@ const bytes = data.read_bytes();                     // 读出整块内容的副
 ```
 
 - 写入的范围不必与 tag 对齐：写到的字节属于哪些 tag，这些 tag 的值就随之改变，并按 §4 发出事件；
-- 没有 `read_bit`：读一位用 `read_bytes(offset, 1)[0] & mask`。`write_bit` 之所以存在，是因为它是一次完成的“读-改-写”，调用方无法用 `write_bytes` 可靠地拼出；
+- `read_bit` 和 `write_bit` 使用同样的 `mask`。`write_bit` 是一次完成的“读-改-写”，调用方无法用 `write_bytes` 可靠地拼出。`read_bit` 得到的不比 `read_bytes(offset, 1)[0] & mask` 多，它存在是为了让 `access` 只指出被读的位所属的 Bool（§2.8）。多位 `mask` 时要得到各位的值，用 `read_bytes`；
 - `offset` 或 `length` 不是范围内的非负整数、写入越过数据块末尾、`mask` 不是 1 到 0xff 的整数时抛出 `RangeError`；`source` 不是 `Uint8Array` 时抛出 `TypeError`。参数在改动任何字节之前检查：出错时数据不变，也不发出 `write`。
 
 ### 2.6 事务
@@ -144,6 +145,7 @@ ldata 的 tag 每被访问一次就发出一次，供工具查出一段代码碰
   | `store_tag`、`tag.store` | `read` | 该 tag |
   | `read_bytes(offset, length)` | `read` | 在该范围内有字节的 tag |
   | `write_bytes(offset, source)` | `write` | 在该范围内有字节的 tag |
+  | `read_bit(offset, mask)` | `read` | 该字节上的 tag，但位不在 `mask` 内的 Bool 除外 |
   | `write_bit(offset, mask, value)` | `write` | 该字节上的 tag，但位不在 `mask` 内的 Bool 除外 |
 
   组合字和它的组成位共用字节，所以对这些字节的原始访问会同时指出组合字和它的组成位，而按名读写组合字只指出组合字。没有触及任何字节的原始访问（空范围或空 `source`）不指出任何 tag，也不发出；
@@ -190,13 +192,13 @@ ldata 是一个对象，既用属性存放 tag，又有自己的方法，所以�
 
 | 来源 | 保留名 |
 | --- | --- |
-| Ldata 的成员 | `name`、`layout`、`size`、`get`、`transaction`、`read_bytes`、`write_bytes`、`write_bit`、`load_tag`、`store_tag` |
+| Ldata 的成员 | `name`、`layout`、`size`、`get`、`transaction`、`read_bytes`、`write_bytes`、`read_bit`、`write_bit`、`load_tag`、`store_tag` |
 | EventEmitter（Node.js 20.11） | `addListener`、`emit`、`eventNames`、`getMaxListeners`、`listenerCount`、`listeners`、`off`、`on`、`once`、`prependListener`、`prependOnceListener`、`rawListeners`、`removeAllListeners`、`removeListener`、`setMaxListeners`、`_events`、`_eventsCount`、`_maxListeners` |
 | Object | `constructor`、`hasOwnProperty`、`isPrototypeOf`、`propertyIsEnumerable`、`toLocaleString`、`toString`、`valueOf`、`__proto__`、`__defineGetter__`、`__defineSetter__`、`__lookupGetter__`、`__lookupSetter__` |
 
 - tag 使用保留名属于布局违规（§6.3）：注册这样的布局时抛出 `Error`（§6.4），所以不会有这种布局的 ldata；
 - Ldata 仍然是 EventEmitter 的子类。以后的 Node.js 可能给 EventEmitter 增加方法，清单不会跟着变，所以与这类方法同名的 tag 会遮蔽该方法。测试会把清单与运行中的 Node.js 比对；
-- 本包以后给 Ldata 增加成员，只用以 `Symbol` 为键的成员或静态方法，不会再给实例增加字符串名的成员，所以现在合法的 tag 名以后仍然合法；
+- 从 1.0 版起，本包给 Ldata 增加成员只用以 `Symbol` 为键的成员或静态方法，不会再给实例增加字符串名的成员，所以在 1.0 合法的 tag 名以后仍然合法。1.0 之前这个清单还可能增加；
 - 保留的事件名见 §2.7。名字是否保留不提供查询：没有公开函数；
 - Ltag 没有 tag 名，它的成员（§3）不是需要避开的清单。
 

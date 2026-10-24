@@ -22,7 +22,7 @@ describe("2.10 reserved names", () => {
 
 	test("the members listed in the specification are reserved", () => {
 		const members = ["name", "layout", "size", "get", "transaction",
-			"read_bytes", "write_bytes", "write_bit", "load_tag", "store_tag"];
+			"read_bytes", "write_bytes", "read_bit", "write_bit", "load_tag", "store_tag"];
 		const data = one_tag("Int", 0);
 		for (const name of members) {
 			assert.ok(name in data, name);

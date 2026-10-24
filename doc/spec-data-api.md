@@ -84,6 +84,7 @@ Untyped access to the bytes, for users that do not access by tag name (such as a
 | --- | --- |
 | `read_bytes(offset = 0, length = size - offset)` | Read `length` bytes starting at `offset` and return a copy (a `Buffer`); changing the copy does not affect the ldata |
 | `write_bytes(offset, source)` | Write all the bytes of `source` (a `Uint8Array`) starting at `offset`; an empty `source` writes nothing, is not a write and emits no `write` |
+| `read_bit(offset, mask)` | Read the bits of the byte at `offset` selected by `mask`; returns `true` when any of them is set |
 | `write_bit(offset, mask, value)` | Write the bits of the byte at `offset` selected by `mask`; `value` is taken by truthiness and the other bits are unchanged |
 
 ```js
@@ -92,7 +93,7 @@ const bytes = data.read_bytes();                     // a copy of the whole bloc
 ```
 
 - A write need not be aligned with tags: the tags that own the bytes written change with them, and emit events as in §4;
-- There is no `read_bit`: read a bit with `read_bytes(offset, 1)[0] & mask`. `write_bit` exists because it is a read-modify-write done in one step, which the caller cannot build reliably from `write_bytes`;
+- `read_bit` and `write_bit` take the same `mask`. `write_bit` is a read-modify-write done in one step, which the caller cannot build reliably from `write_bytes`. `read_bit` tells no more than `read_bytes(offset, 1)[0] & mask`; it exists so that `access` names only the Bools whose bit is read (§2.8). To get each bit of a multi-bit `mask`, use `read_bytes`;
 - An `offset` or `length` that is not a non-negative integer in range, a write past the end of the data block, or a `mask` that is not an integer from 1 to 0xff throws `RangeError`; a `source` that is not a `Uint8Array` throws `TypeError`. The arguments are checked before any byte is changed: on error the data is unchanged and no `write` is emitted.
 
 ### 2.6 Transactions
@@ -146,6 +147,7 @@ Emitted on every access to the tags of the ldata, so that a tool can find out wh
   | `store_tag`, `tag.store` | `read` | that tag |
   | `read_bytes(offset, length)` | `read` | the tags that have a byte in the range |
   | `write_bytes(offset, source)` | `write` | the tags that have a byte in the range |
+  | `read_bit(offset, mask)` | `read` | the tags of that byte, except the Bools whose bit is not in `mask` |
   | `write_bit(offset, mask, value)` | `write` | the tags of that byte, except the Bools whose bit is not in `mask` |
 
   A combined word and its bits share bytes, so a raw access to those bytes names the word and its bits, while a read or write by name of the word names the word only. A raw access that touches no byte (an empty range or source) names no tag and emits nothing;
@@ -192,13 +194,13 @@ An ldata is one object that holds both the tags (as properties) and its own meth
 
 | Source | Reserved names |
 | --- | --- |
-| Members of Ldata | `name`, `layout`, `size`, `get`, `transaction`, `read_bytes`, `write_bytes`, `write_bit`, `load_tag`, `store_tag` |
+| Members of Ldata | `name`, `layout`, `size`, `get`, `transaction`, `read_bytes`, `write_bytes`, `read_bit`, `write_bit`, `load_tag`, `store_tag` |
 | EventEmitter (Node.js 20.11) | `addListener`, `emit`, `eventNames`, `getMaxListeners`, `listenerCount`, `listeners`, `off`, `on`, `once`, `prependListener`, `prependOnceListener`, `rawListeners`, `removeAllListeners`, `removeListener`, `setMaxListeners`, `_events`, `_eventsCount`, `_maxListeners` |
 | Object | `constructor`, `hasOwnProperty`, `isPrototypeOf`, `propertyIsEnumerable`, `toLocaleString`, `toString`, `valueOf`, `__proto__`, `__defineGetter__`, `__defineSetter__`, `__lookupGetter__`, `__lookupSetter__` |
 
 - A tag with a reserved name is a violation of the layout (§6.3): registering such a layout throws `Error` (§6.4), so an ldata of it never exists;
 - Ldata stays a subclass of EventEmitter. A later version of Node.js may add methods to EventEmitter; the list does not follow them, so a tag named like such a method would hide it. The test suite compares the list with the running Node.js;
-- A later version of this package adds members to Ldata only as `Symbol`-keyed members or static methods, never as a new string-named member of an instance, so a tag name that is valid now stays valid;
+- From version 1.0 on, this package adds members to Ldata only as `Symbol`-keyed members or static methods, never as a new string-named member of an instance, so a tag name that is valid in 1.0 stays valid. Before 1.0 the list may still grow;
 - The reserved event names are in §2.7. Whether a name is reserved is not queryable: there is no public function for it;
 - An Ltag has no tag names, so its members (§3) are not a list to avoid.
 

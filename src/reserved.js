@@ -9,7 +9,7 @@
 const RESERVED_NAMES = new Set([
 	// members of Ldata
 	"name", "layout", "size", "get", "transaction",
-	"read_bytes", "write_bytes", "write_bit", "load_tag", "store_tag",
+	"read_bytes", "write_bytes", "read_bit", "write_bit", "load_tag", "store_tag",
 	// EventEmitter
 	"addListener", "emit", "eventNames", "getMaxListeners", "listenerCount", "listeners",
 	"off", "on", "once", "prependListener", "prependOnceListener", "rawListeners",
