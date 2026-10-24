@@ -4,7 +4,7 @@ opened: 2026-10-24T02:34:21.133Z
 closed: 2026-10-24T05:06:41.000Z
 title: 把 access 纳入 transaction
 status: fixed       # open | accepted | fixed | rejected | wontfix
-fixed_in: []        # commit IDs, backfilled at version commit time
+fixed_in: [00a5925]  # commit IDs, backfilled at version commit time
 labels: []
 remote:
 problem_title: 问题描述

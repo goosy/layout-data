@@ -1,5 +1,35 @@
 # Changelog
 
+## v0.3.0
+
+### Breaking changes
+
+- **`access` is gathered in a transaction.** Inside `transaction(fn)` no `access` is emitted at once: the tags read and the tags written are gathered apart, and at the end at most one `access` of kind `read` and one of kind `write` are emitted, each with its tags in layout order and without repeats. At commit they come before the `change` events and `write`; on rollback only the `read` one is emitted, as those reads did happen, and the undone writes report nothing. The exceptions of `access` listeners follow the rules of the other handlers at commit, and are dropped on rollback.
+- **`read_bit` is a reserved name.** A layout with a tag named `read_bit` no longer registers. Before 1.0 the list of reserved names may still grow; from 1.0 on new members are added only as `Symbol`-keyed members or static methods.
+
+### Features
+
+- **`read_bit(offset, mask)`** reads the bits of a byte selected by `mask` and returns `true` when any of them is set. Its `access` names only the Bools whose bit is read, as `write_bit` does for writes, instead of every tag of the byte as `read_bytes` would.
+
+### Packaging
+
+- `yaml` is no longer bundled: it is a run-time dependency, and the package ships `src` as is, with the declarations in `dist/types`.
+
+## v0.3.0 (中文)
+
+### 破坏性变更
+
+- **事务内汇总 `access`。** 在 `transaction(fn)` 内不再立即发出 `access`：被读的 tag 和被写的 tag 分别汇总，结束时最多发出一次 `read` 类和一次 `write` 类的 `access`，tag 按布局顺序且不重复。提交时它们先于 `change` 事件和 `write`；回滚时只发出 `read` 类，因为那些读确实发生了，被撤销的写不报告。`access` 监听函数的异常在提交时与其他处理器的规则相同，回滚时丢弃。
+- **`read_bit` 成为保留名。** 含名为 `read_bit` 的 tag 的布局不再能注册。1.0 之前保留名清单仍可能增加；从 1.0 起新成员只以 `Symbol` 键成员或静态方法的形式加入。
+
+### 功能
+
+- **`read_bit(offset, mask)`** 读取一个字节中由 `mask` 选中的位，任一位置位即返回 `true`。它的 `access` 只列出被读位的 Bool，与 `write_bit` 对写的处理一致，而不像 `read_bytes` 那样列出该字节的所有 tag。
+
+### 打包
+
+- 不再内置 `yaml`：它成为运行时依赖，包直接发布 `src`，类型声明在 `dist/types`。
+
 ## v0.2.0
 
 The first release.

@@ -4,7 +4,7 @@ opened: 2026-10-24T02:34:21.022Z
 closed: 2026-10-24T03:50:14.000Z
 title: 增加 read_bit，使按位读取的 access 只报告被读的 Bool
 status: fixed       # open | accepted | fixed | rejected | wontfix
-fixed_in: []        # commit IDs, backfilled at version commit time
+fixed_in: [3354983]  # commit IDs, backfilled at version commit time
 labels: []
 remote:
 problem_title: 问题描述
