@@ -2,11 +2,11 @@
 
 > English version of [spec-layout.zh-cn.md](spec-layout.zh-cn.md), the primary Chinese version. When the two differ, update both.
 >
-> This document defines the description, the registration and the object of a layout. It refines [spec.md](spec.md). The data objects created from a layout (Ldata / Ltag) are in [spec-data-api.md](spec-data-api.md), the implementation in §3 of [design.md](design.md).
+> This document defines the description, the scopes, the registration and the object of a layout. It refines [spec.md](spec.md). The data objects created from a layout (Ldata / Ltag) are in [spec-data-api.md](spec-data-api.md), the implementation in §3 of [design.md](design.md).
 
 ## 1. Flow
 
-The flow is **register once, get the layout, create from it**: the layouts are described (§2 to §4), all of them are registered by one call of `register_layout` (§5), and from then on `get_layout("Pump")` gets a layout by its name and its `create_ldata("pump_1")` creates data blocks ([spec-data-api.md](spec-data-api.md) §2.1). The user needs to know how to express a layout as a YAML structure and which name it has; whether it is compiled, and into what, is not part of the flow.
+The flow is **create a scope, register once, get the layout, create from it**: the layouts are described (§2 to §4), a scope is created, all the layouts are registered by one call of its `register_layout` (§5), and from then on `get_layout("Pump")` of the scope gets a layout by its name and its `create_ldata("pump_1")` creates data blocks ([spec-data-api.md](spec-data-api.md) §2.1). The user needs to know how to express a layout as a YAML structure, which name it has and in which scope it is registered; whether it is compiled, and into what, is not part of the flow.
 
 ## 2. Structure
 
@@ -56,8 +56,8 @@ There are two kinds of entry, and the declarations name them (`Layout_Item` is e
 | An inclusion | `includes` and `offset` are required; `name_prefix` is optional; it has no `name` and no `type` | `Include_Item` |
 
 - `coupling` is a fragment name or an inline list of tag entries, never a list of names: the names of the bits are a result of the registration (they appear in `Layout_Tag.coupling`, §7), not an input;
-- A description object has the declaration `Layout_Description`: `layouts`, a mapping from layout names to lists of entries, and one list of entries for each fragment. In the declarations the parameter of `register_layout` is typed with it (`string | Layout_Description`, or a list of them), so that an editor completes the fields of an entry and notices a misspelled one;
-- The `fragments` that `register_layout` returns hold the entries with the references expanded: `includes` and `coupling` are lists of entries, never names, and every `length` is present. Their declaration is the same `Layout_Item`.
+- A description object has the declaration `Layout_Description`: `layouts`, a mapping from layout names to lists of entries, and one list of entries for each fragment. In the declarations the parameter of `register_layout` of a scope is typed with it (`string | Layout_Description`, or a list of them), so that an editor completes the fields of an entry and notices a misspelled one;
+- The `fragments` that `register_layout` of a scope returns hold the entries with the references expanded: `includes` and `coupling` are lists of entries, never names, and every `length` is present. Their declaration is the same `Layout_Item`.
 
 ## 4. Validity
 
@@ -69,34 +69,50 @@ There are two kinds of entry, and the declarations name them (`Layout_Item` is e
 - The total length of a layout is a whole number of registers (a multiple of 16 bits);
 - Referenced fragments must exist, and fragments must not reference each other in a cycle.
 
-## 5. Registering
+## 5. Scopes and registering
 
 ```js
-register_layout("pump.yaml");                                     // one file
-register_layout(["common.yaml", "pump.yaml", "valve.yaml"]);      // several files
-register_layout(["common.yaml", { layouts: { INLINE: [...] } }]); // description files and objects
-const pump = get_layout("Pump").create_ldata("pump_1");           // from then on, get the layout and create
+import { create_scope, get_scope } from "layout-data";
+const scope = create_scope("lib_a");                              // create a scope
+scope.register_layout(["common.yaml", "pump.yaml"]);              // register once per scope
+const pump = scope.get_layout("Pump").create_ldata("pump_1");     // from then on, get the layout and create
+get_scope("lib_a").get_layout("Pump");                            // elsewhere, get the scope by its name
 ```
 
-`register_layout(descriptions)` registers the layouts of the descriptions. A layout can be used only after it is registered.
+### 5.1 Scopes
+
+A scope (`Layout_Scope`) is the unit that separates layout names. It lets a library built on layout-data bring and register its own layouts, and an application combine several such libraries in one process.
+
+- Every scope has its own layouts and fragments: layout and fragment names are unique only within a scope, a layout can reference only the fragments of its own scope, and layouts or fragments of the same name in different scopes do not conflict;
+- **There is no default scope.** Layouts are registered only in a scope created explicitly, and an application creates a scope of its own too; the package has no global registration, lookup of layouts or type rendering, which are all methods of a scope;
+- `create_scope(name)` creates a scope. A scope name, like a layout name, must be an identifier of JavaScript (§4), so it has no `.`; a string such as a package name, with `@`, `/` or `-`, cannot be used as it is. A scope name is unique in the process and chosen by the library or application that creates it; a name that is not a string throws `TypeError`, one that is not an identifier throws `Error`, and one used by another scope throws `Error` (`a scope is already named X`). A scope lasts as long as the process and cannot be removed;
+- `get_scope(name)` returns the scope created under that name, and `undefined` when there is none, so it also tells whether a scope exists;
+- The members of a scope: the read-only `name`, the scope name; `register_layout(descriptions)`, which registers layouts (§5.2); `get_layout(name)`, the layout of this scope by its layout name (without the scope name); `render_types(options)`, the type declarations of all the layouts of this scope (§8). A scope object is frozen: any module can get it by its name, but none can replace its methods or properties, a change throwing `TypeError`. `Layout_Scope` is exported as a type only: scopes are made only by `create_scope`;
+- The `scope` of a layout is the scope it belongs to (§7). Errors name a layout as `<scope>.<layout>`, for example `unknown layout lib_a.Pump` or `lib_a.Pump: changes do not settle after 16 rounds`; the layout name itself is still `Pump`;
+- The package does not rule who may register in which scope: whoever gets a scope can register in it, and conflicts are prevented only by "every scope registers once" (§5.2), a second registration always throwing. A library that keeps its layouts from being decided by others registers right when it creates its scope, for example at the top level of its module, right after creating it, before any other code can get the scope; a library may also leave its scope for the user to register in, for example to let the user add layouts of its own to the descriptions of the library. How a library and its users work together is for the library to define.
+
+### 5.2 Registering
+
+`scope.register_layout(descriptions)` registers the layouts of the descriptions in the scope. A layout can be used only after it is registered.
 
 - `descriptions`: one description or a list of descriptions, each either **a string, the path of a description file**, or **an object, a description object** (the structure of §2: `layouts` plus the fragments; this is also how items are given in code, §6). A list does not hold lists, and an empty list is an error. A string is always a path, never YAML text;
-- **Once per process.** The layouts are registered by one call, so that the layouts and fragments are all known together and nothing depends on the order of calls. A second call throws `Error` (`register_layout can be called only once`), and the layouts of the first stay. A call that fails registers nothing and does not use up the call, so the program may go on to register something else, for example a default description when its own file is not valid;
+- **Once per scope.** The layouts are registered by one call, so that the layouts and fragments of a scope are all known together and nothing depends on the order of calls. A second call throws `Error` (`register_layout can be called only once in scope X`), and the layouts of the first stay. A call that fails registers nothing and does not use up the call, so it can be retried in the same scope, for example with a fallback description when its own file is not valid;
 - **The descriptions are merged, then resolved.** The layouts and the fragments of all the descriptions are collected first, and only then are the fragment references resolved, so a layout may name a fragment of any description, whatever the order of the list. A description needs no `layouts` key (a file of common fragments has none), but at least one description must define a layout;
 - The same fragment name or the same layout name in two descriptions is an error naming both (a description file by its path, a description object by its position in the list, `layout description #2`); nothing is overridden;
 - Every layout is validated (§4), the omitted `length`s are filled in, and the descriptions given are not changed;
-- Any violation throws an `Error` whose `errors` property lists all violations of all descriptions, and nothing is registered: the descriptions are registered all or none. An unreadable file and a YAML syntax error are violations too. The layout and fragment errors name the layout or fragment, not the file;
-- Return value: `{ layouts, fragments }` for all the descriptions. `layouts` holds the registered layouts by name, as `get_layout(name)` returns them; `fragments` holds the entry lists by fragment name (references expanded, offsets relative to the start of the fragment), for the user to query, for example to get all tag names of a parameter block. Neither is needed for the flow above;
-- A layout name stays registered for the life of the process. `get_layout(name)` returns the registered layout (read-only, §7) and throws `unknown layout X` for a name that is not registered;
-- Consequences of registering once: a changed layout file takes effect only in a new process (no hot reload, and a REPL or a test cannot register a changed layout again); a library built on layout-data cannot call `register_layout` itself, it can only export the paths of its description files for the application to put in `descriptions`.
-- When the dependency tree holds two copies of the package (for example two versions), they share nothing: each allows its own single call of `register_layout`, and a layout registered through one is not found by name through the other.
+- Any violation throws an `Error` whose `errors` property lists all violations of all descriptions, and nothing is registered: the descriptions are registered all or none. An unreadable file and a YAML syntax error are violations too. The title of the error names the scope (for example `invalid layout descriptions of scope lib_a`); the layout and fragment errors name the layout or fragment, not the file;
+- Return value: `{ layouts, fragments }` for all the descriptions. `layouts` holds the registered layouts by name, as `scope.get_layout(name)` returns them; `fragments` holds the entry lists by fragment name (references expanded, offsets relative to the start of the fragment), for the user to query, for example to get all tag names of a parameter block. Neither is needed for the flow above;
+- A layout stays registered for the life of the process. `scope.get_layout(name)` returns the registered layout (read-only, §7) and throws `unknown layout X.Y` (X the scope name, Y the layout name) for a name that is not registered;
+- Consequences of registering once: a changed layout file takes effect only in a new process (no hot reload, and a REPL cannot register a changed layout again in the same scope);
+- When the dependency tree holds two copies of the package (for example two versions), they share nothing: each has its own scopes, and a layout registered through one is not found by name through the other.
 
 ## 6. Defining a layout in code
 
-A layout needs no file. Give a description object, the structure of §2, to `register_layout` (§5), with the items of a layout as a list under its name:
+A layout needs no file. Give a description object, the structure of §2, to `register_layout` of a scope (§5.2), with the items of a layout as a list under its name:
 
 ```js
-register_layout({
+const scope = create_scope("app");
+scope.register_layout({
   layouts: {
     Pump: [
       { name: "id", type: "UInt", offset: 0, init_value: 0 },
@@ -104,12 +120,12 @@ register_layout({
     ],
   },
 });
-const data = get_layout("Pump").create_ldata("pump_1");
+const data = scope.get_layout("Pump").create_ldata("pump_1");
 ```
 
-- the items are the entries of §3; `length` may be omitted; `coupling` and `includes` take an inline list or the name of a fragment of any of the descriptions;
+- the items are the entries of §3; `length` may be omitted; `coupling` and `includes` take an inline list or the name of a fragment of any of the descriptions registered together;
 - the description object and the entries in it are not changed;
-- there is no separate function that registers one list of items, nor any that expands or validates a structure by itself: registration is the single step that validates (§5).
+- there is no separate function that registers one list of items, nor any that expands or validates a structure by itself: registration is the single step that validates (§5.2).
 
 ## 7. The layout object
 
@@ -118,6 +134,7 @@ A layout (`Layout`) is a read-only object with methods that exposes only these m
 | Member | Description |
 | --- | --- |
 | `name` | The layout name |
+| `scope` | The scope of the layout (§5.1), read-only; the scope name is `layout.scope.name` |
 | `length` | Total length in bits |
 | `size` | Total size in bytes |
 | `items` | The expanded descriptions of the tags, in layout order (a combined word before its bits) |
@@ -126,36 +143,39 @@ A layout (`Layout`) is a read-only object with methods that exposes only these m
 
 - Every item of `items` has: `name`; `type` (as written in the description, the case unchanged, while `Ltag.type` is always lower case); `offset` (the absolute bit offset; the byte position is `offset >> 3`); `length` (bits); `init_value`; `comment` (if given); `coupling` (for a combined word: the tag names of its bits; for a bit: the tag names of the combined words it belongs to). `includes` and `name_prefix` are expanded and no longer appear;
 - The layout and its `items` are deeply frozen: modifying them throws `TypeError`;
-- `Layout` is exported as a type only, not as a value that can be constructed: layouts are made only by registering (§5);
+- `Layout` is exported as a type only, not as a value that can be constructed: layouts are made only by registering (§5.2);
+- Two scopes may each have a layout of the same name. They are different layouts, and the ldatas they create have classes of their own. To group by layout, use the layout object, or the scope name with the layout name: grouping by the layout name alone mixes them up, for example in an observer of `Ldata.on_access` ([spec-data-api.md](spec-data-api.md) §2.8);
 - A layout does not expose the table by name, byte positions, bit masks, codecs or other internal data, and users need not know them: access by name goes through `data.get(name)`, which gives an Ltag, and exchanging data with a device through `load_tag` / `store_tag` or `load` / `store` of an Ltag ([spec-data-api.md](spec-data-api.md) §2.9).
 
 ## 8. Type declarations for the editor
 
-`render_types(layouts, options)` returns the text of a TypeScript declaration file (`.d.ts`) for layouts, so that an editor can complete the tags of a data block. It is a helper for building the program: after the layouts are registered, the program writes the text to a file beside its code, for example `layout_types.d.ts`. `layouts` is the `layouts` that `register_layout` returns.
+`scope.render_types(options)` returns the text of a TypeScript declaration file (`.d.ts`) for all the layouts of the scope, so that an editor can complete the tags of a data block. It is a helper for building the program: after the layouts are registered, the program writes the text to a file beside its code, for example `layout_types.d.ts`. The declarations are only read by the editor, so they are always rendered for the whole scope, never for some of its layouts; types that are not used do no harm.
 
 - For each layout it declares `<Layout>_Tags`, an interface with one property per tag (`boolean` for a Bool, `number` for every other type; a `comment` becomes the doc comment of the property), and `<Layout>_Ldata`, which is `Ldata & <Layout>_Tags`;
-- The layout name is used as it is, with the case it has: the layout `Pump` gives `Pump_Tags` and `Pump_Ldata`, `my_block` gives `my_block_Tags`, `Pump_Station` gives `Pump_Station_Tags`. The case style is the choice of the caller, and `Snake_Pascal_Case` is recommended, the style of the type names of this package; the library does not require it. The name is the one written in `get_layout("Pump")`, and two layouts with different names never give the same type name;
-- The keys of `layouts` are used as the layout names and must be identifiers of JavaScript. The names of registered layouts are (§4), so only keys given otherwise can fail; then `Error` is thrown, whose `errors` lists every such key. A tag name is always an identifier (§3), so it is written as the property name as it is. A `*/` in a comment is escaped, so the text is always a valid declaration file;
+- The layout name is used as it is, with the case it has: the layout `Pump` gives `Pump_Tags` and `Pump_Ldata`, `my_block` gives `my_block_Tags`, `Pump_Station` gives `Pump_Station_Tags`. The case style is the choice of the caller, and `Snake_Pascal_Case` is recommended, the style of the type names of this package; the library does not require it. The name is the one written in `scope.get_layout("Pump")`, and two layouts with different names in one scope never give the same type name;
+- Layouts of the same name in different scopes give the same type names, so every scope is rendered into a file of its own and told apart by the import path, for example `Pump_Ldata` of the library's `lib_a/layout_types.d.ts` and of the application's `layout_types.d.ts`;
+- Layout names and tag names are identifiers (§3, §4), so they are written as they are, as part of the type names and as the property names. A `*/` in a comment is escaped, so the text is always a valid declaration file;
 - `options.source` names the layout file in the header comment of the text; without it the header only says that the text is generated. `options.ldata_module` is the module specifier the text imports `Ldata` from, relative to the output file; it is `"layout-data"` by default. Both options, and the argument `options` itself, may be omitted.
 
-Using the types. `get_layout("Pump").create_ldata("pump_1")` is typed `Ldata`: the declaration of `create_ldata` cannot return another type for each layout, so the type of the value is named by hand, once. In JavaScript a JSDoc cast, which is enough for an editor to complete the tags and, when the file is checked (`checkJs` or `// @ts-check`), to flag a misspelled tag or a value of the wrong type:
+Using the types. `scope.get_layout("Pump").create_ldata("pump_1")` is typed `Ldata`: the declaration of `create_ldata` cannot return another type for each layout, so the type of the value is named by hand, once. In JavaScript a JSDoc cast, which is enough for an editor to complete the tags and, when the file is checked (`checkJs` or `// @ts-check`), to flag a misspelled tag or a value of the wrong type:
 
 ```js
-const pump = /** @type {import("./layout_types.js").Pump_Ldata} */ (get_layout("Pump").create_ldata("pump_1"));
+const pump = /** @type {import("./layout_types.js").Pump_Ldata} */ (scope.get_layout("Pump").create_ldata("pump_1"));
 pump.pressure = 1.5;   // completed, and known to be a number
 ```
 
-The parentheses are part of the JSDoc cast. A `/** @type {...} */` written above `const pump = get_layout("Pump").create_ldata(...)` also gives the completion, but a checked file then reports that `Ldata` is not assignable to `Pump_Ldata`.
+The parentheses are part of the JSDoc cast. A `/** @type {...} */` written above `const pump = scope.get_layout("Pump").create_ldata(...)` also gives the completion, but a checked file then reports that `Ldata` is not assignable to `Pump_Ldata`.
 
-In TypeScript: `const pump = get_layout("Pump").create_ldata("pump_1") as Pump_Ldata;`.
+In TypeScript: `const pump = scope.get_layout("Pump").create_ldata("pump_1") as Pump_Ldata;`.
 
 ## 9. Errors
 
-Registering, looking up and rendering the types of layouts throw exceptions on errors:
+Creating scopes, and registering, looking up and rendering the types of layouts, throw exceptions on errors:
 
 | Case | Exception |
 | --- | --- |
-| `get_layout` with a name that is not registered | `Error` (`unknown layout X`, §5) |
-| Invalid layout, or a reserved tag name ([spec-data-api.md](spec-data-api.md) §2.10) | `Error` with `errors`, thrown by `register_layout`; nothing is registered (§5) |
-| `register_layout` called again after it registered layouts | `Error`, the layouts of the first call stay (§5) |
-| A key of the `layouts` of `render_types` that is not an identifier | `Error`, whose `errors` lists every such key (§8) |
+| `create_scope` with a scope name that is not a string | `TypeError` (§5.1) |
+| `create_scope` with a scope name that is not an identifier, or is used by another scope | `Error` (§5.1) |
+| `scope.get_layout` with a name not registered in the scope | `Error` (`unknown layout X.Y`, §5.2) |
+| Invalid layout, or a reserved tag name ([spec-data-api.md](spec-data-api.md) §2.10) | `Error` with `errors`, thrown by `scope.register_layout`; nothing is registered (§5.2) |
+| `scope.register_layout` called again after it registered layouts in the scope | `Error`, the layouts of the first call stay (§5.2) |

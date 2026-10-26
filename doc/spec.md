@@ -21,6 +21,7 @@ Out of scope: device communication, scheduling, business rules and logging. The 
 | Layout definition | The entry list of one layout in a description, under its layout name |
 | Fragment | A named entry list of a description, which entries reference by name |
 | Layout | The fixed format of a data block: name, type, bit offset and initial value of every tag. Registered from a layout definition, immutable once registered; the public `Layout` object |
+| Scope | The unit that separates layout names, the public `Layout_Scope` object: every scope has its own layouts and fragments and registers once, and layout and fragment names are unique only within a scope. There is no default scope: layouts are registered only in a scope created explicitly (§5.1 of [spec-layout.md](spec-layout.md)) |
 | Ldata / ldata | Ldata is the class of data objects, an ldata is an instance: a block of data allocated for a layout, stored big-endian internally |
 | Ltag | The interface of one named tag of an ldata |
 | Combined word | A Word made of several Bools, sharing its data with its bits |
@@ -64,9 +65,10 @@ The entry `layout-data` exports:
 | Export | Description |
 | --- | --- |
 | `Ldata`, `Ltag` | The data object and the tag handle (§2 and §3 of [spec-data-api.md](spec-data-api.md)); an ldata is created by the `create_ldata` of its layout, and `Ldata` cannot be constructed with `new` |
-| `register_layout` | Register the layouts of descriptions, description files or description objects (also for items given in code), once per process; register first, then get a layout by name and create ldata from it ([spec-layout.md](spec-layout.md)) |
-| `get_layout` | Look up a registered layout by name (§5 of [spec-layout.md](spec-layout.md)); a layout has the methods `create_ldata` and `io_index_table` (§7 of the same), and `Layout` is exported as a type only |
-| `render_types` | Generates TypeScript declarations from registered layouts (§8 of [spec-layout.md](spec-layout.md)) |
+| `create_scope` | Create a scope (§5.1 of [spec-layout.md](spec-layout.md)). `register_layout` of the scope registers the layouts of descriptions, description files or description objects (also for items given in code), once per scope; its `get_layout` looks up a registered layout by name, and ldata is created from the layout; its `render_types` generates TypeScript declarations for the layouts of the scope (§8 of the same). `Layout_Scope` is exported as a type only |
+| `get_scope` | Get a created scope by its name, `undefined` when there is none (§5.1 of [spec-layout.md](spec-layout.md)) |
+
+A layout has the methods `create_ldata` and `io_index_table` (§7 of [spec-layout.md](spec-layout.md)), and `Layout` is exported as a type only.
 
 ## 7. Documents
 

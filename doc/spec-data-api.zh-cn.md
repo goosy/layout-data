@@ -27,7 +27,7 @@ tag 的类型：`Bool`、`Byte`、`SInt`、`USInt`、`Int`、`UInt`、`Word`、`
 const data = layout.create_ldata(name);
 ```
 
-- ldata 由布局产生：`layout.create_ldata(name)` 是创建 ldata 的唯一方式。`layout` 是已登记的布局对象，由 `get_layout(name)` 返回，或来自注册的返回值（[spec-layout.zh-cn.md](spec-layout.zh-cn.md) §5、§7）；按名查找只发生在取得布局的那一步，所以创建时手里已经有布局对象。只有已登记的布局带有这个方法，复制出来的对象（如 `{ ...layout }`）没有；
+- ldata 由布局产生：`layout.create_ldata(name)` 是创建 ldata 的唯一方式。`layout` 是已登记的布局对象，由登记域的 `get_layout(name)` 返回，或来自注册的返回值（[spec-layout.zh-cn.md](spec-layout.zh-cn.md) §5、§7）；按名查找只发生在取得布局的那一步，所以创建时手里已经有布局对象。只有已登记的布局带有这个方法，复制出来的对象（如 `{ ...layout }`）没有；
 - `name`：ldata 的名称，用于日志和错误信息。必须是字符串（任何字符串，空字符串也可以），否则抛出 `TypeError`；名称在这里给定，以后不能修改；
 - 创建后每个 tag 的值等于布局中的初值，此时不发出变化事件；
 - `Ldata` 不能用 `new` 构造：`new Ldata(...)` 抛出 `TypeError`，错误信息写出正确的用法 `layout.create_ldata(name)`；类型声明中构造函数是私有的，所以 TypeScript 和开启 `checkJs` 的文件在编译期即报错。`Ldata` 仍然导出，供 `instanceof`、类型标注和 `Ldata.on_access` / `off_access`（§2.8）使用；
@@ -160,7 +160,7 @@ Ldata.on_access((data, kind, tags) => { /* 对每个 ldata 的每次访问 */ })
 Ldata.off_access(listener);
 ```
 
-`Ldata.on_access(listener)` 订阅一个函数，对所有 ldata 的访问都会调用它，不论布局是什么、何时创建；监听器先收到 ldata，再是上面的 `kind` 和 `tags`。`Ldata.off_access(listener)` 取消订阅，对没有订阅过的函数什么都不做。可以有任意多方订阅，各用各的函数，互不覆盖。同一个函数订阅两次只算一次。类级监听器与各实例自己的事件分开保存，所以 `data.removeAllListeners()` 不会把它们移除。同一次访问，先调用实例上的监听器，再调用类上的，上面的异常规则对两者都适用。两种监听器都没有时，每次访问只多一次检查。用它做观察的工具，用完应取消自己的监听器。
+`Ldata.on_access(listener)` 订阅一个函数，对所有 ldata 的访问都会调用它，不论布局是什么、何时创建；监听器先收到 ldata，再是上面的 `kind` 和 `tags`。`Ldata.off_access(listener)` 取消订阅，对没有订阅过的函数什么都不做。可以有任意多方订阅，各用各的函数，互不覆盖。同一个函数订阅两次只算一次。类级监听器与各实例自己的事件分开保存，所以 `data.removeAllListeners()` 不会把它们移除。同一次访问，先调用实例上的监听器，再调用类上的，上面的异常规则对两者都适用。两种监听器都没有时，每次访问只多一次检查。用它做观察的工具，用完应取消自己的监听器。不同登记域可以各有一个同名的布局，所以按布局归类访问时，要用布局对象（`data.layout`），或登记域名加布局名（`data.layout.scope.name` 和 `data.layout.name`），只按布局名归类会把它们混在一起（[spec-layout.zh-cn.md](spec-layout.zh-cn.md) §7）。
 
 ### 2.9 设备字节序
 

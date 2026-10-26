@@ -19,6 +19,7 @@ layout-data 是一个结构化数据块库：提供基于 `Buffer`、面向数�
 | 布局定义 | 描述中一个布局的条目列表，位于它的布局名下 |
 | 片段 | 描述中具名的条目列表，供条目按名引用 |
 | 布局 | 一块数据的固定格式：每个 tag 的名称、类型、位偏移、初值。由布局定义注册而来，注册后不可变，即公开的 `Layout` 对象 |
+| 登记域 | 布局名的分隔单位，即公开的 `Layout_Scope` 对象：每个登记域有自己的布局和片段，各注册一次，布局名和片段名只在登记域内唯一。没有默认登记域，布局只能注册到显式创建的登记域里（[spec-layout.zh-cn.md](spec-layout.zh-cn.md) §5.1） |
 | Ldata / ldata | Ldata 是数据对象的类，ldata 是它的实例：按某个布局分配的一块数据，内部按大端存放 |
 | Ltag | ldata 中一个具名 tag 的操作接口 |
 | 组合字 | 由若干 Bool 组成的 Word，与各组成位共用同一块数据 |
@@ -62,9 +63,10 @@ layout-data 是一个结构化数据块库：提供基于 `Buffer`、面向数�
 | 导出 | 说明 |
 | --- | --- |
 | `Ldata`、`Ltag` | 数据对象和 tag 句柄（[spec-data-api.zh-cn.md](spec-data-api.zh-cn.md) §2 和 §3）；ldata 由布局的 `create_ldata` 创建，`Ldata` 不能用 `new` 构造 |
-| `register_layout` | 注册各描述中的布局：描述文件或描述对象（在代码里给条目也用它），每个进程一次；先注册，再按名取得布局，由布局创建 ldata（[spec-layout.zh-cn.md](spec-layout.zh-cn.md)） |
-| `get_layout` | 按名取得已登记的布局（[spec-layout.zh-cn.md](spec-layout.zh-cn.md) §5）；布局带有方法 `create_ldata` 和 `io_index_table`（同文 §7），`Layout` 只作为类型导出 |
-| `render_types` | 由已注册的布局生成 TypeScript 类型声明（[spec-layout.zh-cn.md](spec-layout.zh-cn.md) §8） |
+| `create_scope` | 创建登记域（[spec-layout.zh-cn.md](spec-layout.zh-cn.md) §5.1）。登记域的 `register_layout` 注册各描述中的布局：描述文件或描述对象（在代码里给条目也用它），每个登记域一次；`get_layout` 按名取得已登记的布局，由布局创建 ldata；`render_types` 为登记域的布局生成 TypeScript 类型声明（同文 §8）。`Layout_Scope` 只作为类型导出 |
+| `get_scope` | 按登记域名取得已创建的登记域，没有时为 `undefined`（[spec-layout.zh-cn.md](spec-layout.zh-cn.md) §5.1） |
+
+布局带有方法 `create_ldata` 和 `io_index_table`（[spec-layout.zh-cn.md](spec-layout.zh-cn.md) §7），`Layout` 只作为类型导出。
 
 ## 7. 文档
 

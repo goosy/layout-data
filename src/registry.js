@@ -1,43 +1,60 @@
-// The registry of the compiled layouts, by layout name (doc/design.md §3).
-// A name identifies one layout for the life of the process. Written by
-// register_structure (layout.js), read by get_layout.
+// The registry of the scopes and of their compiled layouts (doc/design.md §3):
+// the scopes by scope name, and the layouts of each scope by layout name.
+// The layout tables are found by the scope object itself, never by its name,
+// so no scope reaches the layouts of another one. Written by create_scope
+// (scope.js) and register_structure (layout.js), read by the scopes.
 
-/** @import { Layout } from "./typedefs.js" */
-
-/**
- * @typedef {object} Registered
- * @property {string} key - The canonical text of the structure, to tell the same layout from another one.
- * @property {Layout} layout
- */
-
-/** @type {Map<string, Registered>} */
-const registered = new Map();
+/** @import { Layout, Layout_Scope } from "./typedefs.js" */
 
 /**
- * @param {string} name
- * @returns {Registered | undefined}
+ * The scopes by scope name, for get_scope and the uniqueness of the names.
+ *
+ * @type {Map<string, Layout_Scope>}
  */
-export function registered_of(name) {
-	return registered.get(name);
+const scopes = new Map();
+
+/**
+ * The layouts of every scope by layout name, by scope object.
+ *
+ * @type {Map<Layout_Scope, Map<string, Layout>>}
+ */
+const layout_tables = new Map();
+
+/**
+ * Registers a scope with no layouts; a scope name is used once in the process.
+ *
+ * @param {Layout_Scope} scope
+ * @throws {Error} When a scope of that name exists.
+ */
+export function add_scope(scope) {
+	if (scopes.has(scope.name)) throw new Error(`a scope is already named ${scope.name}`);
+	scopes.set(scope.name, scope);
+	layout_tables.set(scope, new Map());
 }
 
 /**
- * @param {string} name
- * @param {Registered} entry
- */
-export function register(name, entry) {
-	registered.set(name, entry);
-}
-
-/**
- * The registered layout of a name (doc/spec-layout.md §5).
+ * The scope of a name, undefined when there is none.
  *
  * @param {string} name
- * @returns {Layout}
- * @throws {Error} When no layout of that name is registered.
+ * @returns {Layout_Scope | undefined}
  */
-export function get_layout(name) {
-	const layout = registered.get(name)?.layout;
-	if (!layout) throw new Error(`unknown layout ${name}`);
-	return layout;
+export function find_scope(name) {
+	return scopes.get(name);
+}
+
+/**
+ * The layouts of a scope by layout name.
+ *
+ * @param {Layout_Scope} scope - A registered scope.
+ * @returns {Map<string, Layout>}
+ */
+export function layouts_of(scope) {
+	return /** @type {Map<string, Layout>} */ (layout_tables.get(scope));
+}
+
+/**
+ * @param {Layout} layout - A layout of a registered scope.
+ */
+export function register(layout) {
+	layouts_of(layout.scope).set(layout.name, layout);
 }

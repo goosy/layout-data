@@ -64,12 +64,21 @@
 
 /**
  * A compiled layout (doc/spec-layout.md §7), read-only and deeply frozen:
- * `name`; `length` in bits; `size` in bytes; `items`, the tags in layout
- * order (a combined word before its bits); the methods `create_ldata(name)`
- * and `io_index_table(endian)`. A type only: the class is not exported, and
+ * `name`; `scope`, the scope it is registered in; `length` in bits; `size`
+ * in bytes; `items`, the tags in layout order (a combined word before its
+ * bits); the methods `create_ldata(name)` and `io_index_table(endian)`. A type only: the class is not exported, and
  * only a registration makes a layout.
  *
  * @typedef {import("./layout.js").Layout} Layout
+ */
+
+/**
+ * A scope of layout names (doc/spec-layout.md §5.1): read-only `name`; the
+ * methods `register_layout(descriptions)`, `get_layout(name)` and
+ * `render_types(options)`. Frozen. A type only: the class is not exported,
+ * and only create_scope makes a scope.
+ *
+ * @typedef {import("./scope.js").Layout_Scope} Layout_Scope
  */
 
 /**

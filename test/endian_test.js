@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { Buffer } from "node:buffer";
 import test, { describe } from "node:test";
 import { io_index, io_range, load_entry, store_entry } from "../src/endian.js";
-import { compiled_of } from "../src/layout.js";
+import { COMPILED } from "../src/internal.js";
 
 /** Loads the tag of a data block from an IO buffer. */
 function load(data, io_buffer, endian) {
@@ -132,7 +132,7 @@ describe("single-byte device byte order", () => {
 	test("io_range maps single-byte tags and keeps multi-byte tags in place", () => {
 		const entry = (type, offset) => {
 			const data = one_tag(type, type === "Bool" ? false : 0, offset, 8);
-			return compiled_of(data.layout).entries.get("tag");
+			return data.layout[COMPILED].entries.get("tag");
 		};
 		assert.deepEqual(io_range(entry("Bool", 24), "LE"), { start: 2, end: 3 });
 		assert.deepEqual(io_range(entry("Bool", 24), "BE"), { start: 3, end: 4 });
@@ -176,7 +176,7 @@ describe("io_index_table", () => {
 			const io = Buffer.from(Array.from({ length: layout.size }, (_, i) => 0x10 + i));
 			const by_entry = Buffer.alloc(layout.size);
 			const by_table = Buffer.alloc(layout.size);
-			for (const entry of compiled_of(layout).entries.values()) {
+			for (const entry of layout[COMPILED].entries.values()) {
 				if (entry.type !== "bool") load_entry(entry, io, by_entry, endian);
 			}
 			for (let i = 0; i < layout.size; i++) by_table[i] = io[table[i]];
@@ -185,7 +185,7 @@ describe("io_index_table", () => {
 
 			const back_entry = Buffer.alloc(layout.size);
 			const back_table = Buffer.alloc(layout.size);
-			for (const entry of compiled_of(layout).entries.values()) {
+			for (const entry of layout[COMPILED].entries.values()) {
 				if (entry.type !== "bool") store_entry(entry, by_entry, back_entry, endian);
 			}
 			for (let i = 0; i < layout.size; i++) back_table[table[i]] = by_entry[i];
