@@ -4,7 +4,7 @@ opened: 2026-10-26T08:36:00.584Z
 closed: 2026-10-26T08:58:38.000Z
 title: 布局对象化，由布局产生 ldata
 status: fixed       # open | accepted | fixed | rejected | wontfix
-fixed_in: []        # commit IDs, backfilled at version commit time
+fixed_in: [15d8a8d]  # commit IDs, backfilled at version commit time
 labels: []
 remote:
 problem_title: 问题描述

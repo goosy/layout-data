@@ -4,7 +4,7 @@ opened: 2026-10-24T14:45:09.502Z
 closed: 2026-10-26T10:47:45.000Z
 title: 布局分登记域，每个登记域可各注册一次
 status: fixed       # open | accepted | fixed | rejected | wontfix
-fixed_in: []        # commit IDs, backfilled at version commit time
+fixed_in: [413a740]  # commit IDs, backfilled at version commit time
 labels: []
 remote:
 problem_title: 问题描述
