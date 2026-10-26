@@ -6,7 +6,6 @@ import { Buffer } from "node:buffer";
 import test, { describe } from "node:test";
 import { Ldata } from "../src/Ldata.js";
 import { Ltag } from "../src/Ltag.js";
-import { get_layout } from "../src/registry.js";
 
 // the word gives no init value: it is composed from its bits
 const ITEMS = [
@@ -48,13 +47,6 @@ describe("2 Ldata", () => {
 		assert.equal(Object.getPrototypeOf(LAYOUT.create_ldata("e")), Object.getPrototypeOf(data));
 	});
 
-	test("2.1 the same layout registered again is the registered one; another one under the name throws", () => {
-		assert.equal(register_items("Sample", ITEMS), LAYOUT);
-		const changed = structuredClone(ITEMS);
-		changed[0].init_value = 8;
-		assert.throws(() => register_items("Sample", changed), /another layout is already named Sample/);
-	});
-
 	test("2.1 the name of an ldata must be a string, the empty one included", () => {
 		assert.equal(LAYOUT.create_ldata("").name, "");
 		assert.equal(LAYOUT.create_ldata("by name").name, "by name");
@@ -84,11 +76,12 @@ describe("2 Ldata", () => {
 	});
 
 	test("2.1 a layout got by its name is the registered one", () => {
-		assert.equal(get_layout("Sample"), LAYOUT);
-		const data = get_layout("Sample").create_ldata("d");
+		const scope = LAYOUT.scope;
+		assert.equal(scope.get_layout("Sample"), LAYOUT);
+		const data = scope.get_layout("Sample").create_ldata("d");
 		assert.equal(data.layout, LAYOUT);
 		assert.equal(Object.getPrototypeOf(data), Object.getPrototypeOf(LAYOUT.create_ldata("e")));
-		assert.throws(() => get_layout("Nope"), /unknown layout Nope/);
+		assert.throws(() => scope.get_layout("Nope"), new RegExp(`^Error: unknown layout ${scope.name}.Nope$`));
 	});
 
 	test("2.1 a copy of a layout creates no ldata", () => {

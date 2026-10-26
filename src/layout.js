@@ -2,25 +2,23 @@ import { readFileSync } from "node:fs";
 import { parseDocument } from "yaml";
 import { CODECS } from "./codecs.js";
 import { io_index_table } from "./endian.js";
-import { build_ldata_class, new_ldata } from "./Ldata.js";
-import { register, registered_of } from "./registry.js";
+import { COMPILED, LDATA_FACTORY } from "./internal.js";
+import { Ldata } from "./Ldata.js";
+import { layouts_of, register } from "./registry.js";
 import { build_structure, validate_structure, IDENTIFIER, TYPE_BITS } from "./structure.js";
 
-/** @import { Endian, Layout_Description, Layout_Tag, Registered_Layouts } from "./typedefs.js" */
+/** @import { Endian, Layout_Description, Layout_Scope, Layout_Tag, Registered_Layouts } from "./typedefs.js" */
 /** @import { Compiled_Layout, Data_Struct } from "./internal_types.js" */
-/** @import { Ldata } from "./Ldata.js" */
 
 /** The key of the constructor of Layout, private to this module. */
 const CREATE_KEY = Symbol("create layout");
 
-/** Set by a static block of Layout: reads the compiled data of a layout. */
-let read_compiled;
-
 /**
  * A compiled layout (doc/spec-layout.md §7), read-only and deeply
- * frozen: `name`; `length` in bits; `size` in bytes; `items`, the tags in
- * layout order (a combined word before its bits). Only a registration makes
- * one; the package exports the type and not the class.
+ * frozen: `name`; `scope`, the scope it is registered in; `length` in bits;
+ * `size` in bytes; `items`, the tags in layout order (a combined word before
+ * its bits). Only a registration makes one; the package exports the type and
+ * not the class.
  */
 export class Layout {
 	/**
@@ -51,10 +49,12 @@ export class Layout {
 	 * @type {readonly Layout_Tag[]}
 	 */
 	items;
+	/** @type {Layout_Scope} */
+	#scope;
 	/** @type {Compiled_Layout} */
 	#compiled;
-	/** @type {typeof Ldata} */
-	#ldata_class;
+	/** @type {(name: string) => Ldata} */
+	#create_ldata;
 
 	/**
 	 * Not called by the user: register_structure makes the layouts.
@@ -63,16 +63,23 @@ export class Layout {
 	 * @param {symbol} key - The key private to this module.
 	 * @param {Data_Struct} data_struct
 	 * @param {Compiled_Layout} compiled
+	 * @param {Layout_Scope} scope - The scope the layout is registered in.
 	 */
-	constructor(key, data_struct, compiled) {
-		if (key !== CREATE_KEY) throw new TypeError("a layout is made by register_layout");
+	constructor(key, data_struct, compiled, scope) {
+		if (key !== CREATE_KEY) throw new TypeError("a layout is made by the register_layout of a scope");
 		this.name = data_struct.name;
 		this.length = data_struct.length;
 		this.size = data_struct.length >> 3;
 		this.items = Object.freeze(data_struct.items.map(public_tag));
+		this.#scope = scope;
 		this.#compiled = compiled;
-		this.#ldata_class = build_ldata_class(this, compiled);
+		this.#create_ldata = Ldata[LDATA_FACTORY](this, compiled);
 		Object.freeze(this);
+	}
+
+	/** @returns {Layout_Scope} The scope the layout is registered in. */
+	get scope() {
+		return this.#scope;
 	}
 
 	/**
@@ -85,7 +92,7 @@ export class Layout {
 	 * @throws {TypeError} When name is not a string.
 	 */
 	create_ldata(name) {
-		return new_ldata(this.#ldata_class, name);
+		return this.#create_ldata(name);
 	}
 
 	/**
@@ -101,69 +108,39 @@ export class Layout {
 		return io_index_table(this.size, this.#compiled, endian);
 	}
 
-	static {
-		read_compiled = (layout) => (#compiled in layout ? layout.#compiled : undefined);
+	/**
+	 * The compiled data of the layout. Internal: for the tests; the key is not
+	 * exported by the package (internal.js).
+	 *
+	 * @returns {Compiled_Layout}
+	 */
+	get [COMPILED]() {
+		return this.#compiled;
 	}
-}
-
-/**
- * The compiled data of a layout made by this package. Internal: for the tests.
- *
- * @param {Layout} layout
- * @returns {Compiled_Layout}
- * @throws {Error} For an object that is not a compiled layout.
- */
-export function compiled_of(layout) {
-	const data = layout !== null && typeof layout === "object" ? read_compiled(layout) : undefined;
-	if (!data) throw new Error(`${layout?.name} is not a registered layout`);
-	return data;
-}
-
-/**
- * The canonical text of a value: object keys sorted, `comment` left out (it
- * does not change how a layout works) and the type names in lower case.
- */
-function canonical(value, key) {
-	if (Array.isArray(value)) return `[${value.map((v) => canonical(v)).join(",")}]`;
-	if (value !== null && typeof value === "object") {
-		const fields = Object.keys(value).filter((k) => k !== "comment" && value[k] !== undefined).sort();
-		return `{${fields.map((k) => `${JSON.stringify(k)}:${canonical(value[k], k)}`).join(",")}}`;
-	}
-	if (key === "type" && typeof value === "string") return JSON.stringify(value.toLowerCase());
-	return JSON.stringify(value) ?? "null";
 }
 
 /**
  * Compiles an expanded structure (the result of build_structure) into a Layout
- * (doc/design.md §3) and registers it under its name, where get_layout finds
- * it. Registering a structure whose canonical text equals the registered one
- * of that name gives the registered Layout, so the same layout described
- * twice is compiled once; another structure under a used name throws. Throws on an unknown type or a duplicated tag name; the
- * other layout rules are checked by validate_structure. Internal.
+ * (doc/design.md §3) and registers it under its name in a scope, where the
+ * get_layout of the scope finds it. Throws on a name used in the scope, an
+ * unknown type or a duplicated tag name; the other layout rules are checked by
+ * validate_structure. Internal.
  *
  * @param {Data_Struct} data_struct
+ * @param {Layout_Scope} scope
  * @returns {Layout}
- * @throws {Error} When the name is used by another layout.
+ * @throws {Error} When the name is used by another layout of the scope.
  */
-export function register_structure(data_struct) {
+export function register_structure(data_struct, scope) {
 	const { name } = data_struct;
 	if (typeof name !== "string" || name === "") throw new Error("a layout needs a name");
-	const key = key_of(data_struct);
-	const known = registered_of(name);
-	if (known) {
-		if (known.key !== key) throw new Error(`another layout is already named ${name}`);
-		return known.layout;
-	}
-	const layout = compile_structure(data_struct);
-	register(name, { key, layout });
+	if (layouts_of(scope).has(name)) throw new Error(`another layout is already named ${scope.name}.${name}`);
+	const layout = compile_structure(data_struct, scope);
+	register(layout);
 	return layout;
 }
 
-function key_of(data_struct) {
-	return canonical({ name: data_struct.name, length: data_struct.length, items: data_struct.items });
-}
-
-function compile_structure(data_struct) {
+function compile_structure(data_struct, scope) {
 	const size = data_struct.length >> 3;
 	const entries = new Map();
 	const tags_at_byte = Array.from({ length: size }, () => []);
@@ -172,7 +149,7 @@ function compile_structure(data_struct) {
 		const type = item.type.toLowerCase();
 		const codec = CODECS[type];
 		const fail = (message) => {
-			throw new Error(`${data_struct.name}.${name}: ${message}`);
+			throw new Error(`${scope.name}.${data_struct.name}.${name}: ${message}`);
 		};
 		if (!codec) fail(`unknown tag type ${item.type}`);
 		if (entries.has(name)) fail("duplicated tag name");
@@ -195,7 +172,7 @@ function compile_structure(data_struct) {
 
 	// the public layout holds the name, the sizes and frozen copies of the items;
 	// the entries and the lookup table stay out of reach (doc/spec-layout.md §7)
-	return new Layout(CREATE_KEY, data_struct, { entries, tags_at_byte });
+	return new Layout(CREATE_KEY, data_struct, { entries, tags_at_byte }, scope);
 }
 
 /**
@@ -258,13 +235,15 @@ function resolve_items(list, fragments, stack, where, errors) {
  * object; a list of descriptions is merged, so a layout may name a fragment
  * of any description whatever the order. The root key `layouts` of a
  * description maps layout names to item lists; every other root key is a
- * fragment referenced by name.
+ * fragment referenced by name. Internal: the register_layout of a scope
+ * calls it.
  *
  * @param {string | Layout_Description | Array<string | Layout_Description>} descriptions
+ * @param {Layout_Scope} scope - A scope with no layouts yet.
  * @returns {Registered_Layouts}
  * @throws {Error} With `errors`, every violation found, when the descriptions are not valid.
  */
-export function register_descriptions(descriptions) {
+export function register_descriptions(descriptions, scope) {
 	const errors = [];
 	const list = Array.isArray(descriptions) ? descriptions : [descriptions];
 	if (list.length === 0) errors.push("no description is given");
@@ -317,30 +296,8 @@ export function register_descriptions(descriptions) {
 		}
 	});
 	if (errors.length === 0 && Object.keys(layout_defs).length === 0) errors.push("no layout is defined in the descriptions");
-	if (errors.length > 0) throw layout_error("layout descriptions", errors);
-	return register_layout_data({ layouts: layout_defs, ...fragment_defs }, origins.join(", "));
-}
-
-/** Set once a call of register_layout has registered the layouts. */
-let registered_once = false;
-
-/**
- * Registers the layouts of the descriptions, once per process: a layout is
- * described, registered under its name, got by that name (get_layout), and
- * creates its data blocks (doc/spec-layout.md §5). Nothing is registered
- * when a description is not valid, and such a call does not use up the single
- * call.
- *
- * @param {string | Layout_Description | Array<string | Layout_Description>} descriptions - The path of a YAML description file, a description object, or a list of them.
- * @returns {Registered_Layouts}
- * @throws {Error} With `errors`, every violation found, when the descriptions are not valid.
- * @throws {Error} When the layouts were registered by an earlier call.
- */
-export function register_layout(descriptions) {
-	if (registered_once) throw new Error("register_layout can be called only once");
-	const result = register_descriptions(descriptions);
-	registered_once = true;
-	return result;
+	if (errors.length > 0) throw layout_error(`layout descriptions of scope ${scope.name}`, errors);
+	return register_layout_data({ layouts: layout_defs, ...fragment_defs }, scope, origins.join(", "));
 }
 
 function layout_error(subject, errors) {
@@ -350,32 +307,18 @@ function layout_error(subject, errors) {
 }
 
 /**
- * The conflicts of structures with the layouts registered under their names.
- *
- * @param {Record<string, Data_Struct>} structs - By layout name.
- * @returns {string[]}
- */
-function find_conflicts(structs) {
-	const conflicts = [];
-	for (const [name, struct] of Object.entries(structs)) {
-		const known = registered_of(name);
-		if (known && known.key !== key_of(struct)) conflicts.push(`layout ${name}: another layout is already named ${name}`);
-	}
-	return conflicts;
-}
-
-/**
  * Registers the layouts of one description that is parsed and complete: the
  * root key `layouts` and the fragments the layouts name. Internal.
  *
  * @param {Record<string, any>} root - The parsed description: `layouts` and the fragments.
+ * @param {Layout_Scope} scope - A scope with no layouts yet, so a layout of the description conflicts with none.
  * @param {string} [origin] - Names the descriptions in errors.
  * @returns {Registered_Layouts}
  * @throws {Error} With `errors`, every violation found, when the description is not valid.
  */
-export function register_layout_data(root, origin = "the given object") {
+export function register_layout_data(root, scope, origin = "the given object") {
 	const fail = (errors) => {
-		throw layout_error(`layout description from ${origin}`, errors);
+		throw layout_error(`layout description of scope ${scope.name} from ${origin}`, errors);
 	};
 	if (root === null || typeof root !== "object" || Array.isArray(root)) fail(["the root must be a mapping"]);
 	const { layouts: layout_defs, ...fragment_defs } = root;
@@ -397,13 +340,9 @@ export function register_layout_data(root, origin = "the given object") {
 	if (errors.length === 0) {
 		for (const struct of Object.values(structs)) errors.push(...validate_structure(struct));
 	}
-	if (errors.length === 0) {
-		// all or none: a conflict is found before any of the layouts is registered
-		errors.push(...find_conflicts(structs));
-	}
 	if (errors.length > 0) fail(errors);
 
 	const layouts = {};
-	for (const [name, struct] of Object.entries(structs)) layouts[name] = register_structure(struct);
+	for (const [name, struct] of Object.entries(structs)) layouts[name] = register_structure(struct, scope);
 	return { layouts, fragments };
 }

@@ -3,8 +3,7 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test, { describe } from "node:test";
-import { register_descriptions } from "../src/layout.js";
-import { get_layout } from "../src/registry.js";
+import { fresh_scope, register } from "./share.js";
 
 const dir = mkdtempSync(join(tmpdir(), "tlms-descriptions-"));
 let seq = 0;
@@ -15,9 +14,9 @@ function write(text) {
 	return file;
 }
 
-function errors_of(descriptions) {
+function errors_of(descriptions, scope = fresh_scope()) {
 	try {
-		register_descriptions(descriptions);
+		scope.register_layout(descriptions);
 	} catch (error) {
 		return error.errors;
 	}
@@ -40,16 +39,17 @@ layouts:
 describe("6.3 layout names", () => {
 	test("a layout name must be an identifier of JavaScript, in any script", () => {
 		const items = [{ name: "a", type: "UInt", offset: 0, init_value: 0 }];
-		const { layouts } = register_descriptions({ layouts: { "Ms_Name_1": items, "$ms_dollar": items, "\u6cf5_Ms": items } });
+		const { layouts } = register({ layouts: { "Ms_Name_1": items, "$ms_dollar": items, "\u6cf5_Ms": items } });
 		assert.deepEqual(Object.keys(layouts), ["Ms_Name_1", "$ms_dollar", "\u6cf5_Ms"]);
-		const errors = errors_of({ layouts: { "ms-dash": items, "ms.dot": items, "1ms": items, "": items, "Ms_Bad_Fine": items } });
+		const scope = fresh_scope();
+		const errors = errors_of({ layouts: { "ms-dash": items, "ms.dot": items, "1ms": items, "": items, "Ms_Bad_Fine": items } }, scope);
 		assert.deepEqual(errors, [
 			"layout \"ms-dash\": the name is not an identifier",
 			"layout \"ms.dot\": the name is not an identifier",
 			"layout \"1ms\": the name is not an identifier",
 			"layout \"\": the name is not an identifier",
 		]);
-		assert.throws(() => get_layout("Ms_Bad_Fine"), /unknown layout/);
+		assert.throws(() => scope.get_layout("Ms_Bad_Fine"), /unknown layout/);
 	});
 });
 
@@ -58,26 +58,26 @@ describe("6.4 several descriptions", () => {
 		const common = write(COMMON);
 		const pump = write(layout_text("Ms_Pump"));
 		const valve = write(layout_text("Ms_Valve"));
-		const { layouts, fragments } = register_descriptions([pump, valve, common]);
+		const { scope, layouts, fragments } = register([pump, valve, common]);
 		assert.deepEqual(Object.keys(layouts), ["Ms_Pump", "Ms_Valve"]);
 		assert.equal(fragments.status_bits.length, 2);
-		assert.equal(get_layout("Ms_Pump").create_ldata("p").status, 0x0001);
-		const other = register_descriptions([write(COMMON.replace("status_bits", "bits")), write(layout_text("Ms_Late").replace("status_bits", "bits"))]);
+		assert.equal(scope.get_layout("Ms_Pump").create_ldata("p").status, 0x0001);
+		const other = register([write(COMMON.replace("status_bits", "bits")), write(layout_text("Ms_Late").replace("status_bits", "bits"))]);
 		assert.equal(other.layouts.Ms_Late.create_ldata("t").status, 0x0001);
 	});
 
 	test("description files and description objects can be mixed", () => {
 		const common = write(COMMON);
-		const { layouts } = register_descriptions([
+		const { scope, layouts } = register([
 			common,
 			{ layouts: { Ms_Mixed: [{ name: "w", type: "Word", offset: 0, coupling: "status_bits" }] } },
 		]);
-		assert.equal(layouts.Ms_Mixed, get_layout("Ms_Mixed"));
-		assert.equal(get_layout("Ms_Mixed").create_ldata("t").w, 0x0001);
+		assert.equal(layouts.Ms_Mixed, scope.get_layout("Ms_Mixed"));
+		assert.equal(scope.get_layout("Ms_Mixed").create_ldata("t").w, 0x0001);
 	});
 
 	test("one description can be given as itself, not in a list", () => {
-		const { layouts } = register_descriptions({ layouts: { Ms_Single: [{ name: "a", type: "UInt", offset: 0, init_value: 1 }] } });
+		const { layouts } = register({ layouts: { Ms_Single: [{ name: "a", type: "UInt", offset: 0, init_value: 1 }] } });
 		assert.equal(layouts.Ms_Single.size, 2);
 	});
 
@@ -89,11 +89,12 @@ describe("6.4 several descriptions", () => {
 	test("the same fragment or layout in two descriptions is an error naming both", () => {
 		const first = write(COMMON + layout_text("Ms_Dup"));
 		const second = write(COMMON.replace("run", "go") + layout_text("Ms_Dup").replace("Ms_Dup", "Ms_Dup"));
-		const errors = errors_of([first, second]);
+		const scope = fresh_scope();
+		const errors = errors_of([first, second], scope);
 		assert.equal(errors.length, 2, errors.join("\n"));
 		assert.ok(errors.includes(`fragment status_bits is defined in ${first} and ${second}`), errors.join("\n"));
 		assert.ok(errors.includes(`layout Ms_Dup is defined in ${first} and ${second}`), errors.join("\n"));
-		assert.throws(() => get_layout("Ms_Dup"), /unknown layout Ms_Dup/);
+		assert.throws(() => scope.get_layout("Ms_Dup"), /unknown layout Test_\d+\.Ms_Dup/);
 	});
 
 	test("objects are named by their position in the list", () => {
@@ -105,6 +106,7 @@ describe("6.4 several descriptions", () => {
 	});
 
 	test("every problem of every description is reported, and nothing is registered", () => {
+		const scope = fresh_scope();
 		const errors = errors_of([
 			join(dir, "absent.yaml"),
 			{ layouts: [] },
@@ -112,9 +114,9 @@ describe("6.4 several descriptions", () => {
 			[["nested"]],
 			null,
 			{ layouts: { Ms_Not_Registered: [{ name: "a", type: "UInt", offset: 0, init_value: 0 }] } },
-		]);
+		], scope);
 		assert.equal(errors.length, 5, errors.join("\n"));
-		assert.throws(() => get_layout("Ms_Not_Registered"), /unknown layout/);
+		assert.throws(() => scope.get_layout("Ms_Not_Registered"), /unknown layout/);
 	});
 
 	test("an empty list is an error", () => {
@@ -124,7 +126,7 @@ describe("6.4 several descriptions", () => {
 	test("the descriptions are not changed", () => {
 		const description = { layouts: { Ms_Pure: [{ name: "w", type: "Word", offset: 0, coupling: "bits" }] }, bits: [{ name: "b", type: "Bool", offset: 0 }] };
 		const before = structuredClone(description);
-		register_descriptions([description]);
+		register([description]);
 		assert.deepEqual(description, before);
 	});
 });

@@ -3,6 +3,7 @@ import { EventEmitter } from "node:events";
 import { Ltag } from "./Ltag.js";
 import { emit_all } from "./dispatch.js";
 import { check_endian, io_range, load_entry, store_entry } from "./endian.js";
+import { LDATA_FACTORY } from "./internal.js";
 import { Observer } from "./observer.js";
 import { is_reserved_name } from "./reserved.js";
 
@@ -11,13 +12,10 @@ import { is_reserved_name } from "./reserved.js";
 
 /**
  * The key of the constructor of Ldata, private to this module: an ldata is
- * created only by new_ldata, for the create_ldata of its layout
- * (doc/spec-data-api.md §2.1).
+ * created only by the creating function of Ldata[LDATA_FACTORY], for the
+ * create_ldata of its layout (doc/spec-data-api.md §2.1).
  */
 const CREATE_KEY = Symbol("create ldata");
-
-/** Set by a static block of Ldata: builds the class of a layout. */
-let build_class;
 
 /**
  * The class-level access listeners (doc/spec-data-api.md §2.8). They are kept
@@ -436,11 +434,12 @@ export class Ldata extends EventEmitter {
 				super(key, name, layout, compiled);
 			}
 		};
-		Object.defineProperty(Layout_Data, "name", { value: `Ldata_${layout.name}` });
+		const layout_name = `${layout.scope.name}.${layout.name}`;
+		Object.defineProperty(Layout_Data, "name", { value: `Ldata_${layout_name}` });
 		for (const entry of compiled.entries.values()) {
 			const { name, codec, byte, mask, size } = entry;
 			if (is_reserved_name(name)) {
-				throw new Error(`${layout.name}.${name}: reserved tag name`);
+				throw new Error(`${layout_name}.${name}: reserved tag name`);
 			}
 			Object.defineProperty(Layout_Data.prototype, name, {
 				get() {
@@ -464,8 +463,21 @@ export class Ldata extends EventEmitter {
 		return Layout_Data;
 	}
 
-	static {
-		build_class = (layout, compiled) => Ldata.#build_class(layout, compiled);
+	/**
+	 * Builds the class of a layout (doc/design.md §4) and returns the function
+	 * that creates its ldata, for the layout to keep privately: the class and
+	 * CREATE_KEY stay inside this module. The creating function throws
+	 * TypeError when the name is not a string. Internal: the key is not
+	 * exported by the package (internal.js).
+	 *
+	 * @param {Layout} layout
+	 * @param {Compiled_Layout} compiled
+	 * @returns {(name: string) => Ldata}
+	 * @throws {Error} For a reserved tag name.
+	 */
+	static [LDATA_FACTORY](layout, compiled) {
+		const Layout_Data = Ldata.#build_class(layout, compiled);
+		return (name) => new Layout_Data(CREATE_KEY, name);
 	}
 
 	/**
@@ -517,35 +529,10 @@ export class Ldata extends EventEmitter {
 		for (const { codec, byte, mask, init_value } of this.#compiled.entries.values()) {
 			codec.set(this.#buffer, byte, mask, init_value);
 		}
-		this.#observer = new Observer(this.#buffer, this.#layout.name, this.#compiled, (entry, old_value, new_value, errors) => {
+		this.#observer = new Observer(this.#buffer, `${this.#layout.scope.name}.${this.#layout.name}`, this.#compiled, (entry, old_value, new_value, errors) => {
 			// the data block event first, as when it relayed the tag events
 			emit_all(this, "change", [entry.name, old_value, new_value], errors);
 			emit_all(this.#handles.get(entry.name), "change", [old_value, new_value], errors);
 		});
 	}
-}
-
-/**
- * Builds the class of a layout (doc/design.md §4), for the layout to keep
- * privately. Internal: index.js does not export it.
- *
- * @param {Layout} layout
- * @param {Compiled_Layout} compiled
- * @returns {typeof Ldata}
- * @throws {Error} For a reserved tag name.
- */
-export function build_ldata_class(layout, compiled) {
-	return build_class(layout, compiled);
-}
-
-/**
- * Creates an ldata of the class of a layout. Internal: index.js does not export it.
- *
- * @param {typeof Ldata} Layout_Data - A class made by build_ldata_class.
- * @param {string} name
- * @returns {Ldata}
- * @throws {TypeError} When name is not a string.
- */
-export function new_ldata(Layout_Data, name) {
-	return new Layout_Data(CREATE_KEY, name);
 }

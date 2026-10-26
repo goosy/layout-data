@@ -40,7 +40,7 @@ export class Observer {
 
 	/**
 	 * @param {Buffer} buffer - The buffer of the Ldata.
-	 * @param {string} name - The layout name, for errors.
+	 * @param {string} name - The layout as `<scope>.<layout>`, for errors.
 	 * @param {Compiled_Layout} compiled - The compiled data of the layout of the Ldata.
 	 * @param {(entry: Layout_Entry, old_value: any, new_value: any, errors: unknown[]) => void} report - Called for each change; what a handler throws goes to `errors`.
 	 */

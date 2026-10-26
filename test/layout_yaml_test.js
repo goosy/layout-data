@@ -4,23 +4,27 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test, { describe } from "node:test";
-import { register_layout_data, register_descriptions } from "../src/layout.js";
-import { compiled_of } from "../src/layout.js";
-import { get_layout } from "../src/registry.js";
+import { COMPILED } from "../src/internal.js";
+import { fresh_scope, register } from "./share.js";
 
 const dir = mkdtempSync(join(tmpdir(), "tlms-layout-"));
 let file_seq = 0;
 
-/** Writes a YAML layout file and registers it. */
-function compile(yaml) {
+/** Writes a YAML layout file. */
+function write(yaml) {
 	const file = join(dir, `layout_${++file_seq}.yaml`);
 	writeFileSync(file, yaml);
-	return register_descriptions(file);
+	return file;
 }
 
-function errors_of(yaml) {
+/** Writes a YAML layout file and registers it in a scope of its own. */
+function compile(yaml, scope = fresh_scope()) {
+	return scope.register_layout(write(yaml));
+}
+
+function errors_of(yaml, scope = fresh_scope()) {
 	try {
-		compile(yaml);
+		compile(yaml, scope);
 	} catch (e) {
 		return e.errors;
 	}
@@ -96,7 +100,7 @@ describe("YAML layout file", () => {
 
 	test("tags_at_byte lists the tags of each byte, a word before its bits", () => {
 		const { T } = compile(Sample).layouts;
-		const names = (byte) => compiled_of(T).tags_at_byte[byte].map((entry) => entry.name);
+		const names = (byte) => T[COMPILED].tags_at_byte[byte].map((entry) => entry.name);
 		assert.deepEqual(names(0), ["id"]);
 		assert.deepEqual(names(2), ["status", "f8"]);
 		assert.deepEqual(names(3), ["status", "f0"]);
@@ -144,7 +148,7 @@ layouts:
 	});
 
 	test("a missing file and a YAML syntax error are reported in errors", () => {
-		assert.throws(() => register_descriptions(join(dir, "missing.yaml")), (error) => {
+		assert.throws(() => register(join(dir, "missing.yaml")), (error) => {
 			assert.match(error.errors[0], /ENOENT/);
 			return true;
 		});
@@ -154,8 +158,8 @@ layouts:
 });
 
 describe("parsed layout description", () => {
-	test("register_layout_data registers the same structure as a file", () => {
-		const { layouts, fragments } = register_layout_data({
+	test("a description object registers the same structure as a file", () => {
+		const { layouts, fragments } = register({
 			layouts: { PARSED: [{ name: "a", type: "UInt", offset: 0, init_value: 3 }, { includes: "tail", offset: 16 }] },
 			tail: [{ name: "b", type: "UInt", offset: 0, init_value: 4 }],
 		});
@@ -163,60 +167,24 @@ describe("parsed layout description", () => {
 		assert.equal(fragments.tail.length, 1);
 	});
 
-	test("errors name the origin", () => {
-		assert.throws(() => register_layout_data({ x: [] }, "my.yaml"), /invalid layout description from my.yaml/);
+	test("errors name the scope and the origin", () => {
+		const file = write("layouts:\n  Bad:\n    - { name: a, type: Byte, offset: 0, init_value: 0 }\n");
+		const scope = fresh_scope();
+		assert.throws(() => scope.register_layout(file), (error) => {
+			assert.ok(error.message.startsWith(`invalid layout description of scope ${scope.name} from ${file}:`), error.message);
+			return true;
+		});
+		assert.throws(() => scope.register_layout({ x: [] }), new RegExp(`invalid layout descriptions of scope ${scope.name}:`));
 	});
 });
 
 describe("layout registry", () => {
-	const layout_yaml = (name, init_value = 1, extra = "") =>
-		`layouts:
-  ${name}:
-    - { name: a, type: UInt, offset: 0, init_value: ${init_value}${extra} }
-`;
-
-	test("a file with the same layouts gives the same Layout objects, whatever its path", () => {
-		const first = compile(layout_yaml("Reg_Same"));
-		const second = compile(layout_yaml("Reg_Same"));
-		assert.equal(second.layouts.Reg_Same, first.layouts.Reg_Same);
-		assert.equal(get_layout("Reg_Same"), first.layouts.Reg_Same);
-		assert.equal(get_layout("Reg_Same").create_ldata("t").a, 1);
-	});
-
-	test("a layout shared by two descriptions is one Layout whatever else they hold", () => {
-		const first = register_layout_data({ layouts: { Reg_Shared: [{ name: "a", type: "UInt", offset: 0, init_value: 1 }] } });
-		const second = register_layout_data({
-			layouts: {
-				Reg_Shared: [{ name: "a", type: "UInt", offset: 0, init_value: 1 }],
-				Reg_Other: [{ name: "b", type: "UInt", offset: 0, init_value: 2 }],
-			},
-		});
-		assert.equal(second.layouts.Reg_Shared, first.layouts.Reg_Shared);
-	});
-
-	test("the comment and the case of the type do not make another layout", () => {
-		const first = compile(layout_yaml("Reg_Text"));
-		const second = compile(`layouts:
-  Reg_Text:
-    - { name: a, type: uint, offset: 0, init_value: 1, comment: described }
-`);
-		assert.equal(second.layouts.Reg_Text, first.layouts.Reg_Text);
-	});
-
-	test("another layout under a used name is an error, and nothing of the file is registered", () => {
-		compile(layout_yaml("Reg_Used"));
-		const errors = errors_of(`layouts:
-  Reg_New:
-    - { name: a, type: UInt, offset: 0, init_value: 1 }
-  Reg_Used:
-    - { name: a, type: UInt, offset: 0, init_value: 2 }
-`);
-		assert.deepEqual(errors, ["layout Reg_Used: another layout is already named Reg_Used"]);
-		assert.throws(() => get_layout("Reg_New"), /unknown layout Reg_New/);
-	});
-
-	test("an invalid file registers nothing", () => {
-		assert.throws(() => compile("x: []\n"));
-		assert.throws(() => compile("x: []\n"));
+	test("an invalid file registers nothing and does not use up the call of the scope", () => {
+		const scope = fresh_scope();
+		assert.throws(() => compile("x: []\n", scope));
+		assert.throws(() => compile("x: []\n", scope));
+		const { layouts } = compile("layouts:\n  Reg_Later:\n    - { name: a, type: UInt, offset: 0, init_value: 1 }\n", scope);
+		assert.equal(scope.get_layout("Reg_Later"), layouts.Reg_Later);
+		assert.equal(scope.get_layout("Reg_Later").create_ldata("t").a, 1);
 	});
 });

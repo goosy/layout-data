@@ -1,7 +1,7 @@
 import { make_struct, register_items } from "./share.js";
 import assert from "node:assert/strict";
 import test, { describe } from "node:test";
-import { compiled_of } from "../src/layout.js";
+import { COMPILED } from "../src/internal.js";
 import { validate_structure } from "../src/structure.js";
 
 const VALID_ITEMS = [
@@ -271,8 +271,9 @@ describe("the layout object (doc/spec-layout.md §7)", () => {
 	});
 
 	test("the compiled data is kept apart; an object that is not a layout of this package has none", () => {
-		assert.ok(compiled_of(layout).entries.has("status"));
-		assert.throws(() => compiled_of({ ...layout }), /PUBLIC_SHAPE is not a registered layout/);
+		assert.ok(layout[COMPILED].entries.has("status"));
+		assert.equal({ ...layout }[COMPILED], undefined);
+		assert.equal(Object.getOwnPropertySymbols(layout).length, 0);
 	});
 
 	test("a layout has the methods create_ldata and io_index_table, and is not made by new", () => {
@@ -280,7 +281,9 @@ describe("the layout object (doc/spec-layout.md §7)", () => {
 		const data = layout.create_ldata("d");
 		assert.equal(data.layout, layout);
 		assert.equal(data.name, "d");
-		assert.throws(() => new layout.constructor(layout, {}), /a layout is made by register_layout/);
+		assert.throws(() => new layout.constructor(layout, {}), /a layout is made by the register_layout of a scope/);
+		assert.match(layout.scope.name, /^Test_\d+$/);
+		assert.equal(layout.scope.get_layout("PUBLIC_SHAPE"), layout);
 	});
 
 	test("io_index_table takes only the four byte orders", () => {
