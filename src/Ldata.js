@@ -525,9 +525,10 @@ export class Ldata extends EventEmitter {
 		this.#compiled = compiled;
 		this.setMaxListeners(100);
 		this.#buffer = Buffer.alloc(this.#layout.size, 0);
-		// init values in layout order: the bits of a combined word after the word
+		// init values in layout order: the bits of a combined word after the word;
+		// a tag without one keeps the zeroed bytes, so it is 0 or false
 		for (const { codec, byte, mask, init_value } of this.#compiled.entries.values()) {
-			codec.set(this.#buffer, byte, mask, init_value);
+			if (init_value !== undefined) codec.set(this.#buffer, byte, mask, init_value);
 		}
 		this.#observer = new Observer(this.#buffer, `${this.#layout.scope.name}.${this.#layout.name}`, this.#compiled, (entry, old_value, new_value, errors) => {
 			// the data block event first, as when it relayed the tag events

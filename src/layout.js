@@ -156,7 +156,7 @@ function compile_structure(data_struct, scope) {
 		// defensive checks of what an Ldata relies on; validate_structure reports them all
 		if (type !== "bool" && offset % 8 !== 0) fail(`bit offset ${offset % 8} on a ${item.type}`);
 		if (codec.size > 1 && (offset >> 3) % 2 !== 0) fail(`${item.type} at the odd byte ${offset >> 3}`);
-		if (!["number", "boolean"].includes(typeof init_value)) fail(`init_value ${init_value} is not a number or boolean`);
+		if (!["number", "boolean", "undefined"].includes(typeof init_value)) fail(`init_value ${init_value} is not a number or boolean`);
 		const byte = offset >> 3;
 		const entry = {
 			name, type, init_value, byte,
@@ -185,8 +185,8 @@ function public_tag(item) {
 		type: item.type,
 		offset: item.offset,
 		length: item.length ?? TYPE_BITS[item.type.toLowerCase()],
-		init_value: item.init_value,
 	};
+	if (item.init_value !== undefined) tag.init_value = item.init_value;
 	if (item.comment !== undefined) tag.comment = item.comment;
 	tag.coupling = Object.freeze([...(item.coupling ?? [])]);
 	return Object.freeze(tag);

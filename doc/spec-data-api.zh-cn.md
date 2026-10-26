@@ -29,7 +29,7 @@ const data = layout.create_ldata(name);
 
 - ldata 由布局产生：`layout.create_ldata(name)` 是创建 ldata 的唯一方式。`layout` 是已登记的布局对象，由登记域的 `get_layout(name)` 返回，或来自注册的返回值（[spec-layout.zh-cn.md](spec-layout.zh-cn.md) §5、§7）；按名查找只发生在取得布局的那一步，所以创建时手里已经有布局对象。只有已登记的布局带有这个方法，复制出来的对象（如 `{ ...layout }`）没有；
 - `name`：ldata 的名称，用于日志和错误信息。必须是字符串（任何字符串，空字符串也可以），否则抛出 `TypeError`；名称在这里给定，以后不能修改；
-- 创建后每个 tag 的值等于布局中的初值，此时不发出变化事件；
+- 创建后每个 tag 的值等于布局中的初值，没有初值的 tag 为 `0`（`Bool` 为 `false`），此时不发出变化事件；
 - `Ldata` 不能用 `new` 构造：`new Ldata(...)` 抛出 `TypeError`，错误信息写出正确的用法 `layout.create_ldata(name)`；类型声明中构造函数是私有的，所以 TypeScript 和开启 `checkJs` 的文件在编译期即报错。`Ldata` 仍然导出，供 `instanceof`、类型标注和 `Ldata.on_access` / `off_access`（§2.8）使用；
 - 同一布局的数据块共用一个类，它是 `Ldata` 的子类，同样不能用 `new` 构造。
 
@@ -63,7 +63,7 @@ const value = data.pressure;  // read
   | 整型（`Byte`、`SInt`、`USInt`、`Int`、`UInt`、`Word`、`DInt`、`UDInt`、`DWord`） | 在类型取值范围内的整数 | 不是数字（字符串、`null`、`undefined`、布尔值、对象、bigint）：`TypeError`；`NaN`、`Infinity`、`1.5` 这样的非整数、超出范围的整数：`RangeError`；不截断，不转换 |
   | `Real` | 任何数字：`NaN` 和 `±Infinity` 照常保存；有限值舍入为 float32 | 不是数字：`TypeError`；绝对值超过 float32 最大值（约 3.4028235e38）的有限数，如 `1e40`：`RangeError` |
 
-  布局的 `init_value` 更严格（[spec-layout.zh-cn.md](spec-layout.zh-cn.md) §3）：`Real` 的初值必须是同一范围内的有限数。
+  布局中给出的 `init_value` 更严格（[spec-layout.zh-cn.md](spec-layout.zh-cn.md) §3）：`Real` 的初值必须是同一范围内的有限数。
 
 ### 2.4 取得 Ltag
 

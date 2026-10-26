@@ -72,6 +72,8 @@ function share_init_value(word, bits) {
 		return 2 ** ((size - 1 - (relative >> 3)) * 8 + relative % 8);
 	};
 	if (word.init_value === undefined) {
+		// neither side gives one: the word and its bits have no init value
+		if (given.length === 0) return;
 		word.init_value = 0;
 		for (const bit of bits) {
 			bit.init_value ??= false;
@@ -132,6 +134,8 @@ const INTEGER_RANGES = {
 
 function check_init_value(item, type) {
 	const value = item.init_value;
+	// a tag may have no init value; only a given one is checked
+	if (value === undefined) return true;
 	if (type === "bool") return typeof value === "boolean";
 	if (typeof value !== "number") return false;
 	if (type === "real") return Number.isFinite(value) && Math.abs(value) <= FLOAT32_MAX;

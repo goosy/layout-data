@@ -181,6 +181,35 @@ describe("layout validation", () => {
 		], "T.w", "both on the word and on its bits b0");
 	});
 
+	test("a tag without init_value is valid and is given none", () => {
+		const struct = make_struct([
+			{ name: "flag", type: "Bool", offset: 0, length: 1 },
+			{ name: "small", type: "SInt", offset: 8, length: 8 },
+			{ name: "count", type: "Int", offset: 16, length: 16 },
+			{ name: "value", type: "Real", offset: 32, length: 32 },
+		], "T");
+		assert.deepEqual(validate_structure(struct), []);
+		for (const item of struct.items) assert.equal(item.init_value, undefined, item.name);
+	});
+
+	test("an init_value given as null is reported, not taken as omitted", () => {
+		assert_error([{ name: "a", type: "Int", offset: 0, length: 16, init_value: null }], "init_value");
+	});
+
+	test("a word and its bits without init_value on either side are given none", () => {
+		const struct = make_struct([
+			{
+				name: "w", type: "Word", offset: 0, length: 16,
+				coupling: [
+					{ name: "b0", type: "Bool", offset: 8, length: 1 },
+					{ name: "b1", type: "Bool", offset: 9, length: 1 },
+				],
+			},
+		], "T");
+		assert.deepEqual(validate_structure(struct), []);
+		for (const item of struct.items) assert.equal(item.init_value, undefined, item.name);
+	});
+
 	test("a word without init_value is composed from its bits", () => {
 		const struct = make_struct([
 			{

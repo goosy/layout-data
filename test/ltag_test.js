@@ -196,7 +196,13 @@ describe("layout checks of a data block", () => {
 	});
 
 	test("init_value that is not a number or boolean throws", () => {
-		assert.throws(() => one_tag("Int", undefined), /init_value/);
 		assert.throws(() => one_tag("Int", "1"), /init_value/);
+		assert.throws(() => one_tag("Int", null), /init_value/);
+	});
+
+	test("a tag without init_value starts at 0 or false", () => {
+		assert.equal(one_tag("Int", undefined).tag, 0);
+		assert.equal(one_tag("Real", undefined).tag, 0);
+		assert.equal(one_tag("Bool", undefined).tag, false);
 	});
 });

@@ -31,7 +31,7 @@ const data = layout.create_ldata(name);
 
 - An ldata is made by its layout: `layout.create_ldata(name)` is the only way to create one. `layout` is a registered layout object, which `get_layout(name)` of a scope returns or a registration result holds ([spec-layout.md](spec-layout.md) §5, §7); looking up by name happens only when the layout is got, so the layout object is in hand when a data block is created. Only a registered layout has the method; a copy of one (such as `{ ...layout }`) has not;
 - `name`: the name of the ldata, used in logs and error messages. It must be a string (any string, the empty one included), otherwise `TypeError`; it is given here and cannot be changed afterwards;
-- After creation every tag equals its initial value from the layout, and no change event is emitted;
+- After creation every tag equals its initial value from the layout, a tag without one is `0` (`false` for a `Bool`), and no change event is emitted;
 - `Ldata` cannot be constructed with `new`: `new Ldata(...)` throws `TypeError`, whose message gives the right usage, `layout.create_ldata(name)`; in the declarations the constructor is private, so TypeScript and a file checked with `checkJs` report it at compile time. `Ldata` is still exported, for `instanceof`, type annotations and `Ldata.on_access` / `off_access` (§2.8);
 - The data blocks of one layout share one class, a subclass of `Ldata`, which cannot be constructed with `new` either.
 
@@ -65,7 +65,7 @@ const value = data.pressure;  // read
   | Integer types (`Byte`, `SInt`, `USInt`, `Int`, `UInt`, `Word`, `DInt`, `UDInt`, `DWord`) | an integer inside the range of the type | not a number (a string, `null`, `undefined`, a boolean, an object, a bigint): `TypeError`; `NaN`, `Infinity`, a non-integer such as `1.5`, or an integer outside the range: `RangeError`; nothing is truncated or converted |
   | `Real` | any number: `NaN` and `±Infinity` are kept; a finite value is rounded to float32 | not a number: `TypeError`; a finite number whose magnitude is above the float32 maximum (about 3.4028235e38), such as `1e40`: `RangeError` |
 
-  The `init_value` of a layout is stricter ([spec-layout.md](spec-layout.md) §3): for a `Real` it must be a finite number inside the same range.
+  A given `init_value` of a layout is stricter ([spec-layout.md](spec-layout.md) §3): for a `Real` it must be a finite number inside the same range.
 
 ### 2.4 Getting an Ltag
 

@@ -18,7 +18,7 @@
  * @typedef {object} Layout_Entry
  * @property {string} name
  * @property {import("./typedefs.js").Tag_Type} type - Lower case type name.
- * @property {number | boolean} init_value
+ * @property {number | boolean} [init_value] - Absent when the layout gives none.
  * @property {number} byte - Byte offset.
  * @property {number} index - Position among the entries of the layout.
  * @property {number} size - Size in bytes.
