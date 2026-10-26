@@ -50,8 +50,8 @@
 | 编译数据 | `Ldata` 需要而公开的 Layout 不展示的部分：`entries` 和 `tags_at_byte` | `Compiled_Layout`，Layout 的私有字段 `#compiled` |
 
 - 描述是描述文件（YAML 1.2）或同样结构的描述对象：根键 `layouts` 把布局名映射到布局定义（条目列表）；其余根键都是片段，由条目按名称引用。
-- 每个条目包含 `{ name, type, offset, init_value }`，可选 `length`、`comment`；`offset` 和 `length` 的单位都是位（bit），`length` 省略时由类型决定。
-- 组合字与组成位只由一方给出 `init_value`：`build_structure` 展开时，组合字未给出则由组成位合成（未给出的位为 false），组合字给出则组成位的值从整字拆出；双方都给出时保留给出的值，由校验报告。
+- 每个条目包含 `{ name, type, offset }`，可选 `length`、`init_value`、`comment`；`offset` 和 `length` 的单位都是位（bit），`length` 省略时由类型决定。
+- 组合字与组成位只由一方给出 `init_value`：`build_structure` 展开时，组合字未给出则由组成位合成（未给出的位为 false），组合字给出则组成位的值从整字拆出；双方都不给出时都保持没有初值；双方都给出时保留给出的值，由校验报告。
 - `type` 取值（大小写不敏感）：`Bool`、`Byte`、`SInt`、`USInt`、`Int`、`UInt`、`Word`、`DInt`、`UDInt`、`DWord`、`Real`。
 - `Word` 条目带 `coupling`（片段名或内联列表）时，表示由若干 Bool 组成的状态字或命令字；`is_combined: true` 只是说明性标记：整字与各位共用同一块字节，联动不依赖它。coupling 内各项的 `offset` 相对于该字的起点。
 - `{ includes: <片段名或内联列表>, offset }` 把一组公共条目整体偏移后拼接进来，可加 `name_prefix`。
@@ -78,7 +78,7 @@
   - 重叠：把非 Bool 条目按字节区间排序后检查相邻区间是否相交；Bool 按 `offset` 检查是否重复占用同一位；Bool 落在某个非 Bool 区间内时，要求该 Bool 条目的 `coupling`（展开后是它所属组合字的名称数组）包含这个非 Bool 条目的名称。
   - 组合字：带 `coupling` 的条目，其每个组成位必须存在、是 Bool，且 `offset` 都在 `[offset, offset + length)` 内。
   - 总长：`length % 16 === 0`。
-  - `init_value` 的类型与取值范围与 `type` 相符。
+  - 给出的 `init_value` 的类型与取值范围与 `type` 相符；没有初值的 tag 不检查。
   - 组合字与它的组成位不同时给出 `init_value`（展开时记录冲突，由校验报告）。
 - `build_structure` 遇到重名或不合法的名字时保留条目，交给校验报告。只有纯包含条目（有 `includes` 且没有 name）才会被丢弃；其余条目都是 tag，所以缺少 name 的 tag 条目会被报告，不会丢失。名称前缀只加在字符串类型的名字前。
 - 登记域的 `register_layout` 对全部描述中的布局调用校验，有违规时抛出包含全部违规项的错误（`error.errors`）。
@@ -98,7 +98,7 @@
 
 ## 5. Ldata
 
-- ldata 只由 `layout.create_ldata(name)` 创建（spec-data-api.zh-cn.md §2.1），它调用 `Ldata[LDATA_FACTORY]` 返回的创建函数，即以 `Ldata.js` 模块私有的键 `CREATE_KEY` 构造布局的子类（§4）。`Ldata` 的构造函数是 `(key, name, layout, compiled)`：在调用 `super()` 之前，先检查 `key` 是 `CREATE_KEY`，否则抛出 `TypeError`（信息是 `an ldata is created by its layout: layout.create_ldata(name)`），再检查 `name` 是字符串（`TypeError`）。所以 `new Ldata(...)` 和对子类（例如 `data.constructor`）使用 `new` 都抛出错误；类型声明中构造函数是私有的（JSDoc `@private`），TypeScript 中既不能 `new` 也不能继承。`Ldata` 本身不会是任何实例的直接类。实例分配 `buffer`（`layout.size` 字节），按条目的 `init_value` 依次编码写入。
+- ldata 只由 `layout.create_ldata(name)` 创建（spec-data-api.zh-cn.md §2.1），它调用 `Ldata[LDATA_FACTORY]` 返回的创建函数，即以 `Ldata.js` 模块私有的键 `CREATE_KEY` 构造布局的子类（§4）。`Ldata` 的构造函数是 `(key, name, layout, compiled)`：在调用 `super()` 之前，先检查 `key` 是 `CREATE_KEY`，否则抛出 `TypeError`（信息是 `an ldata is created by its layout: layout.create_ldata(name)`），再检查 `name` 是字符串（`TypeError`）。所以 `new Ldata(...)` 和对子类（例如 `data.constructor`）使用 `new` 都抛出错误；类型声明中构造函数是私有的（JSDoc `@private`），TypeScript 中既不能 `new` 也不能继承。`Ldata` 本身不会是任何实例的直接类。实例分配 `buffer`（`layout.size` 字节），按条目的 `init_value` 依次编码写入，没有初值的条目跳过，保持缓冲区的 0。
 - `name`、`layout`、`size` 都只读（只有 getter，赋值抛出 `TypeError`）；`name` 是私有字段 `#name`，构造函数在检查私有键之后、`super()` 之前检查它是字符串（`TypeError`），再赋值。Ldata 的 `setMaxListeners(100)` 和 Ltag 的 `setMaxListeners(20)` 固定写在各自的构造函数里。缓冲区是私有字段（`#buffer`），没有访问器，统一按大端存放；Observer 和事务所需的缓冲区由创建它们的 Ldata 传入。带类型的访问走 tag，不带类型的访问走字节：没有按宽度分类的原始方法。
 - 写缓冲区有两种途径，都经过 Ldata，任何时候都允许：
 

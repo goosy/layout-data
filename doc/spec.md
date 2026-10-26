@@ -36,7 +36,7 @@ Out of scope: device communication, scheduling, business rules and logging. The 
   - the byte ranges of non-Bool tags do not overlap;
   - each bit belongs to at most one Bool tag;
   - a Bool inside the byte range of a non-Bool tag must be a bit of that tag (a combined word); conversely every bit of a combined word must lie inside the word;
-  - only one side of a combined word and its bits gives the initial value: if the word gives it, the initial values of the bits come from the whole word; otherwise they come from the bits (a bit without a value is false) and the word is composed from them;
+  - only one side of a combined word and its bits gives the initial value: if the word gives it, the initial values of the bits come from the whole word; otherwise they come from the bits (a bit without a value is false) and the word is composed from them; if neither side gives one, the word and its bits have none;
   - the total length of a data block is a whole number of registers (a multiple of 16 bits).
 - **Bit numbering of combined words**: in a 16-bit combined word, bit k of the word value is bit k of the register. This is guaranteed by the offsets of the bits in the layout; no extra byte swapping is done internally.
 - **Byte order**: data is stored big-endian internally. Device byte orders (`BE`, `LE`, `BEBS`, `LEBS`) are converted only at the boundary where data is exchanged with a device; the package provides per-tag conversion (`load_tag`, `store_tag` of Ldata, and `load`, `store` of Ltag) and a byte index table for a whole block (`io_index_table` of a layout). For Bool and single-byte tags the device byte order acts per 16-bit register.

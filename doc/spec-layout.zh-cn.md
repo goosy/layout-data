@@ -38,7 +38,7 @@ layouts:
 | `type` | [spec-data-api.zh-cn.md](spec-data-api.zh-cn.md) §1 所列类型之一，大小写不敏感 |
 | `offset` | 位偏移；非 Bool 必须在整字节上，多字节类型必须从偶数字节开始 |
 | `length` | 位长，可省略，省略时由类型决定；写出时须与类型一致 |
-| `init_value` | 初值，须是该类型可表示的值（整型是范围内的整数，`Real` 是 float32 范围内的有限数）；组合字与组成位见下文 |
+| `init_value` | 初值；给出时须是该类型可表示的值（整型是范围内的整数，`Real` 是 float32 范围内的有限数）。可以省略：此时布局不给该 tag 初值，它在数据块中从 `0` 开始（`Bool` 为 `false`）；组合字与组成位见下文 |
 | `comment` | 可选的说明文字，供生成点表、类型声明等使用 |
 | `coupling` | 组合字的组成位：片段名或内联条目列表，各位的 `offset` 相对于该字 |
 | `is_combined` | 可选，说明性标记（整字与各位双向联动的组合字）；联动由 `coupling` 决定，不依赖它 |
@@ -63,7 +63,7 @@ layouts:
 - tag 名是标识符（字母、数字和 `_`，不以数字开头；数字、空名和缺少 name 都不是），唯一，且不是保留名（[spec-data-api.zh-cn.md](spec-data-api.zh-cn.md) §2.10）；
 - 非 Bool 的 tag 之间字节范围互不重叠；每一位最多属于一个 Bool；
 - Bool 落在某个非 Bool tag 的字节范围内时，必须是该 tag（组合字）的组成位；组合字的每个组成位都必须落在该字的范围内；
-- 组合字与它的组成位只能由一方给出初值：组合字给出时，组成位的初值由整字决定；组合字不给出时，由各组成位给出（未给出的位为 `false`），整字的初值由它们合成；
+- 组合字与它的组成位只能由一方给出初值：组合字给出时，组成位的初值由整字决定；组合字不给出时，由各组成位给出（未给出的位为 `false`），整字的初值由它们合成；双方都不给出时，组合字与组成位都没有初值；
 - 布局总长是整数个寄存器（16 位的整数倍）；
 - 引用的片段必须存在，片段之间不得循环引用。
 
@@ -139,7 +139,7 @@ const data = scope.get_layout("Pump").create_ldata("pump_1");
 | `create_ldata(name)` | 创建该布局的一个 ldata（[spec-data-api.zh-cn.md](spec-data-api.zh-cn.md) §2.1） |
 | `io_index_table(endian)` | 与设备整块交换用的字节下标表（[spec-data-api.zh-cn.md](spec-data-api.zh-cn.md) §2.9）；`endian` 不是四种字节序之一时抛出 `RangeError` |
 
-- `items` 的每一项有：`name`；`type`（保持描述中的写法，不改大小写，而 `Ltag.type` 总是小写）；`offset`（绝对位偏移，字节位置是 `offset >> 3`）；`length`（位）；`init_value`；`comment`（如果给出）；`coupling`（组合字：其组成位的 tag 名；组成位：它所属的组合字的 tag 名）。`includes` 和 `name_prefix` 已经展开，不再出现；
+- `items` 的每一项有：`name`；`type`（保持描述中的写法，不改大小写，而 `Ltag.type` 总是小写）；`offset`（绝对位偏移，字节位置是 `offset >> 3`）；`length`（位）；`init_value`（如果该 tag 有初值，§3）；`comment`（如果给出）；`coupling`（组合字：其组成位的 tag 名；组成位：它所属的组合字的 tag 名）。`includes` 和 `name_prefix` 已经展开，不再出现；
 - 布局及其 `items` 是深度冻结的，修改它们抛出 `TypeError`；
 - `Layout` 只作为类型导出，不作为可构造的值导出：布局只由注册产生（§5.2）；
 - 不同登记域可以各有一个同名的布局，它们是不同的布局，各自创建的 ldata 也各有自己的类。所以按布局归类时，要用布局对象，或登记域名加布局名，只按布局名归类会把它们混在一起，例如 `Ldata.on_access` 的观察者（[spec-data-api.zh-cn.md](spec-data-api.zh-cn.md) §2.8）；

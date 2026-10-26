@@ -34,6 +34,18 @@ describe("6.5 layouts given in code", () => {
 		assert.deepEqual(layouts.Lc_Lengths.items.map((item) => item.length), [16, 16, 1, 1, 32]);
 	});
 
+	test("tags without init_value register, have no init_value in the layout and start at 0 or false", () => {
+		const { layouts } = register("Lc_No_Init", [
+			{ name: "count", type: "Int", offset: 0 },
+			{ name: "flag", type: "Bool", offset: 16 },
+			{ name: "value", type: "Real", offset: 32 },
+			{ name: "w", type: "Word", offset: 64, coupling: [{ name: "b0", type: "Bool", offset: 8 }] },
+		]);
+		for (const item of layouts.Lc_No_Init.items) assert.equal("init_value" in item, false, item.name);
+		const data = layouts.Lc_No_Init.create_ldata("d");
+		assert.deepEqual([data.count, data.flag, data.value, data.w, data.b0], [0, false, 0, 0, false]);
+	});
+
 	test("the items given are not changed, so the same list can be given again", () => {
 		const items = ITEMS();
 		const before = structuredClone(items);

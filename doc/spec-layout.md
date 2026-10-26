@@ -40,7 +40,7 @@ A description is complete in itself or is one of several descriptions registered
 | `type` | One of the types listed in [spec-data-api.md](spec-data-api.md) §1, case-insensitive |
 | `offset` | Bit offset; a non-Bool must be on a whole byte, a multi-byte type must start at an even byte |
 | `length` | Length in bits; may be omitted, in which case the type decides it; when written it must match the type |
-| `init_value` | Initial value, which must be representable by the type (an integer inside the range of the type; for a `Real`, a finite number inside the float32 range); see below for combined words and their bits |
+| `init_value` | Initial value; when given it must be representable by the type (an integer inside the range of the type; for a `Real`, a finite number inside the float32 range). It may be omitted: the layout then gives the tag no initial value, and in a data block the tag starts at `0` (`false` for a `Bool`); see below for combined words and their bits |
 | `comment` | Optional description, used to generate point tables, type declarations and so on |
 | `coupling` | The bits of a combined word: a fragment name or an inline list of entries; the `offset` of each bit is relative to the word |
 | `is_combined` | Optional descriptive mark of a combined word whose word and bits are linked in both directions; the linkage is decided by `coupling` and does not depend on it |
@@ -65,7 +65,7 @@ There are two kinds of entry, and the declarations name them (`Layout_Item` is e
 - Tag names are identifiers (letters, digits and `_`, not starting with a digit; a number, an empty name or a missing name is not one), are unique and are not reserved names ([spec-data-api.md](spec-data-api.md) §2.10);
 - The byte ranges of non-Bool tags do not overlap; each bit belongs to at most one Bool;
 - A Bool inside the byte range of a non-Bool tag must be a bit (`coupling`) of that tag; every bit of a combined word must lie inside the word;
-- Only one side of a combined word and its bits gives the initial value: if the word gives it, the initial values of the bits come from the whole word; otherwise they come from the bits (a bit without a value is `false`) and the word is composed from them;
+- Only one side of a combined word and its bits gives the initial value: if the word gives it, the initial values of the bits come from the whole word; otherwise they come from the bits (a bit without a value is `false`) and the word is composed from them; if neither side gives one, the word and its bits have none;
 - The total length of a layout is a whole number of registers (a multiple of 16 bits);
 - Referenced fragments must exist, and fragments must not reference each other in a cycle.
 
@@ -141,7 +141,7 @@ A layout (`Layout`) is a read-only object with methods that exposes only these m
 | `create_ldata(name)` | Creates an ldata of the layout ([spec-data-api.md](spec-data-api.md) §2.1) |
 | `io_index_table(endian)` | The byte index table for exchanging a whole block with a device ([spec-data-api.md](spec-data-api.md) §2.9); an `endian` that is not one of the four byte orders throws `RangeError` |
 
-- Every item of `items` has: `name`; `type` (as written in the description, the case unchanged, while `Ltag.type` is always lower case); `offset` (the absolute bit offset; the byte position is `offset >> 3`); `length` (bits); `init_value`; `comment` (if given); `coupling` (for a combined word: the tag names of its bits; for a bit: the tag names of the combined words it belongs to). `includes` and `name_prefix` are expanded and no longer appear;
+- Every item of `items` has: `name`; `type` (as written in the description, the case unchanged, while `Ltag.type` is always lower case); `offset` (the absolute bit offset; the byte position is `offset >> 3`); `length` (bits); `init_value` (if the tag has one, §3); `comment` (if given); `coupling` (for a combined word: the tag names of its bits; for a bit: the tag names of the combined words it belongs to). `includes` and `name_prefix` are expanded and no longer appear;
 - The layout and its `items` are deeply frozen: modifying them throws `TypeError`;
 - `Layout` is exported as a type only, not as a value that can be constructed: layouts are made only by registering (§5.2);
 - Two scopes may each have a layout of the same name. They are different layouts, and the ldatas they create have classes of their own. To group by layout, use the layout object, or the scope name with the layout name: grouping by the layout name alone mixes them up, for example in an observer of `Ldata.on_access` ([spec-data-api.md](spec-data-api.md) §2.8);

@@ -47,7 +47,7 @@
 /**
  * One tag of a compiled layout (doc/spec-layout.md §7), read-only:
  * `name`; `type`, as written in the description; `offset`, the absolute bit
- * offset; `length` in bits; `init_value`; `comment`, if given; `coupling`,
+ * offset; `length` in bits; `init_value` and `comment`, if given; `coupling`,
  * the tag names of the bits of a combined word, or of the combined words a
  * bit belongs to.
  *
@@ -56,7 +56,7 @@
  *   type: string,
  *   offset: number,
  *   length: number,
- *   init_value: number | boolean,
+ *   init_value?: number | boolean,
  *   comment?: string,
  *   coupling: readonly string[],
  * }>} Layout_Tag
