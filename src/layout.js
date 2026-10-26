@@ -17,7 +17,7 @@ const CREATE_KEY = Symbol("create layout");
 let read_compiled;
 
 /**
- * A compiled layout (doc/spec-data-api.md §6.6), read-only and deeply
+ * A compiled layout (doc/spec-layout.md §7), read-only and deeply
  * frozen: `name`; `length` in bits; `size` in bytes; `items`, the tags in
  * layout order (a combined word before its bits). Only a registration makes
  * one; the package exports the type and not the class.
@@ -194,7 +194,7 @@ function compile_structure(data_struct) {
 	}
 
 	// the public layout holds the name, the sizes and frozen copies of the items;
-	// the entries and the lookup table stay out of reach (doc/spec-data-api.md §6.6)
+	// the entries and the lookup table stay out of reach (doc/spec-layout.md §7)
 	return new Layout(CREATE_KEY, data_struct, { entries, tags_at_byte });
 }
 
@@ -327,7 +327,7 @@ let registered_once = false;
 /**
  * Registers the layouts of the descriptions, once per process: a layout is
  * described, registered under its name, got by that name (get_layout), and
- * creates its data blocks (doc/spec-data-api.md §6.4). Nothing is registered
+ * creates its data blocks (doc/spec-layout.md §5). Nothing is registered
  * when a description is not valid, and such a call does not use up the single
  * call.
  *

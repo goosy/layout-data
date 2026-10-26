@@ -8,7 +8,7 @@ import { is_reserved_name } from "./reserved.js";
 
 /**
  * An identifier of JavaScript, in any script: the form of a layout name
- * (doc/spec-data-api.md §6.3), which is also part of a type name (§6.7).
+ * (doc/spec-layout.md §4), which is also part of a type name (§8).
  */
 export const IDENTIFIER = /^[\p{ID_Start}_$][\p{ID_Continue}$\u200C\u200D]*$/u;
 
@@ -119,7 +119,7 @@ export const TYPE_BITS = {
 
 /**
  * A tag name: letters, digits and `_`, not starting with a digit, an
- * identifier in every language (doc/spec-data-api.md §6.2).
+ * identifier in every language (doc/spec-layout.md §3).
  */
 const TAG_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
 

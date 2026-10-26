@@ -9,7 +9,7 @@
 
 | Name | Meaning |
 | --- | --- |
-| Layout | The fixed format of a data block: name, type, bit offset and initial value of every tag, given by a layout definition in a description (§6) and immutable once registered |
+| Layout | The fixed format of a data block: name, type, bit offset and initial value of every tag, given by a layout definition in a description ([spec-layout.md](spec-layout.md)) and immutable once registered |
 | Ldata / ldata | Ldata is the class of data objects, an ldata is an instance: a block of data allocated for a layout, stored big-endian internally, with access by name and change events |
 | Ltag | The interface of one named tag of an ldata: read and write its value, subscribe to its changes |
 
@@ -17,7 +17,7 @@ The L in Ldata and Ltag stands for Layout: an ldata is stored in the fixed layou
 
 Tag types: `Bool`, `Byte`, `SInt`, `USInt`, `Int`, `UInt`, `Word`, `DInt`, `UDInt`, `DWord`, `Real`. The value of a `Bool` is `true` / `false`, all others are numbers. A `Word` made of several `Bool`s is called a combined word; it shares its data with its bits.
 
-`Tag_Type` is the exported TypeScript type of the lower case type names (`"bool" | "byte" | "usint" | "sint" | "int" | "uint" | "word" | "dint" | "udint" | "dword" | "real"`). Only `Ltag.type` (§3) has it, so that `switch (tag.type)` is checked. The `type` of the entries of a description and of the items of a layout (§6) is the text of the description (`string`).
+`Tag_Type` is the exported TypeScript type of the lower case type names (`"bool" | "byte" | "usint" | "sint" | "int" | "uint" | "word" | "dint" | "udint" | "dword" | "real"`). Only `Ltag.type` (§3) has it, so that `switch (tag.type)` is checked. The `type` of the entries of a description and of the items of a layout ([spec-layout.md](spec-layout.md)) is the text of the description (`string`).
 
 Units: a `length` is in bits and a `size` is in bytes, everywhere in this interface (`Layout.length` and `Layout.size`, the `length` of a layout item, `Ldata.size`, `Ltag.size`).
 
@@ -29,7 +29,7 @@ Units: a `length` is in bits and a `size` is in bytes, everywhere in this interf
 const data = layout.create_ldata(name);
 ```
 
-- An ldata is made by its layout: `layout.create_ldata(name)` is the only way to create one. `layout` is a registered layout object, which `get_layout(name)` returns or a registration result holds (§6.4, §6.6); looking up by name happens only when the layout is got, so the layout object is in hand when a data block is created. Only a registered layout has the method; a copy of one (such as `{ ...layout }`) has not;
+- An ldata is made by its layout: `layout.create_ldata(name)` is the only way to create one. `layout` is a registered layout object, which `get_layout(name)` returns or a registration result holds ([spec-layout.md](spec-layout.md) §5, §7); looking up by name happens only when the layout is got, so the layout object is in hand when a data block is created. Only a registered layout has the method; a copy of one (such as `{ ...layout }`) has not;
 - `name`: the name of the ldata, used in logs and error messages. It must be a string (any string, the empty one included), otherwise `TypeError`; it is given here and cannot be changed afterwards;
 - After creation every tag equals its initial value from the layout, and no change event is emitted;
 - `Ldata` cannot be constructed with `new`: `new Ldata(...)` throws `TypeError`, whose message gives the right usage, `layout.create_ldata(name)`; in the declarations the constructor is private, so TypeScript and a file checked with `checkJs` report it at compile time. `Ldata` is still exported, for `instanceof`, type annotations and `Ldata.on_access` / `off_access` (§2.8);
@@ -65,7 +65,7 @@ const value = data.pressure;  // read
   | Integer types (`Byte`, `SInt`, `USInt`, `Int`, `UInt`, `Word`, `DInt`, `UDInt`, `DWord`) | an integer inside the range of the type | not a number (a string, `null`, `undefined`, a boolean, an object, a bigint): `TypeError`; `NaN`, `Infinity`, a non-integer such as `1.5`, or an integer outside the range: `RangeError`; nothing is truncated or converted |
   | `Real` | any number: `NaN` and `±Infinity` are kept; a finite value is rounded to float32 | not a number: `TypeError`; a finite number whose magnitude is above the float32 maximum (about 3.4028235e38), such as `1e40`: `RangeError` |
 
-  The `init_value` of a layout is stricter (§6.2): for a `Real` it must be a finite number inside the same range.
+  The `init_value` of a layout is stricter ([spec-layout.md](spec-layout.md) §3): for a `Real` it must be a finite number inside the same range.
 
 ### 2.4 Getting an Ltag
 
@@ -79,7 +79,7 @@ Returns the Ltag of the tag; the same ldata always returns the same Ltag for the
 
 Untyped access to the bytes, for users that do not access by tag name (such as an upstream server, or the IO layer that exchanges data with a device). **Typed access goes through tags, untyped access goes through bytes**: raw access has only two granularities, byte and bit, it does not interpret the type of a value, and it has no methods classified by width (words, double words).
 
-`offset` is a byte offset, the same as the byte position of a tag in the layout (the bit offset divided by 8). The data is big-endian; converting device byte order is the job of the IO layer (§7). What happens after a write is the same as for a write by name:
+`offset` is a byte offset, the same as the byte position of a tag in the layout (the bit offset divided by 8). The data is big-endian; converting device byte order is the job of the IO layer (§6). What happens after a write is the same as for a write by name:
 
 | Method | Description |
 | --- | --- |
@@ -186,7 +186,7 @@ An ldata is stored big-endian internally. To exchange data with a device, conver
 
   A Bool and a single-byte tag (Byte, SInt, USInt) go by the 16-bit register they lie in: for `LE` and `BEBS` they sit in the other byte of the register, for `BE` and `LEBS` in place; a Bool changes only its own bit;
 - `load_tag` is the same as a write by name: it takes effect at once, detects, emits `change` and then `write`; inside a transaction it is handled at the commit. Put a batch of loads into a transaction (§2.6): one detection and one `write` at the commit;
-- Exchanging a whole block at once: the layout method `layout.io_index_table(endian)` (§6.6) returns the table of byte indexes; byte `i` of the data block is byte `table[i]` of the IO buffer. The user copies the bytes by it, then writes them with one `write_bytes` (§2.5);
+- Exchanging a whole block at once: the layout method `layout.io_index_table(endian)` ([spec-layout.md](spec-layout.md) §7) returns the table of byte indexes; byte `i` of the data block is byte `table[i]` of the IO buffer. The user copies the bytes by it, then writes them with one `write_bytes` (§2.5);
 - Errors are checked before anything is changed: the ldata is unchanged and `load_tag` emits no `write` (errors in §5).
 
 ### 2.10 Reserved names
@@ -199,7 +199,7 @@ An ldata is one object that holds both the tags (as properties) and its own meth
 | EventEmitter (Node.js 20.11) | `addListener`, `emit`, `eventNames`, `getMaxListeners`, `listenerCount`, `listeners`, `off`, `on`, `once`, `prependListener`, `prependOnceListener`, `rawListeners`, `removeAllListeners`, `removeListener`, `setMaxListeners`, `_events`, `_eventsCount`, `_maxListeners` |
 | Object | `constructor`, `hasOwnProperty`, `isPrototypeOf`, `propertyIsEnumerable`, `toLocaleString`, `toString`, `valueOf`, `__proto__`, `__defineGetter__`, `__defineSetter__`, `__lookupGetter__`, `__lookupSetter__` |
 
-- A tag with a reserved name is a violation of the layout (§6.3): registering such a layout throws `Error` (§6.4), so an ldata of it never exists;
+- A tag with a reserved name is a violation of the layout ([spec-layout.md](spec-layout.md) §4): registering such a layout throws `Error` ([spec-layout.md](spec-layout.md) §5), so an ldata of it never exists;
 - Ldata stays a subclass of EventEmitter. A later version of Node.js may add methods to EventEmitter; the list does not follow them, so a tag named like such a method would hide it. The test suite compares the list with the running Node.js;
 - From version 1.0 on, this package adds members to Ldata only as `Symbol`-keyed members or static methods, never as a new string-named member of an instance, so a tag name that is valid in 1.0 stays valid. Before 1.0 the list may still grow;
 - The reserved event names are in §2.7. Whether a name is reserved is not queryable: there is no public function for it;
@@ -267,6 +267,7 @@ A handler (a listener of `change`, `write` or `access`) may throw. The library n
 - **The value stands**: the new value has taken effect before any event, so it is not rolled back, and `write` is emitted even though the statement throws. A refused write (§2.3) is the only write that throws without taking effect;
 - **A transaction** at its commit follows the same rules, the `access` listeners included, and the first exception propagates out of `transaction`, which has been committed (§4.2). When `fn` itself throws, the changes are rolled back and only the gathered `access` of kind `read` is emitted; what its listeners throw is dropped and the exception of `fn` is rethrown;
 - **Nested writes**: a write made by a handler is an ordinary write; the exception it throws goes into the handler that made it, and it is the handler's own exception if the handler does not catch it. The oscillation exception of §4.3 counts as an exception of the dispatch under the same rules.
+
 ## 5. Errors
 
 The interface throws exceptions on errors. It does not log or exit the process; the caller decides how to handle them:
@@ -278,9 +279,6 @@ The interface throws exceptions on errors. It does not log or exit the process; 
 | A handler throws | the first exception is thrown by the write statement after all events are dispatched; the value stands and `write` is emitted (§4.4) |
 | An ldata created with a name that is not a string | `TypeError` |
 | `new` on `Ldata` or on the Ldata subclass of a layout | `TypeError`, whose message gives `layout.create_ldata(name)` (§2.1) |
-| `get_layout` with a name that is not registered | `Error` (`unknown layout X`, §6.4) |
-| Invalid layout, or a reserved tag name (§2.10) | `Error` with `errors`, thrown by `register_layout`; nothing is registered (§6.4) |
-| `register_layout` called again after it registered layouts | `Error`, the layouts of the first call stay (§6.4) |
 | Writes triggered by handlers that do not settle | `Error`, thrown by the write statement after the events are dispatched (§4.4) |
 | Starting another transaction inside a transaction | `Error` |
 | A raw read or write whose offset, length or mask is out of range, or that writes past the end of the data block | `RangeError`, the data is unchanged and no `write` is emitted |
@@ -288,152 +286,9 @@ The interface throws exceptions on errors. It does not log or exit the process; 
 | `load_tag` / `store_tag` with an unknown tag name | `Error`, the ldata is unchanged and no `write` is emitted |
 | A byte order other than `BE`, `LE`, `BEBS`, `LEBS`, or a tag whose range in `io_buffer` is out of bounds | `RangeError`, the ldata is unchanged and no `write` is emitted |
 
-## 6. Layout description
+The errors of registering a layout, getting a layout and rendering type declarations are in [spec-layout.md](spec-layout.md) §9.
 
-The flow is **register once, get the layout, create from it**: the layouts are described (§6.1 to §6.3), all of them are registered by one call of `register_layout` (§6.4), and from then on `get_layout("Pump")` gets a layout by its name and its `create_ldata("pump_1")` creates data blocks (§2.1). The user needs to know how to express a layout as a YAML structure and which name it has; whether it is compiled, and into what, is not part of the flow.
-
-### 6.1 Structure
-
-A description can define several layouts at once. It takes one of two forms with the same structure: a **description file**, a YAML 1.2 file given by its path, and a **description object**, the same structure in code (§6.5). The structure is:
-
-- The root key `layouts`: a mapping from layout names (such as `NODE`) to lists of entries;
-- Every other root key is a fragment: its key is the fragment name and its value a list of entries, which entries can reference by name.
-
-```yaml
-node_commands:              # a fragment
-  - { name: stop_pumps, type: Bool, offset: 8, init_value: false, comment: Stop pump command }
-  - { name: cancel_stop, type: Bool, offset: 9, comment: Cancel stop pump }
-
-layouts:
-  NODE:
-    - { name: ID, type: UInt, offset: 0, init_value: 0 }
-    - name: response_code
-      type: Word
-      offset: 128
-      coupling: node_commands
-    - { includes: node_parameters, offset: 144 }
-```
-
-A description is complete in itself or is one of several descriptions registered together (§6.4): it may hold only fragments, only layouts, or both, and the fragments of every description are available to the layouts of every description.
-
-### 6.2 Entries
-
-| Field | Description |
-| --- | --- |
-| `name` | The tag name: letters, digits and `_`, not starting with a digit, an identifier in every language, so that a tag is always written `data.name` and is the same as the field of a data block in a PLC. Unique within a layout, not a reserved name (§2.10). If the point table of a device names the point otherwise, put that name in the `comment` |
-| `type` | One of the types listed in §1, case-insensitive |
-| `offset` | Bit offset; a non-Bool must be on a whole byte, a multi-byte type must start at an even byte |
-| `length` | Length in bits; may be omitted, in which case the type decides it; when written it must match the type |
-| `init_value` | Initial value, which must be representable by the type (an integer inside the range of the type; for a `Real`, a finite number inside the float32 range); see below for combined words and their bits |
-| `comment` | Optional description, used to generate point tables, type declarations and so on |
-| `coupling` | The bits of a combined word: a fragment name or an inline list of entries; the `offset` of each bit is relative to the word |
-| `is_combined` | Optional descriptive mark of a combined word whose word and bits are linked in both directions; the linkage is decided by `coupling` and does not depend on it |
-| `includes` | Together with `offset` (and optionally `name_prefix`), splices in the entries given by a fragment name or an inline list, shifted as a whole |
-
-Entries in a fragment may reference other fragments too.
-
-There are two kinds of entry, and the declarations name them (`Layout_Item` is either of the two):
-
-| Entry | Fields | Declaration |
-| --- | --- | --- |
-| A tag | `name`, `type`, `offset` are required; `length`, `init_value`, `comment`, `is_combined`, `coupling` are optional; it has no `includes` | `Tag_Item` |
-| An inclusion | `includes` and `offset` are required; `name_prefix` is optional; it has no `name` and no `type` | `Include_Item` |
-
-- `coupling` is a fragment name or an inline list of tag entries, never a list of names: the names of the bits are a result of the registration (they appear in `Layout_Tag.coupling`, §6.6), not an input;
-- A description object has the declaration `Layout_Description`: `layouts`, a mapping from layout names to lists of entries, and one list of entries for each fragment. In the declarations the parameter of `register_layout` is typed with it (`string | Layout_Description`, or a list of them), so that an editor completes the fields of an entry and notices a misspelled one;
-- The `fragments` that `register_layout` returns hold the entries with the references expanded: `includes` and `coupling` are lists of entries, never names, and every `length` is present. Their declaration is the same `Layout_Item`.
-
-### 6.3 Validity
-
-- Layout names are identifiers of JavaScript (letters of any script, digits, `_` and `$`, not starting with a digit), as a layout name is part of type names (§6.7);
-- Tag names are identifiers (letters, digits and `_`, not starting with a digit; a number, an empty name or a missing name is not one), are unique and are not reserved names (§2.10);
-- The byte ranges of non-Bool tags do not overlap; each bit belongs to at most one Bool;
-- A Bool inside the byte range of a non-Bool tag must be a bit (`coupling`) of that tag; every bit of a combined word must lie inside the word;
-- Only one side of a combined word and its bits gives the initial value: if the word gives it, the initial values of the bits come from the whole word; otherwise they come from the bits (a bit without a value is `false`) and the word is composed from them;
-- The total length of a layout is a whole number of registers (a multiple of 16 bits);
-- Referenced fragments must exist, and fragments must not reference each other in a cycle.
-
-### 6.4 Registering
-
-```js
-register_layout("pump.yaml");                                     // one file
-register_layout(["common.yaml", "pump.yaml", "valve.yaml"]);      // several files
-register_layout(["common.yaml", { layouts: { INLINE: [...] } }]); // description files and objects
-const pump = get_layout("Pump").create_ldata("pump_1");           // from then on, get the layout and create
-```
-
-`register_layout(descriptions)` registers the layouts of the descriptions. A layout can be used only after it is registered.
-
-- `descriptions`: one description or a list of descriptions, each either **a string, the path of a description file**, or **an object, a description object** (the structure of §6.1: `layouts` plus the fragments; this is also how items are given in code, §6.5). A list does not hold lists, and an empty list is an error. A string is always a path, never YAML text;
-- **Once per process.** The layouts are registered by one call, so that the layouts and fragments are all known together and nothing depends on the order of calls. A second call throws `Error` (`register_layout can be called only once`), and the layouts of the first stay. A call that fails registers nothing and does not use up the call, so the program may go on to register something else, for example a default description when its own file is not valid;
-- **The descriptions are merged, then resolved.** The layouts and the fragments of all the descriptions are collected first, and only then are the fragment references resolved, so a layout may name a fragment of any description, whatever the order of the list. A description needs no `layouts` key (a file of common fragments has none), but at least one description must define a layout;
-- The same fragment name or the same layout name in two descriptions is an error naming both (a description file by its path, a description object by its position in the list, `layout description #2`); nothing is overridden;
-- Every layout is validated (§6.3), the omitted `length`s are filled in, and the descriptions given are not changed;
-- Any violation throws an `Error` whose `errors` property lists all violations of all descriptions, and nothing is registered: the descriptions are registered all or none. An unreadable file and a YAML syntax error are violations too. The layout and fragment errors name the layout or fragment, not the file;
-- Return value: `{ layouts, fragments }` for all the descriptions. `layouts` holds the registered layouts by name, as `get_layout(name)` returns them; `fragments` holds the entry lists by fragment name (references expanded, offsets relative to the start of the fragment), for the user to query, for example to get all tag names of a parameter block. Neither is needed for the flow above;
-- A layout name stays registered for the life of the process. `get_layout(name)` returns the registered layout (read-only, §6.6) and throws `unknown layout X` for a name that is not registered;
-- Consequences of registering once: a changed layout file takes effect only in a new process (no hot reload, and a REPL or a test cannot register a changed layout again); a library built on layout-data cannot call `register_layout` itself, it can only export the paths of its description files for the application to put in `descriptions`.
-- When the dependency tree holds two copies of the package (for example two versions), they share nothing: each allows its own single call of `register_layout`, and a layout registered through one is not found by name through the other.
-
-### 6.5 Defining a layout in code
-
-A layout needs no file. Give a description object, the structure of §6.1, to `register_layout` (§6.4), with the items of a layout as a list under its name:
-
-```js
-register_layout({
-  layouts: {
-    Pump: [
-      { name: "id", type: "UInt", offset: 0, init_value: 0 },
-      { name: "pressure", type: "Real", offset: 32, init_value: 0 },
-    ],
-  },
-});
-const data = get_layout("Pump").create_ldata("pump_1");
-```
-
-- the items are the entries of §6.2; `length` may be omitted; `coupling` and `includes` take an inline list or the name of a fragment of any of the descriptions;
-- the description object and the entries in it are not changed;
-- there is no separate function that registers one list of items, nor any that expands or validates a structure by itself: registration is the single step that validates (§6.4).
-
-### 6.6 The layout object
-
-A layout (`Layout`) is a read-only object with methods that exposes only these members:
-
-| Member | Description |
-| --- | --- |
-| `name` | The layout name |
-| `length` | Total length in bits |
-| `size` | Total size in bytes |
-| `items` | The expanded descriptions of the tags, in layout order (a combined word before its bits) |
-| `create_ldata(name)` | Creates an ldata of the layout (§2.1) |
-| `io_index_table(endian)` | The byte index table for exchanging a whole block with a device (§2.9); an `endian` that is not one of the four byte orders throws `RangeError` |
-
-- Every item of `items` has: `name`; `type` (as written in the description, the case unchanged, while `Ltag.type` is always lower case); `offset` (the absolute bit offset; the byte position is `offset >> 3`); `length` (bits); `init_value`; `comment` (if given); `coupling` (for a combined word: the tag names of its bits; for a bit: the tag names of the combined words it belongs to). `includes` and `name_prefix` are expanded and no longer appear;
-- The layout and its `items` are deeply frozen: modifying them throws `TypeError`;
-- `Layout` is exported as a type only, not as a value that can be constructed: layouts are made only by registering (§6.4);
-- A layout does not expose the table by name, byte positions, bit masks, codecs or other internal data, and users need not know them: access by name goes through `data.get(name)`, which gives an Ltag, and exchanging data with a device through `load_tag` / `store_tag` or `load` / `store` of an Ltag (§2.9).
-
-### 6.7 Type declarations for the editor
-
-`render_types(layouts, options)` returns the text of a TypeScript declaration file (`.d.ts`) for layouts, so that an editor can complete the tags of a data block. It is a helper for building the program: after the layouts are registered, the program writes the text to a file beside its code, for example `layout_types.d.ts`. `layouts` is the `layouts` that `register_layout` returns.
-
-- For each layout it declares `<Layout>_Tags`, an interface with one property per tag (`boolean` for a Bool, `number` for every other type; a `comment` becomes the doc comment of the property), and `<Layout>_Ldata`, which is `Ldata & <Layout>_Tags`;
-- The layout name is used as it is, with the case it has: the layout `Pump` gives `Pump_Tags` and `Pump_Ldata`, `my_block` gives `my_block_Tags`, `Pump_Station` gives `Pump_Station_Tags`. The case style is the choice of the caller, and `Snake_Pascal_Case` is recommended, the style of the type names of this package; the library does not require it. The name is the one written in `get_layout("Pump")`, and two layouts with different names never give the same type name;
-- The keys of `layouts` are used as the layout names and must be identifiers of JavaScript. The names of registered layouts are (§6.3), so only keys given otherwise can fail; then `Error` is thrown, whose `errors` lists every such key. A tag name is always an identifier (§6.2), so it is written as the property name as it is. A `*/` in a comment is escaped, so the text is always a valid declaration file;
-- `options.source` names the layout file in the header comment of the text; without it the header only says that the text is generated. `options.ldata_module` is the module specifier the text imports `Ldata` from, relative to the output file; it is `"layout-data"` by default. Both options, and the argument `options` itself, may be omitted.
-
-Using the types. `get_layout("Pump").create_ldata("pump_1")` is typed `Ldata`: the declaration of `create_ldata` cannot return another type for each layout, so the type of the value is named by hand, once. In JavaScript a JSDoc cast, which is enough for an editor to complete the tags and, when the file is checked (`checkJs` or `// @ts-check`), to flag a misspelled tag or a value of the wrong type:
-
-```js
-const pump = /** @type {import("./layout_types.js").Pump_Ldata} */ (get_layout("Pump").create_ldata("pump_1"));
-pump.pressure = 1.5;   // completed, and known to be a number
-```
-
-The parentheses are part of the JSDoc cast. A `/** @type {...} */` written above `const pump = get_layout("Pump").create_ldata(...)` also gives the completion, but a checked file then reports that `Ldata` is not assignable to `Pump_Ldata`.
-
-In TypeScript: `const pump = get_layout("Pump").create_ldata("pump_1") as Pump_Ldata;`.
-
-## 7. Outside this interface
+## 6. Outside this interface
 
 - Exchanging data with devices (driver binding, the orchestration of reads and writes) is the job of the user's IO layer, which operates the ldata through this interface: `load_tag` / `store_tag` convert the byte order per tag (§2.9), a whole block is exchanged with the `io_index_table` of the layout plus `read_bytes` / `write_bytes` (§2.5), and a batch of loads goes into a transaction (§2.6);
 - Scheduling, rules and timing do not belong to this interface.

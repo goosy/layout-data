@@ -15,7 +15,7 @@ layout-data 是一个结构化数据块库：提供基于 `Buffer`、面向数�
 
 | 术语 | 含义 |
 | --- | --- |
-| 描述 | 即布局描述：根键 `layouts` 把布局名映射到布局定义，其余根键都是片段（[spec-data-api.zh-cn.md](spec-data-api.zh-cn.md) §6.1）。它有结构相同的两种形式：描述文件（YAML 1.2，按路径给出）和代码中的描述对象 |
+| 描述 | 即布局描述：根键 `layouts` 把布局名映射到布局定义，其余根键都是片段（[spec-layout.zh-cn.md](spec-layout.zh-cn.md) §2）。它有结构相同的两种形式：描述文件（YAML 1.2，按路径给出）和代码中的描述对象 |
 | 布局定义 | 描述中一个布局的条目列表，位于它的布局名下 |
 | 片段 | 描述中具名的条目列表，供条目按名引用 |
 | 布局 | 一块数据的固定格式：每个 tag 的名称、类型、位偏移、初值。由布局定义注册而来，注册后不可变，即公开的 `Layout` 对象 |
@@ -27,8 +27,8 @@ layout-data 是一个结构化数据块库：提供基于 `Buffer`、面向数�
 
 - **固定布局**：每个 tag 有确定的类型、字节偏移和位号。
 - **布局合法**：布局必须满足下列规则，不合法的布局视为程序错误，校验报告全部违规项：
-  - 布局名是 JavaScript 的标识符（见 [spec-data-api.zh-cn.md](spec-data-api.zh-cn.md) §6.3）；
-  - tag 名是标识符（字母、数字和 `_`，不以数字开头），同一 ldata 内互不相同，且不是保留名（见 [spec-data-api.zh-cn.md](spec-data-api.zh-cn.md) §2.10 和 §6.2）；
+  - 布局名是 JavaScript 的标识符（见 [spec-layout.zh-cn.md](spec-layout.zh-cn.md) §4）；
+  - tag 名是标识符（字母、数字和 `_`，不以数字开头），同一 ldata 内互不相同，且不是保留名（见 [spec-data-api.zh-cn.md](spec-data-api.zh-cn.md) §2.10 和 [spec-layout.zh-cn.md](spec-layout.zh-cn.md) §3）；
   - 每个 tag 的位长与其类型一致；多字节类型（Int、UInt、Word、DInt、UDInt、DWord、Real）从偶数字节开始，单字节类型（Byte、SInt、USInt）从整字节开始，Bool 可以位于任意位；
   - 非 Bool 的 tag 之间字节范围互不重叠；
   - 每一位最多属于一个 Bool tag；
@@ -46,7 +46,7 @@ layout-data 是一个结构化数据块库：提供基于 `Buffer`、面向数�
 
 ## 4. 布局描述
 
-布局由描述给出：YAML 1.2 描述文件，或代码中的描述对象，格式见 [spec-data-api.zh-cn.md](spec-data-api.zh-cn.md) §6。
+布局由描述给出：YAML 1.2 描述文件，或代码中的描述对象，格式见 [spec-layout.zh-cn.md](spec-layout.zh-cn.md)。
 
 ## 5. 发布形态
 
@@ -62,12 +62,12 @@ layout-data 是一个结构化数据块库：提供基于 `Buffer`、面向数�
 | 导出 | 说明 |
 | --- | --- |
 | `Ldata`、`Ltag` | 数据对象和 tag 句柄（[spec-data-api.zh-cn.md](spec-data-api.zh-cn.md) §2 和 §3）；ldata 由布局的 `create_ldata` 创建，`Ldata` 不能用 `new` 构造 |
-| `register_layout` | 注册各描述中的布局：描述文件或描述对象（在代码里给条目也用它），每个进程一次；先注册，再按名取得布局，由布局创建 ldata（[spec-data-api.zh-cn.md](spec-data-api.zh-cn.md) §6） |
-| `get_layout` | 按名取得已登记的布局（[spec-data-api.zh-cn.md](spec-data-api.zh-cn.md) §6.4）；布局带有方法 `create_ldata` 和 `io_index_table`（§6.6），`Layout` 只作为类型导出 |
-| `render_types` | 由已注册的布局生成 TypeScript 类型声明 |
+| `register_layout` | 注册各描述中的布局：描述文件或描述对象（在代码里给条目也用它），每个进程一次；先注册，再按名取得布局，由布局创建 ldata（[spec-layout.zh-cn.md](spec-layout.zh-cn.md)） |
+| `get_layout` | 按名取得已登记的布局（[spec-layout.zh-cn.md](spec-layout.zh-cn.md) §5）；布局带有方法 `create_ldata` 和 `io_index_table`（同文 §7），`Layout` 只作为类型导出 |
+| `render_types` | 由已注册的布局生成 TypeScript 类型声明（[spec-layout.zh-cn.md](spec-layout.zh-cn.md) §8） |
 
 ## 7. 文档
 
-- 中文文档带 `.zh-cn` 后缀，英文文档无后缀；以中文为主：本文、[spec-data-api.zh-cn.md](spec-data-api.zh-cn.md)、[design.zh-cn.md](design.zh-cn.md)；
+- 中文文档带 `.zh-cn` 后缀，英文文档无后缀；以中文为主：本文、[spec-layout.zh-cn.md](spec-layout.zh-cn.md)（布局：描述、注册、布局对象、类型声明）、[spec-data-api.zh-cn.md](spec-data-api.zh-cn.md)（数据对象：Ldata、Ltag、事件）、[design.zh-cn.md](design.zh-cn.md)；
 - 英文版为同名无后缀文件（[spec.md](spec.md)），内容与中文版对应，修改规范时两种语言同步更新；
 - 使用入门见项目根目录的 [README.md](../README.md)。

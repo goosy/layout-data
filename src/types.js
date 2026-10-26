@@ -1,5 +1,5 @@
 // Renders TypeScript declarations of registered layouts, for editor completion
-// of the tag accessors (doc/spec-data-api.md §6.7, doc/design.md §4).
+// of the tag accessors (doc/spec-layout.md §8, doc/design.md §4).
 
 import { IDENTIFIER } from "./structure.js";
 

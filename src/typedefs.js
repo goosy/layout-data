@@ -3,7 +3,7 @@
 // The types of the internals are in internal_types.js and are not exported.
 
 /**
- * An entry of a layout description that defines a tag (doc/spec-data-api.md §6.2).
+ * An entry of a layout description that defines a tag (doc/spec-layout.md §3).
  *
  * @typedef {object} Tag_Item
  * @property {string} name - Tag name.
@@ -18,7 +18,7 @@
  */
 
 /**
- * An entry of a layout description that splices in other entries (doc/spec-data-api.md §6.2).
+ * An entry of a layout description that splices in other entries (doc/spec-layout.md §3).
  *
  * @typedef {object} Include_Item
  * @property {Layout_Item[] | string} includes - The entries to include, as an inline list or the name of a fragment.
@@ -30,7 +30,7 @@
 
 /**
  * One entry of a layout description, as written by the user in a layout file
- * or given to register_layout (doc/spec-data-api.md §6).
+ * or given to register_layout (doc/spec-layout.md).
  *
  * @typedef {Tag_Item | Include_Item} Layout_Item
  */
@@ -39,13 +39,13 @@
  * A description object, the form of a layout description in code (a
  * description file is the YAML form): `layouts` maps layout names to lists
  * of entries, and every other key is a fragment, a list of entries that can
- * be named (doc/spec-data-api.md §6.1).
+ * be named (doc/spec-layout.md §2).
  *
  * @typedef {{ layouts?: Record<string, Layout_Item[]> } & Record<string, Layout_Item[] | Record<string, Layout_Item[]> | undefined>} Layout_Description
  */
 
 /**
- * One tag of a compiled layout (doc/spec-data-api.md §6.6), read-only:
+ * One tag of a compiled layout (doc/spec-layout.md §7), read-only:
  * `name`; `type`, as written in the description; `offset`, the absolute bit
  * offset; `length` in bits; `init_value`; `comment`, if given; `coupling`,
  * the tag names of the bits of a combined word, or of the combined words a
@@ -63,7 +63,7 @@
  */
 
 /**
- * A compiled layout (doc/spec-data-api.md §6.6), read-only and deeply frozen:
+ * A compiled layout (doc/spec-layout.md §7), read-only and deeply frozen:
  * `name`; `length` in bits; `size` in bytes; `items`, the tags in layout
  * order (a combined word before its bits); the methods `create_ldata(name)`
  * and `io_index_table(endian)`. A type only: the class is not exported, and
