@@ -30,7 +30,7 @@ const record = (data) => {
 
 describe("2 Ldata", () => {
 	test("2.1 a new data block holds the init values, without events", () => {
-		const data = new Ldata(LAYOUT, "d");
+		const data = LAYOUT.create_ldata("d");
 		assert.equal(data.id, 7);
 		assert.equal(data.run, true);
 		assert.equal(data.alarm, false);
@@ -42,10 +42,10 @@ describe("2 Ldata", () => {
 	});
 
 	test("2.1 a data block is an instance of the class of its layout, a subclass of Ldata", () => {
-		const data = new Ldata(LAYOUT, "d");
+		const data = LAYOUT.create_ldata("d");
 		assert.ok(data instanceof Ldata);
 		assert.notEqual(Object.getPrototypeOf(data), Ldata.prototype);
-		assert.equal(Object.getPrototypeOf(new Ldata(LAYOUT, "e")), Object.getPrototypeOf(data));
+		assert.equal(Object.getPrototypeOf(LAYOUT.create_ldata("e")), Object.getPrototypeOf(data));
 	});
 
 	test("2.1 the same layout registered again is the registered one; another one under the name throws", () => {
@@ -56,40 +56,49 @@ describe("2 Ldata", () => {
 	});
 
 	test("2.1 the name of an ldata must be a string, the empty one included", () => {
-		assert.equal(new Ldata(LAYOUT, "").name, "");
-		assert.equal(new Ldata("Sample", "by name").name, "by name");
+		assert.equal(LAYOUT.create_ldata("").name, "");
+		assert.equal(LAYOUT.create_ldata("by name").name, "by name");
 		for (const name of [undefined, null, 1, {}, ["d"], Symbol("d"), true]) {
-			assert.throws(() => new Ldata(LAYOUT, name), TypeError, String(name));
-			assert.throws(() => new Ldata("Sample", name), TypeError, String(name));
+			assert.throws(() => LAYOUT.create_ldata(name), TypeError, String(name));
 		}
-		assert.throws(() => new Ldata(LAYOUT), TypeError);
+		assert.throws(() => LAYOUT.create_ldata(), TypeError);
+	});
+
+	test("2.1 Ldata cannot be created with new, nor can the class of a layout", () => {
+		const usage = /an ldata is created by its layout: layout\.create_ldata\(name\)/;
+		assert.throws(() => new Ldata(LAYOUT, "d"), TypeError);
+		assert.throws(() => new Ldata(LAYOUT, "d"), usage);
+		assert.throws(() => new Ldata("Sample", "d"), usage);
+		const data = LAYOUT.create_ldata("d");
+		assert.throws(() => new data.constructor("e"), usage);
+		assert.throws(() => new data.constructor(LAYOUT, "e"), usage);
 	});
 
 	test("2.7 the listener limits are fixed: 100 for an ldata, 20 for an Ltag, and setMaxListeners changes one object", () => {
-		const data = new Ldata(LAYOUT, "d");
+		const data = LAYOUT.create_ldata("d");
 		assert.equal(data.getMaxListeners(), 100);
 		assert.equal(data.get("id").getMaxListeners(), 20);
 		data.setMaxListeners(5);
 		assert.equal(data.getMaxListeners(), 5);
-		assert.equal(new Ldata(LAYOUT, "e").getMaxListeners(), 100);
+		assert.equal(LAYOUT.create_ldata("e").getMaxListeners(), 100);
 	});
 
-	test("2.1 a layout name stands for the registered layout", () => {
-		const data = new Ldata("Sample", "d");
-		assert.equal(data.layout, LAYOUT);
-		assert.equal(Object.getPrototypeOf(data), Object.getPrototypeOf(new Ldata(LAYOUT, "e")));
+	test("2.1 a layout got by its name is the registered one", () => {
 		assert.equal(get_layout("Sample"), LAYOUT);
-		assert.throws(() => new Ldata("Nope", "d"), /unknown layout Nope/);
+		const data = get_layout("Sample").create_ldata("d");
+		assert.equal(data.layout, LAYOUT);
+		assert.equal(Object.getPrototypeOf(data), Object.getPrototypeOf(LAYOUT.create_ldata("e")));
 		assert.throws(() => get_layout("Nope"), /unknown layout Nope/);
 	});
 
-	test("2.1 a layout that is not the registered one throws", () => {
-		assert.throws(() => new Ldata({}, "d"), /is not a registered layout/);
-		assert.throws(() => new Ldata({ ...LAYOUT }, "d"), /Sample is not a registered layout/);
+	test("2.1 a copy of a layout creates no ldata", () => {
+		const copy = { ...LAYOUT };
+		assert.equal(copy.create_ldata, undefined);
+		assert.deepEqual(Object.keys(copy), ["name", "length", "size", "items"]);
 	});
 
 	test("2.2 properties", () => {
-		const data = new Ldata(LAYOUT, "d");
+		const data = LAYOUT.create_ldata("d");
 		assert.equal(data.name, "d");
 		assert.equal(data.layout, LAYOUT);
 		assert.equal(data.size, 8);
@@ -97,8 +106,8 @@ describe("2 Ldata", () => {
 	});
 
 	test("2.2 the tag accessors sit once on the prototype of the class of the layout", () => {
-		const data = new Ldata(LAYOUT, "a");
-		const other = new Ldata(LAYOUT, "b");
+		const data = LAYOUT.create_ldata("a");
+		const other = LAYOUT.create_ldata("b");
 		const proto = Object.getPrototypeOf(data);
 		assert.equal(Object.getPrototypeOf(other), proto);
 		assert.equal(data.constructor, other.constructor);
@@ -115,7 +124,7 @@ describe("2 Ldata", () => {
 	});
 
 	test("2.2 name, layout and size are read-only; the bytes are not a property", () => {
-		const data = new Ldata(LAYOUT, "d");
+		const data = LAYOUT.create_ldata("d");
 		assert.equal(data.name, "d");
 		// ES modules run in strict mode: assigning a getter-only property throws
 		assert.throws(() => { data.name = "renamed"; }, TypeError);
@@ -128,14 +137,14 @@ describe("2 Ldata", () => {
 	});
 
 	test("2.3 a write takes effect at once, for the data block and its Ltag", () => {
-		const data = new Ldata(LAYOUT, "d");
+		const data = LAYOUT.create_ldata("d");
 		data.pressure = 2.5;
 		assert.equal(data.pressure, 2.5);
 		assert.equal(data.get("pressure").value, 2.5);
 	});
 
 	test("2.3 a combined word and its bits follow each other", () => {
-		const data = new Ldata(LAYOUT, "d");
+		const data = LAYOUT.create_ldata("d");
 		data.alarm = true;
 		assert.equal(data.status, 0x0101);
 		data.status = 0x0100;
@@ -144,7 +153,7 @@ describe("2 Ldata", () => {
 	});
 
 	test("2.3 coupling offset 8..15 is the low byte of the word, 0..7 the high byte", () => {
-		const data = new Ldata(LAYOUT, "d");
+		const data = LAYOUT.create_ldata("d");
 		data.status = 0;
 		data.alarm = true; // offset 0: bit 8 of the word
 		assert.equal(data.status, 0x0100);
@@ -154,7 +163,7 @@ describe("2 Ldata", () => {
 	});
 
 	test("2.3 an out-of-range integer throws RangeError and keeps the value; a Bool takes truthiness", () => {
-		const data = new Ldata(LAYOUT, "d");
+		const data = LAYOUT.create_ldata("d");
 		assert.throws(() => { data.id = -1; }, RangeError);
 		assert.equal(data.id, 7);
 		data.alarm = 1;
@@ -162,7 +171,7 @@ describe("2 Ldata", () => {
 	});
 
 	test("2.4 get() returns the same Ltag for a name, undefined for an unknown one", () => {
-		const data = new Ldata(LAYOUT, "d");
+		const data = LAYOUT.create_ldata("d");
 		assert.ok(data.get("id") instanceof Ltag);
 		assert.equal(data.get("id"), data.get("id"));
 		assert.equal(data.get("nope"), undefined);
@@ -171,14 +180,14 @@ describe("2 Ldata", () => {
 
 describe("3 Ltag", () => {
 	test("members describe the tag", () => {
-		const tag = new Ldata(LAYOUT, "d").get("pressure");
+		const tag = LAYOUT.create_ldata("d").get("pressure");
 		assert.equal(tag.name, "pressure");
 		assert.equal(tag.type, "real");
 		assert.equal(tag.size, 4);
 	});
 
 	test("value is readable and writable, the same as the data block property", () => {
-		const data = new Ldata(LAYOUT, "d");
+		const data = LAYOUT.create_ldata("d");
 		const tag = data.get("id");
 		const events = record(data);
 		const tag_events = [];
@@ -195,7 +204,7 @@ describe("3 Ltag", () => {
 
 describe("4.3 changes and events", () => {
 	test("every source of change is reported: property, Ltag, raw write", () => {
-		const data = new Ldata(LAYOUT, "d");
+		const data = LAYOUT.create_ldata("d");
 		const events = record(data);
 		data.id = 1;
 		data.get("id").value = 2;
@@ -204,7 +213,7 @@ describe("4.3 changes and events", () => {
 	});
 
 	test("events come after the new value is applied, only on a real change", () => {
-		const data = new Ldata(LAYOUT, "d");
+		const data = LAYOUT.create_ldata("d");
 		const seen = [];
 		data.on("change", (name) => seen.push([name, data[name]]));
 		data.id = 7;
@@ -215,7 +224,7 @@ describe("4.3 changes and events", () => {
 	});
 
 	test("a combined word and its changed bits each emit, in layout order, data block before Ltag", () => {
-		const data = new Ldata(LAYOUT, "d");
+		const data = LAYOUT.create_ldata("d");
 		const order = [];
 		data.on("change", (name) => order.push(`data:${name}`));
 		data.get("alarm").on("change", () => order.push("tag:alarm"));
@@ -225,7 +234,7 @@ describe("4.3 changes and events", () => {
 	});
 
 	test("a handler may write any tag; that change follows the current changes", () => {
-		const data = new Ldata(LAYOUT, "d");
+		const data = LAYOUT.create_ldata("d");
 		const events = record(data);
 		data.get("id").on("change", () => { data.alarm = true; });
 		data.id = 8;
@@ -233,7 +242,7 @@ describe("4.3 changes and events", () => {
 	});
 
 	test("handlers triggering each other without end throw after 16 rounds; no change is lost", () => {
-		const data = new Ldata(LAYOUT, "d");
+		const data = LAYOUT.create_ldata("d");
 		const ping = () => { data.id += 1; };
 		data.get("id").on("change", ping);
 		assert.throws(() => { data.id = 0; }, /do not settle after 16 rounds/);
@@ -246,7 +255,7 @@ describe("4.3 changes and events", () => {
 
 describe("4.2 detection after a write", () => {
 	test("the events of a write are emitted before the write returns", () => {
-		const data = new Ldata(LAYOUT, "d");
+		const data = LAYOUT.create_ldata("d");
 		const events = record(data);
 		data.pressure = 3;
 		assert.deepEqual(events, [["pressure", 1.5, 3]]);
@@ -254,7 +263,7 @@ describe("4.2 detection after a write", () => {
 
 	test("write is emitted after every write, once its change events are emitted", () => {
 		const calls = [];
-		const data = new Ldata(LAYOUT, "d");
+		const data = LAYOUT.create_ldata("d");
 		data.on("write", (d) => calls.push([d, d.pressure]));
 		data.on("change", (name) => calls.push(name));
 		data.pressure = 3;
@@ -265,7 +274,7 @@ describe("4.2 detection after a write", () => {
 
 describe("2.5 raw reads and writes", () => {
 	test("read_bytes returns a copy; by default the whole block, or from an offset to the end", () => {
-		const data = new Ldata(LAYOUT, "d");
+		const data = LAYOUT.create_ldata("d");
 		assert.deepEqual([...data.read_bytes()], [0, 7, 0, 1, 0x3f, 0xc0, 0, 0]);
 		assert.deepEqual([...data.read_bytes(4)], [0x3f, 0xc0, 0, 0]);
 		assert.deepEqual([...data.read_bytes(2, 2)], [0, 1]);
@@ -278,7 +287,7 @@ describe("2.5 raw reads and writes", () => {
 	});
 
 	test("write_bytes writes the bytes at a byte offset; the tags that own them change and emit", () => {
-		const data = new Ldata(LAYOUT, "d");
+		const data = LAYOUT.create_ldata("d");
 		const events = record(data);
 		const writes = [];
 		data.on("write", (d) => writes.push(d));
@@ -291,7 +300,7 @@ describe("2.5 raw reads and writes", () => {
 	});
 
 	test("write_bytes takes any Uint8Array, and a write need not align with tags", () => {
-		const data = new Ldata(LAYOUT, "d");
+		const data = LAYOUT.create_ldata("d");
 		const events = record(data);
 		data.write_bytes(5, Uint8Array.of(0xc1)); // the middle of pressure
 		assert.deepEqual(events.map(([name]) => name), ["pressure"]);
@@ -299,7 +308,7 @@ describe("2.5 raw reads and writes", () => {
 	});
 
 	test("write_bit changes only the masked bits", () => {
-		const data = new Ldata(LAYOUT, "d");
+		const data = LAYOUT.create_ldata("d");
 		const events = record(data);
 		data.write_bit(3, 0x80, true);
 		assert.deepEqual([...data.read_bytes(2, 2)], [0, 0x81]);
@@ -311,7 +320,7 @@ describe("2.5 raw reads and writes", () => {
 	});
 
 	test("read_bit tells whether any of the masked bits is set", () => {
-		const data = new Ldata(LAYOUT, "d");
+		const data = LAYOUT.create_ldata("d");
 		data.write_bit(3, 0x81, true);
 		assert.equal(data.read_bit(3, 0x01), true);
 		assert.equal(data.read_bit(3, 0x02), false);
@@ -321,7 +330,7 @@ describe("2.5 raw reads and writes", () => {
 	});
 
 	test("every raw write emits write, also one that changes nothing; a read does not", () => {
-		const data = new Ldata(LAYOUT, "d");
+		const data = LAYOUT.create_ldata("d");
 		let writes = 0;
 		data.on("write", () => writes++);
 		data.write_bytes(0, data.read_bytes(0, 2));
@@ -332,7 +341,7 @@ describe("2.5 raw reads and writes", () => {
 	});
 
 	test("an empty write_bytes writes nothing and emits no write, but its range is still checked", () => {
-		const data = new Ldata(LAYOUT, "d");
+		const data = LAYOUT.create_ldata("d");
 		let writes = 0;
 		data.on("write", () => writes++);
 		data.write_bytes(0, new Uint8Array(0));
@@ -344,7 +353,7 @@ describe("2.5 raw reads and writes", () => {
 	});
 
 	test("a bad range, mask or source throws, changes nothing and emits no write", () => {
-		const data = new Ldata(LAYOUT, "d");
+		const data = LAYOUT.create_ldata("d");
 		const before = data.read_bytes();
 		let writes = 0;
 		data.on("write", () => writes++);
@@ -373,7 +382,7 @@ describe("2.9 device byte order", () => {
 	const io_image = () => Uint8Array.of(0x00, 0x09, 0x00, 0x03, 0x00, 0x00, 0x3f, 0xc0);
 
 	test("load_tag converts a tag from the IO buffer, as a write: change, then write", () => {
-		const data = new Ldata(LAYOUT, "d");
+		const data = LAYOUT.create_ldata("d");
 		const events = record(data);
 		const order = [];
 		data.on("write", () => order.push("write"));
@@ -388,7 +397,7 @@ describe("2.9 device byte order", () => {
 
 	test("load_tag works on a plain Uint8Array, with every byte order", () => {
 		for (const [endian, bytes] of [["BE", [0x12, 0x34]], ["LE", [0x34, 0x12]], ["BEBS", [0x34, 0x12]], ["LEBS", [0x12, 0x34]]]) {
-			const data = new Ldata(LAYOUT, "d");
+			const data = LAYOUT.create_ldata("d");
 			const io = new Uint8Array(8);
 			io.set(bytes, 2);
 			data.load_tag("status", io, endian);
@@ -397,7 +406,7 @@ describe("2.9 device byte order", () => {
 	});
 
 	test("load_tag of a Bool changes only its own bit", () => {
-		const data = new Ldata(LAYOUT, "d");
+		const data = LAYOUT.create_ldata("d");
 		const events = record(data);
 		const io = new Uint8Array(8);
 		io[2] = 0x01; // alarm, in place for BE; every other bit is 0
@@ -408,7 +417,7 @@ describe("2.9 device byte order", () => {
 	});
 
 	test("a batch of loads in a transaction is one detection and one write", () => {
-		const data = new Ldata(LAYOUT, "d");
+		const data = LAYOUT.create_ldata("d");
 		const events = record(data);
 		let writes = 0;
 		data.on("write", () => writes++);
@@ -422,7 +431,7 @@ describe("2.9 device byte order", () => {
 	});
 
 	test("store_tag converts a tag into the IO buffer; the data block is unchanged and no event is emitted", () => {
-		const data = new Ldata(LAYOUT, "d");
+		const data = LAYOUT.create_ldata("d");
 		const events = record(data);
 		let writes = 0;
 		data.on("write", () => writes++);
@@ -437,7 +446,7 @@ describe("2.9 device byte order", () => {
 	});
 
 	test("Ltag load and store are load_tag and store_tag for the name of the tag", () => {
-		const data = new Ldata(LAYOUT, "d");
+		const data = LAYOUT.create_ldata("d");
 		const events = record(data);
 		data.get("id").load(io_image(), "LEBS");
 		assert.deepEqual(events, [["id", 7, 9]]);
@@ -447,7 +456,7 @@ describe("2.9 device byte order", () => {
 	});
 
 	test("an unknown tag, a wrong argument or a tag out of the IO buffer throws and changes nothing", () => {
-		const data = new Ldata(LAYOUT, "d");
+		const data = LAYOUT.create_ldata("d");
 		const before = data.read_bytes();
 		let writes = 0;
 		data.on("write", () => writes++);
@@ -462,7 +471,7 @@ describe("2.9 device byte order", () => {
 	});
 
 	test("only BE, LE, BEBS and LEBS are byte orders: aliases and other values throw", () => {
-		const data = new Ldata(LAYOUT, "d");
+		const data = LAYOUT.create_ldata("d");
 		for (const endian of ["little", "big", "le", "lebs", "", undefined, 1]) {
 			assert.throws(() => data.load_tag("id", io_image(), endian), RangeError, String(endian));
 			assert.throws(() => data.store_tag("id", io_image(), endian), RangeError, String(endian));
@@ -475,7 +484,7 @@ describe("2.9 device byte order", () => {
 describe("4.2 transactions", () => {
 	const create = () => {
 		const writes = [];
-		const data = new Ldata(LAYOUT, "d");
+		const data = LAYOUT.create_ldata("d");
 		data.on("write", (d) => writes.push(d));
 		return { data, writes, events: record(data) };
 	};
@@ -603,7 +612,7 @@ describe("4.2 transactions", () => {
 
 	test("a write to another data block in a transaction emits its events as usual", () => {
 		const { data } = create();
-		const other = new Ldata(LAYOUT, "o");
+		const other = LAYOUT.create_ldata("o");
 		const other_events = record(other);
 		assert.throws(() => data.transaction(() => {
 			other.id = 1;
@@ -621,10 +630,10 @@ describe("5 errors", () => {
 	});
 
 	test("buffer and detect are not members: tags may have these names", () => {
-		const data = new Ldata(register_items("FREE_NAMES", [
+		const data = register_items("FREE_NAMES", [
 			{ name: "buffer", type: "UInt", offset: 0, init_value: 3 },
 			{ name: "detect", type: "UInt", offset: 16, init_value: 4 },
-		]), "d");
+		]).create_ldata("d");
 		assert.equal(data.buffer, 3);
 		assert.equal(data.detect, 4);
 	});

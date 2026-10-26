@@ -19,7 +19,7 @@ const LAYOUT = register_items("Access_Sample", [
 
 /** A data block that records its accesses as [kind, names]. */
 function watched() {
-	const data = new Ldata(LAYOUT, "d");
+	const data = LAYOUT.create_ldata("d");
 	const seen = [];
 	data.on("access", (kind, tags) => seen.push([kind, tags.map((tag) => tag.name)]));
 	return { data, seen };
@@ -198,7 +198,7 @@ describe("2.8 the access event", () => {
 	});
 
 	test("an access is gathered only while a listener exists, and goes to the listeners of the commit", () => {
-		const data = new Ldata(LAYOUT, "d");
+		const data = LAYOUT.create_ldata("d");
 		const seen = [];
 		const gone = () => seen.push("gone");
 		data.on("access", gone);
@@ -222,7 +222,7 @@ describe("2.8 the access event", () => {
 	});
 
 	test("a transaction inside an access listener gathers nothing", () => {
-		const data = new Ldata(LAYOUT, "d");
+		const data = LAYOUT.create_ldata("d");
 		const seen = [];
 		data.on("access", (kind, tags) => {
 			seen.push([kind, tags.map((tag) => tag.name)]);
@@ -237,7 +237,7 @@ describe("2.8 the access event", () => {
 	});
 
 	test("the accesses of a listener do not emit again", () => {
-		const data = new Ldata(LAYOUT, "d");
+		const data = LAYOUT.create_ldata("d");
 		const seen = [];
 		data.on("access", (kind, tags) => {
 			seen.push([kind, tags[0].name]);
@@ -252,7 +252,7 @@ describe("2.8 the access event", () => {
 	});
 
 	test("an exception of a listener: all listeners run, then the read throws, or the write after its events", () => {
-		const data = new Ldata(LAYOUT, "d");
+		const data = LAYOUT.create_ldata("d");
 		const seen = [];
 		data.on("access", () => { throw new Error("first"); });
 		data.on("access", (kind) => seen.push(`second ${kind}`));
@@ -266,7 +266,7 @@ describe("2.8 the access event", () => {
 	});
 
 	test("without a listener nothing is built, and removing the listener stops it", () => {
-		const data = new Ldata(LAYOUT, "d");
+		const data = LAYOUT.create_ldata("d");
 		const seen = [];
 		const listener = (kind) => seen.push(kind);
 		data.on("access", listener);
@@ -285,8 +285,8 @@ describe("2.8 the access event", () => {
 	});
 
 	test("it sees only the ldata it is subscribed on", () => {
-		const first = new Ldata(LAYOUT, "a");
-		const second = new Ldata(LAYOUT, "b");
+		const first = LAYOUT.create_ldata("a");
+		const second = LAYOUT.create_ldata("b");
 		const seen = [];
 		first.on("access", (kind, tags) => seen.push([kind, tags[0].name]));
 		void second.id;
@@ -313,8 +313,8 @@ describe("2.8 class-level access listeners", () => {
 
 	test("it sees every ldata, including one created afterwards, with the ldata first", (t) => {
 		const { seen } = observe(t);
-		const first = new Ldata(LAYOUT, "first");
-		const second = new Ldata(LAYOUT, "second");
+		const first = LAYOUT.create_ldata("first");
+		const second = LAYOUT.create_ldata("second");
 		void first.id;
 		second.pressure = 2;
 		first.read_bytes(0, 2);
@@ -323,7 +323,7 @@ describe("2.8 class-level access listeners", () => {
 
 	test("it needs no subscription on the ldata and cannot be removed through it", (t) => {
 		const { seen } = observe(t);
-		const data = new Ldata(LAYOUT, "d");
+		const data = LAYOUT.create_ldata("d");
 		data.on("access", () => {});
 		data.removeAllListeners();
 		data.removeAllListeners("access");
@@ -332,7 +332,7 @@ describe("2.8 class-level access listeners", () => {
 	});
 
 	test("off_access cancels it, and does nothing for a function that is not subscribed", () => {
-		const data = new Ldata(LAYOUT, "d");
+		const data = LAYOUT.create_ldata("d");
 		const seen = [];
 		const listener = () => seen.push("called");
 		Ldata.on_access(listener);
@@ -345,7 +345,7 @@ describe("2.8 class-level access listeners", () => {
 	});
 
 	test("several parties subscribe without overriding each other, and one function twice is one subscription", () => {
-		const data = new Ldata(LAYOUT, "d");
+		const data = LAYOUT.create_ldata("d");
 		const calls = [];
 		const one = () => calls.push("one");
 		const two = () => calls.push("two");
@@ -360,7 +360,7 @@ describe("2.8 class-level access listeners", () => {
 	});
 
 	test("the listeners of the instance are called before those of the class, for the same access", (t) => {
-		const data = new Ldata(LAYOUT, "d");
+		const data = LAYOUT.create_ldata("d");
 		const order = [];
 		data.on("access", () => order.push("instance"));
 		const listener = () => order.push("class");
@@ -371,8 +371,8 @@ describe("2.8 class-level access listeners", () => {
 	});
 
 	test("the accesses made by an access listener, to any ldata, emit nothing", (t) => {
-		const other = new Ldata(LAYOUT, "other");
-		const data = new Ldata(LAYOUT, "data");
+		const other = LAYOUT.create_ldata("other");
+		const data = LAYOUT.create_ldata("data");
 		const seen = [];
 		other.on("access", (kind) => seen.push(`other ${kind}`));
 		const listener = (ldata, kind) => {
@@ -389,7 +389,7 @@ describe("2.8 class-level access listeners", () => {
 	});
 
 	test("an exception of a class listener: all listeners run, the first exception is thrown after the events", (t) => {
-		const data = new Ldata(LAYOUT, "d");
+		const data = LAYOUT.create_ldata("d");
 		const seen = [];
 		data.on("access", () => { throw new Error("instance"); });
 		const bad = () => { throw new Error("class"); };
@@ -409,7 +409,7 @@ describe("2.8 class-level access listeners", () => {
 	});
 
 	test("the guard is released after an exception", (t) => {
-		const data = new Ldata(LAYOUT, "d");
+		const data = LAYOUT.create_ldata("d");
 		const seen = [];
 		const bad = () => { throw new Error("bad"); };
 		Ldata.on_access(bad);
@@ -424,7 +424,7 @@ describe("2.8 class-level access listeners", () => {
 
 	test("a transaction defers it as well, to the commit", (t) => {
 		const { seen } = observe(t);
-		const data = new Ldata(LAYOUT, "d");
+		const data = LAYOUT.create_ldata("d");
 		data.transaction(() => {
 			data.id = 1;
 			data.id = 2;
@@ -441,7 +441,7 @@ describe("2.8 class-level access listeners", () => {
 	});
 
 	test("it is a static member: no tag name and no instance member is affected", () => {
-		const data = new Ldata(LAYOUT, "d");
+		const data = LAYOUT.create_ldata("d");
 		assert.equal("on_access" in data, false);
 		assert.equal(typeof Ldata.on_access, "function");
 		assert.equal(typeof Ldata.off_access, "function");

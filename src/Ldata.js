@@ -4,14 +4,20 @@ import { Ltag } from "./Ltag.js";
 import { emit_all } from "./dispatch.js";
 import { check_endian, io_range, load_entry, store_entry } from "./endian.js";
 import { Observer } from "./observer.js";
-import { compiled_of, find_layout, get_layout } from "./registry.js";
 import { is_reserved_name } from "./reserved.js";
 
 /** @import { Class_Access_Listener, Data_Listener, Endian, Layout } from "./typedefs.js" */
 /** @import { Compiled_Layout, Layout_Entry } from "./internal_types.js" */
 
-/** The classes built so far, by layout name (doc/design.md §4). */
-const classes = new Map();
+/**
+ * The key of the constructor of Ldata, private to this module: an ldata is
+ * created only by new_ldata, for the create_ldata of its layout
+ * (doc/spec-data-api.md §2.1).
+ */
+const CREATE_KEY = Symbol("create ldata");
+
+/** Set by a static block of Ldata: builds the class of a layout. */
+let build_class;
 
 /**
  * The class-level access listeners (doc/spec-data-api.md §2.8). They are kept
@@ -24,19 +30,6 @@ const class_access_listeners = new Set();
 
 /** Set while an access listener runs: the accesses made meanwhile emit nothing. */
 let in_access = false;
-
-/**
- * The registered layout an Ldata argument stands for.
- *
- * @param {Layout | string} layout - A layout name, or the registered layout of its name.
- * @returns {Layout}
- * @throws {Error} For an unknown name, or a layout that is not the registered one.
- */
-function resolve_layout(layout) {
-	if (typeof layout === "string") return get_layout(layout);
-	if (find_layout(layout?.name) !== layout) throw new Error(`${layout?.name} is not a registered layout`);
-	return layout;
-}
 
 export class Ldata extends EventEmitter {
 	/**
@@ -425,33 +418,25 @@ export class Ldata extends EventEmitter {
 	}
 
 	/**
-	 * The class of a layout, built on the first use of its name: the name tells
-	 * the layouts apart, as the registry holds one layout per name.
-	 *
-	 * @param {Layout} layout - A registered layout.
-	 * @returns {typeof Ldata}
-	 */
-	static #class_of(layout) {
-		let Layout_Data = classes.get(layout.name);
-		if (!Layout_Data) {
-			Layout_Data = Ldata.#build_class(layout);
-			classes.set(layout.name, Layout_Data);
-		}
-		return Layout_Data;
-	}
-
-	/**
 	 * Builds the class of a layout: a subclass of Ldata whose prototype holds
 	 * the accessor of every tag, shared by all instances of the layout. The
 	 * accessors are defined here so that they reach the private buffer.
 	 *
 	 * @param {Layout} layout
+	 * @param {Compiled_Layout} compiled - The compiled data of the layout.
 	 * @returns {typeof Ldata}
 	 */
-	static #build_class(layout) {
-		const Layout_Data = class extends Ldata { };
+	static #build_class(layout, compiled) {
+		const Layout_Data = class extends Ldata {
+			/**
+			 * @param {symbol} key
+			 * @param {string} name
+			 */
+			constructor(key, name) {
+				super(key, name, layout, compiled);
+			}
+		};
 		Object.defineProperty(Layout_Data, "name", { value: `Ldata_${layout.name}` });
-		const compiled = compiled_of(layout);
 		for (const entry of compiled.entries.values()) {
 			const { name, codec, byte, mask, size } = entry;
 			if (is_reserved_name(name)) {
@@ -476,9 +461,11 @@ export class Ldata extends EventEmitter {
 				configurable: false,
 			});
 		}
-		Layout_Data.layout = layout;
-		Layout_Data.compiled = compiled;
 		return Layout_Data;
+	}
+
+	static {
+		build_class = (layout, compiled) => Ldata.#build_class(layout, compiled);
 	}
 
 	/**
@@ -505,27 +492,25 @@ export class Ldata extends EventEmitter {
 	}
 
 	/**
-	 * Creates a data block of a layout (doc/spec-data-api.md §2.1).
+	 * Not called by the user: an ldata is created by its layout,
+	 * `layout.create_ldata(name)` (doc/spec-data-api.md §2.1), which builds
+	 * an instance of the class of the layout (a subclass of Ldata whose
+	 * prototype holds the tag accessors).
 	 *
-	 * `new Ldata(layout, name)` returns an instance of the class built for the
-	 * layout name (a subclass of Ldata whose prototype holds the tag
-	 * accessors), building the class on the first use of the name.
-	 *
-	 * @param {Layout | string} layout - A registered layout, or its name (get_layout).
-	 * @param {string} name - The name of the Ldata instance, a string that cannot be changed afterwards.
-	 * @throws {TypeError} When name is not a string.
-	 * @throws {Error} For an unknown layout name, or a layout that is not the registered one.
+	 * @private
+	 * @param {symbol} key - The key private to this module.
+	 * @param {string} name - The name of the ldata, a string that cannot be changed afterwards.
+	 * @param {Layout} layout
+	 * @param {Compiled_Layout} compiled
+	 * @throws {TypeError} When called with new, or when name is not a string.
 	 */
-	constructor(layout, name) {
-		super();
+	constructor(key, name, layout, compiled) {
+		if (key !== CREATE_KEY) throw new TypeError("an ldata is created by its layout: layout.create_ldata(name)");
 		if (typeof name !== "string") throw new TypeError("the name of an ldata must be a string");
-		if (new.target === Ldata) {
-			const registered = resolve_layout(layout);
-			return new (Ldata.#class_of(registered))(registered, name);
-		}
+		super();
 		this.#name = name;
-		this.#layout = new.target.layout;
-		this.#compiled = new.target.compiled;
+		this.#layout = layout;
+		this.#compiled = compiled;
 		this.setMaxListeners(100);
 		this.#buffer = Buffer.alloc(this.#layout.size, 0);
 		// init values in layout order: the bits of a combined word after the word
@@ -538,4 +523,29 @@ export class Ldata extends EventEmitter {
 			emit_all(this.#handles.get(entry.name), "change", [old_value, new_value], errors);
 		});
 	}
+}
+
+/**
+ * Builds the class of a layout (doc/design.md §4), for the layout to keep
+ * privately. Internal: index.js does not export it.
+ *
+ * @param {Layout} layout
+ * @param {Compiled_Layout} compiled
+ * @returns {typeof Ldata}
+ * @throws {Error} For a reserved tag name.
+ */
+export function build_ldata_class(layout, compiled) {
+	return build_class(layout, compiled);
+}
+
+/**
+ * Creates an ldata of the class of a layout. Internal: index.js does not export it.
+ *
+ * @param {typeof Ldata} Layout_Data - A class made by build_ldata_class.
+ * @param {string} name
+ * @returns {Ldata}
+ * @throws {TypeError} When name is not a string.
+ */
+export function new_ldata(Layout_Data, name) {
+	return new Layout_Data(CREATE_KEY, name);
 }

@@ -1,9 +1,9 @@
 ---
 id: ckft7m0z
 opened: 2026-10-26T08:36:00.584Z
-closed:
+closed: 2026-10-26T08:58:38.000Z
 title: Make layouts objects that create ldata
-status: open        # open | accepted | fixed | rejected | wontfix
+status: fixed       # open | accepted | fixed | rejected | wontfix
 fixed_in: []        # commit IDs, backfilled at version commit time
 labels: []
 remote:
@@ -48,3 +48,5 @@ Rejected alternatives:
 - Make `io_index_table` a static method of `Ldata`: only hangs it somewhere else, the layout still has to be passed; make it an instance method of ldata: adds a reserved name, and tags can no longer use that name.
 
 ## Decision
+
+Implemented as proposed: layouts become objects with methods, `layout.create_ldata(name)` is the only way to create ldata, `new Ldata(...)` throws `TypeError`, and `io_index_table` becomes a layout method. The reasons are those of the proposal: remove the delayed errors of creation by name and the constructor detour, and let the interface show that ldata is created from a layout.

@@ -5,8 +5,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test, { describe } from "node:test";
 import { register_layout_data, register_descriptions } from "../src/layout.js";
-import { Ldata } from "../src/Ldata.js";
-import { compiled_of, get_layout } from "../src/registry.js";
+import { compiled_of } from "../src/layout.js";
+import { get_layout } from "../src/registry.js";
 
 const dir = mkdtempSync(join(tmpdir(), "tlms-layout-"));
 let file_seq = 0;
@@ -82,7 +82,7 @@ describe("YAML layout file", () => {
 
 	test("the compiled layout constructs data blocks", () => {
 		const { T } = compile(Sample).layouts;
-		const data = new Ldata(T, "t");
+		const data = T.create_ldata("t");
 		assert.equal(data.layout, T);
 		assert.equal(data.id, 7);
 		// status is composed from its bits, the bits of inline from the word
@@ -159,7 +159,7 @@ describe("parsed layout description", () => {
 			layouts: { PARSED: [{ name: "a", type: "UInt", offset: 0, init_value: 3 }, { includes: "tail", offset: 16 }] },
 			tail: [{ name: "b", type: "UInt", offset: 0, init_value: 4 }],
 		});
-		assert.equal(new Ldata(layouts.PARSED, "t").b, 4);
+		assert.equal(layouts.PARSED.create_ldata("t").b, 4);
 		assert.equal(fragments.tail.length, 1);
 	});
 
@@ -180,7 +180,7 @@ describe("layout registry", () => {
 		const second = compile(layout_yaml("Reg_Same"));
 		assert.equal(second.layouts.Reg_Same, first.layouts.Reg_Same);
 		assert.equal(get_layout("Reg_Same"), first.layouts.Reg_Same);
-		assert.equal(new Ldata("Reg_Same", "t").a, 1);
+		assert.equal(get_layout("Reg_Same").create_ldata("t").a, 1);
 	});
 
 	test("a layout shared by two descriptions is one Layout whatever else they hold", () => {

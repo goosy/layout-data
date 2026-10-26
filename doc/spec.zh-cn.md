@@ -36,7 +36,7 @@ layout-data 是一个结构化数据块库：提供基于 `Buffer`、面向数�
   - 组合字与它的组成位只能由一方给出初值：组合字给出时，组成位的初值由整字决定；组合字不给出时，由各组成位给出（未给出的位为 false），整字的初值由它们合成；
   - 数据块总长是整数个寄存器（16 位的整数倍）。
 - **组合字位号**：16 位组合字中，字值的第 k 位就是寄存器的 bit k，由布局中各位的偏移编号保证；内部不为组合字额外交换字节。
-- **字节序**：内部统一按大端存放；设备字节序（`BE`、`LE`、`BEBS`、`LEBS`）只在与设备交换数据的边界上转换，包提供按 tag 的转换（Ldata 的 `load_tag`、`store_tag`，Ltag 的 `load`、`store`）和整块交换用的字节下标表（`io_index_table`）。设备字节序对 Bool 和单字节 tag 以其所在的 16 位寄存器为单位生效。
+- **字节序**：内部统一按大端存放；设备字节序（`BE`、`LE`、`BEBS`、`LEBS`）只在与设备交换数据的边界上转换，包提供按 tag 的转换（Ldata 的 `load_tag`、`store_tag`，Ltag 的 `load`、`store`）和整块交换用的字节下标表（布局的 `io_index_table`）。设备字节序对 Bool 和单字节 tag 以其所在的 16 位寄存器为单位生效。
 - **按名访问**：程序按名称读写 tag 的值；任何时候都可以读写。编程接口见 [spec-data-api.zh-cn.md](spec-data-api.zh-cn.md)。
 - **原始读写**：ldata 的字节只能通过接口读写，按 tag 或按字节偏移的原始读写（`read_bytes`、`write_bytes`、`read_bit`、`write_bit`）；内部缓冲区不公开，所以每一次写入都被看到，变化不会遗漏。带类型的访问走 tag，不带类型的访问走字节。
 - **变化事件**：tag 的值发生变化时（无论来自程序赋值还是原始写入）发出变化事件，事件在新值生效后发出。
@@ -61,10 +61,9 @@ layout-data 是一个结构化数据块库：提供基于 `Buffer`、面向数�
 
 | 导出 | 说明 |
 | --- | --- |
-| `Ldata`、`Ltag` | 数据对象和 tag 句柄（[spec-data-api.zh-cn.md](spec-data-api.zh-cn.md) §2 和 §3） |
-| `register_layout` | 注册各描述中的布局：描述文件或描述对象（在代码里给条目也用它），每个进程一次；先注册，再按布局名创建 `Ldata`（[spec-data-api.zh-cn.md](spec-data-api.zh-cn.md) §6） |
-| `get_layout` | 按名取得已登记的布局（[spec-data-api.zh-cn.md](spec-data-api.zh-cn.md) §6.4） |
-| `io_index_table` | 与设备整块交换用的字节下标表（[spec-data-api.zh-cn.md](spec-data-api.zh-cn.md) §2.9）；按 tag 的转换是 Ldata 的 `load_tag` / `store_tag` |
+| `Ldata`、`Ltag` | 数据对象和 tag 句柄（[spec-data-api.zh-cn.md](spec-data-api.zh-cn.md) §2 和 §3）；ldata 由布局的 `create_ldata` 创建，`Ldata` 不能用 `new` 构造 |
+| `register_layout` | 注册各描述中的布局：描述文件或描述对象（在代码里给条目也用它），每个进程一次；先注册，再按名取得布局，由布局创建 ldata（[spec-data-api.zh-cn.md](spec-data-api.zh-cn.md) §6） |
+| `get_layout` | 按名取得已登记的布局（[spec-data-api.zh-cn.md](spec-data-api.zh-cn.md) §6.4）；布局带有方法 `create_ldata` 和 `io_index_table`（§6.6），`Layout` 只作为类型导出 |
 | `render_types` | 由已注册的布局生成 TypeScript 类型声明 |
 
 ## 7. 文档

@@ -11,7 +11,7 @@ A data block is a fixed-layout `Buffer` (big-endian inside). The layout is descr
 - **Combined words**: a `Word` made of `Bool` bits shares its bytes with them, so writing either side updates the other.
 - **Change events**: emitted after the new value is in place, for writes by name and raw writes (`write_bytes`, `write_bit`); the internal buffer is not exposed, so no write is missed. Writes that leave a value unchanged emit nothing.
 - **Immediate detection and transactions**: events fire when a write returns; `transaction(fn)` makes a group of writes one whole, with its events emitted together at the end and its writes undone if `fn` fails.
-- **Device byte order**: `BE`, `LE`, `BEBS`, `LEBS` conversion per tag (`load_tag` / `store_tag`), or by a byte index table for a whole block (`io_index_table`).
+- **Device byte order**: `BE`, `LE`, `BEBS`, `LEBS` conversion per tag (`load_tag` / `store_tag`), or by a byte index table for a whole block (`io_index_table` of a layout).
 - **TypeScript types**: declarations are generated from JSDoc, and `render_types` generates per-layout interfaces for editor completion.
 
 ## Install
@@ -38,13 +38,13 @@ layouts:
     - { name: pressure, type: Real, offset: 32, init_value: 0.5, comment: Outlet pressure }
 ```
 
-Register it once, then use it by the layout name:
+Register it once, then get the layout by its name and create data blocks from it:
 
 ```js
-import { register_layout, Ldata } from "layout-data";
+import { register_layout, get_layout } from "layout-data";
 
 register_layout("pump.yaml");
-const pump = new Ldata("Pump", "pump_1");
+const pump = get_layout("Pump").create_ldata("pump_1");
 
 pump.on("change", (name, old_value, new_value) => {
 	console.log(name, old_value, "->", new_value);
@@ -73,15 +73,14 @@ pump.transaction(() => {
 
 | Export | Purpose |
 | --- | --- |
-| `Ldata`, `Ltag` | The data object and the tag handle |
-| `register_layout(descriptions)` | Register the layouts of descriptions, description files or description objects (a path, an object, or a list of them), once per process; then create `Ldata` by layout name |
+| `Ldata`, `Ltag` | The data object and the tag handle; an ldata is created by `layout.create_ldata(name)`, never with `new Ldata` |
+| `register_layout(descriptions)` | Register the layouts of descriptions, description files or description objects (a path, an object, or a list of them), once per process; then get a layout by name and create ldata from it |
 | `render_types(layouts, options)` | Generate TypeScript interfaces for layouts, for editor completion (see below) |
-| `get_layout(name)` | Look up a registered layout by name |
-| `io_index_table` | Byte index table for exchanging a whole block with a device (per-tag conversion is `load_tag` / `store_tag` of `Ldata`) |
+| `get_layout(name)` | Look up a registered layout by name; the layout has `create_ldata(name)` and `io_index_table(endian)`, the byte index table for exchanging a whole block with a device (per-tag conversion is `load_tag` / `store_tag` of `Ldata`) |
 
 ## Editor completion
 
-`new Ldata("Pump", "pump_1")` is typed `Ldata`. To have the tags of the layout completed, generate the types of the registered layouts once, write them to a file beside your code, and name the type of the value with a JSDoc cast:
+`get_layout("Pump").create_ldata("pump_1")` is typed `Ldata`. To have the tags of the layout completed, generate the types of the registered layouts once, write them to a file beside your code, and name the type of the value with a JSDoc cast:
 
 ```js
 import { writeFileSync } from "node:fs";
@@ -92,13 +91,13 @@ writeFileSync("layout_types.d.ts", render_types(layouts, { source: "pump.yaml" }
 ```
 
 ```js
-const pump = /** @type {import("./layout_types.js").Pump_Ldata} */ (new Ldata("Pump", "pump_1"));
+const pump = /** @type {import("./layout_types.js").Pump_Ldata} */ (get_layout("Pump").create_ldata("pump_1"));
 pump.pressure = 1.5;   // completed, and known to be a number
 ```
 
 The parentheses are part of the cast. With `checkJs` or `// @ts-check` a misspelled tag or a value of the wrong type is reported too.
 
-The types are named after the layout: `Pump_Tags` and `Pump_Ldata` for the layout `Pump`. In TypeScript write `new Ldata("Pump", "pump_1") as Pump_Ldata`.
+The types are named after the layout: `Pump_Tags` and `Pump_Ldata` for the layout `Pump`. In TypeScript write `get_layout("Pump").create_ldata("pump_1") as Pump_Ldata`.
 
 ## Documentation
 

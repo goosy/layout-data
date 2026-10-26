@@ -1,8 +1,7 @@
 import { make_struct, register_items } from "./share.js";
 import assert from "node:assert/strict";
 import test, { describe } from "node:test";
-import { compiled_of } from "../src/registry.js";
-import { io_index_table } from "../src/endian.js";
+import { compiled_of } from "../src/layout.js";
 import { validate_structure } from "../src/structure.js";
 
 const VALID_ITEMS = [
@@ -276,10 +275,18 @@ describe("the layout object (doc/spec-data-api.md §6.6)", () => {
 		assert.throws(() => compiled_of({ ...layout }), /PUBLIC_SHAPE is not a registered layout/);
 	});
 
+	test("a layout has the methods create_ldata and io_index_table, and is not made by new", () => {
+		assert.deepEqual(Object.keys(layout), ["name", "length", "size", "items"]);
+		const data = layout.create_ldata("d");
+		assert.equal(data.layout, layout);
+		assert.equal(data.name, "d");
+		assert.throws(() => new layout.constructor(layout, {}), /a layout is made by register_layout/);
+	});
+
 	test("io_index_table takes only the four byte orders", () => {
-		assert.equal(io_index_table(layout, "LEBS").length, layout.size);
+		assert.equal(layout.io_index_table("LEBS").length, layout.size);
 		for (const endian of ["little", "big", "be", undefined]) {
-			assert.throws(() => io_index_table(layout, endian), RangeError, String(endian));
+			assert.throws(() => layout.io_index_table(endian), RangeError, String(endian));
 		}
 	});
 });
