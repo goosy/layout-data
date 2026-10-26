@@ -3,6 +3,5 @@ export { Ldata } from "./Ldata.js";
 export { Ltag } from "./Ltag.js";
 export { register_layout } from "./layout.js";
 export { get_layout } from "./registry.js";
-export { io_index_table } from "./endian.js";
 export { render_types } from "./types.js";
 export * from "./typedefs.js";

@@ -2,8 +2,8 @@ import { one_tag, register_items } from "./share.js";
 import assert from "node:assert/strict";
 import { Buffer } from "node:buffer";
 import test, { describe } from "node:test";
-import { io_index, io_index_table, io_range, load_entry, store_entry } from "../src/endian.js";
-import { compiled_of } from "../src/registry.js";
+import { io_index, io_range, load_entry, store_entry } from "../src/endian.js";
+import { compiled_of } from "../src/layout.js";
 
 /** Loads the tag of a data block from an IO buffer. */
 function load(data, io_buffer, endian) {
@@ -172,7 +172,7 @@ describe("io_index_table", () => {
 	for (const endian of ["BE", "LE", "BEBS", "LEBS"]) {
 		test(`${endian}: the table moves every byte as load_entry and store_entry do`, () => {
 			const layout = LAYOUT;
-			const table = io_index_table(layout, endian);
+			const table = layout.io_index_table(endian);
 			const io = Buffer.from(Array.from({ length: layout.size }, (_, i) => 0x10 + i));
 			const by_entry = Buffer.alloc(layout.size);
 			const by_table = Buffer.alloc(layout.size);
@@ -195,7 +195,7 @@ describe("io_index_table", () => {
 
 	test("a single-byte tag maps as io_index", () => {
 		const layout = LAYOUT;
-		assert.equal(io_index_table(layout, "LE")[12], io_index(12, "LE"));
-		assert.equal(io_index_table(layout, "BE")[12], 12);
+		assert.equal(layout.io_index_table("LE")[12], io_index(12, "LE"));
+		assert.equal(layout.io_index_table("BE")[12], 12);
 	});
 });

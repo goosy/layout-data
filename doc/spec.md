@@ -38,7 +38,7 @@ Out of scope: device communication, scheduling, business rules and logging. The 
   - only one side of a combined word and its bits gives the initial value: if the word gives it, the initial values of the bits come from the whole word; otherwise they come from the bits (a bit without a value is false) and the word is composed from them;
   - the total length of a data block is a whole number of registers (a multiple of 16 bits).
 - **Bit numbering of combined words**: in a 16-bit combined word, bit k of the word value is bit k of the register. This is guaranteed by the offsets of the bits in the layout; no extra byte swapping is done internally.
-- **Byte order**: data is stored big-endian internally. Device byte orders (`BE`, `LE`, `BEBS`, `LEBS`) are converted only at the boundary where data is exchanged with a device; the package provides per-tag conversion (`load_tag`, `store_tag` of Ldata, and `load`, `store` of Ltag) and a byte index table for a whole block (`io_index_table`). For Bool and single-byte tags the device byte order acts per 16-bit register.
+- **Byte order**: data is stored big-endian internally. Device byte orders (`BE`, `LE`, `BEBS`, `LEBS`) are converted only at the boundary where data is exchanged with a device; the package provides per-tag conversion (`load_tag`, `store_tag` of Ldata, and `load`, `store` of Ltag) and a byte index table for a whole block (`io_index_table` of a layout). For Bool and single-byte tags the device byte order acts per 16-bit register.
 - **Access by name**: a program reads and writes tag values by name, at any time. The programming interface is in [spec-data-api.md](spec-data-api.md).
 - **Raw access**: the bytes of an ldata are read and written only through the interface, by tag or raw by byte offset (`read_bytes`, `write_bytes`, `read_bit`, `write_bit`); the internal buffer is not exposed, so every write is seen and no change is missed. Typed access goes through tags, untyped access through bytes.
 - **Change events**: when the value of a tag changes (from an assignment or a raw write) a change event is emitted, after the new value has taken effect.
@@ -63,10 +63,9 @@ The entry `layout-data` exports:
 
 | Export | Description |
 | --- | --- |
-| `Ldata`, `Ltag` | The data object and the tag handle (§2 and §3 of [spec-data-api.md](spec-data-api.md)) |
-| `register_layout` | Register the layouts of descriptions, description files or description objects (also for items given in code), once per process; register first, then create `Ldata` by layout name (§6 of [spec-data-api.md](spec-data-api.md)) |
-| `get_layout` | Look up a registered layout by name (§6.4 of [spec-data-api.md](spec-data-api.md)) |
-| `io_index_table` | The byte index table for exchanging a whole block with a device (§2.9 of [spec-data-api.md](spec-data-api.md)); the per-tag conversion is `load_tag` / `store_tag` of Ldata |
+| `Ldata`, `Ltag` | The data object and the tag handle (§2 and §3 of [spec-data-api.md](spec-data-api.md)); an ldata is created by the `create_ldata` of its layout, and `Ldata` cannot be constructed with `new` |
+| `register_layout` | Register the layouts of descriptions, description files or description objects (also for items given in code), once per process; register first, then get a layout by name and create ldata from it (§6 of [spec-data-api.md](spec-data-api.md)) |
+| `get_layout` | Look up a registered layout by name (§6.4 of [spec-data-api.md](spec-data-api.md)); a layout has the methods `create_ldata` and `io_index_table` (§6.6), and `Layout` is exported as a type only |
 | `render_types` | Generates TypeScript declarations from registered layouts |
 
 ## 7. Documents

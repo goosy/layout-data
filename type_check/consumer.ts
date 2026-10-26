@@ -5,7 +5,7 @@ import { Buffer } from "node:buffer";
 import {
 	Ldata, Ltag,
 	register_layout, get_layout,
-	io_index_table, render_types,
+	render_types,
 	type Layout, type Layout_Tag, type Layout_Item,
 	type Tag_Item, type Include_Item, type Layout_Description,
 	type Registered_Layouts, type Endian, type Tag_Type,
@@ -88,10 +88,20 @@ void (await import("layout-data")).build_structure;
 // @ts-expect-error the validation is part of the registration
 void (await import("layout-data")).validate_structure;
 
-// Ldata
-const ldata = new Ldata(same_layout, "block");
-// @ts-expect-error a list of items is registered first: Ldata takes a layout
-new Ldata(items, "block");
+// Ldata: created by its layout, never with new
+const ldata: Ldata = same_layout.create_ldata("block");
+assert_type<Equal<ReturnType<Layout["create_ldata"]>, Ldata>>();
+// @ts-expect-error the constructor of Ldata is private
+new Ldata(same_layout, "block");
+// @ts-expect-error there is no creation by layout name: get_layout gives the layout
+new Ldata("s", "block");
+// @ts-expect-error Ldata cannot be extended
+class My_Ldata extends Ldata {}
+void My_Ldata;
+// @ts-expect-error Layout is a type only
+void (await import("layout-data")).Layout;
+// @ts-expect-error a copy of a layout has no methods
+({ ...same_layout }).create_ldata("block");
 const tag: Ltag | undefined = ldata.get("a");
 assert_type<Equal<typeof ldata.size, number>>();
 assert_type<Equal<typeof ldata.layout, Layout>>();
@@ -99,7 +109,9 @@ assert_type<Equal<typeof ldata.name, string>>();
 // @ts-expect-error name is read-only
 ldata.name = "renamed";
 // @ts-expect-error the name is a string
-new Ldata(same_layout, 1);
+same_layout.create_ldata(1);
+// @ts-expect-error the name is required
+same_layout.create_ldata();
 const done: string = ldata.transaction(() => "done");
 assert_type<Equal<typeof done, string>>();
 // @ts-expect-error the transaction function is required
@@ -207,14 +219,16 @@ void (await import("layout-data")).set_access_tracer;
 
 // device byte order
 const endian: Endian = "LEBS";
-const table: Int32Array = io_index_table(layout, endian);
+const table: Int32Array = layout.io_index_table(endian);
 ldata.load_tag("a", Buffer.alloc(2), "LE");
 ldata.load_tag("a", new Uint8Array(2), "BEBS");
 ldata.store_tag("a", new Uint8Array(2), endian);
 tag?.load(new Uint8Array(2), "BE");
 tag?.store(new Uint8Array(2), "BE");
 // @ts-expect-error the byte order is one of the four
-io_index_table(layout, "little");
+layout.io_index_table("little");
+// @ts-expect-error io_index_table is a method of the layout
+void (await import("layout-data")).io_index_table;
 // @ts-expect-error the byte order is one of the four
 ldata.load_tag("a", bytes, "big");
 // @ts-expect-error the tag is given by name

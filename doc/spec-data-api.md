@@ -26,13 +26,14 @@ Units: a `length` is in bits and a `size` is in bytes, everywhere in this interf
 ### 2.1 Creating
 
 ```js
-const data = new Ldata(layout, name);
+const data = layout.create_ldata(name);
 ```
 
-- `layout`: the name of a registered layout, which is the normal way (§6.4: register first, then create by name), or the registered layout object itself, which `get_layout(name)` returns or a registration result holds; a list of items is not accepted, and an unknown name or a layout object that is not the registered one of its name throws;
+- An ldata is made by its layout: `layout.create_ldata(name)` is the only way to create one. `layout` is a registered layout object, which `get_layout(name)` returns or a registration result holds (§6.4, §6.6); looking up by name happens only when the layout is got, so the layout object is in hand when a data block is created. Only a registered layout has the method; a copy of one (such as `{ ...layout }`) has not;
 - `name`: the name of the ldata, used in logs and error messages. It must be a string (any string, the empty one included), otherwise `TypeError`; it is given here and cannot be changed afterwards;
 - After creation every tag equals its initial value from the layout, and no change event is emitted;
-- A layout name identifies one layout for the life of the process: the data blocks of one layout share one class (§6.4).
+- `Ldata` cannot be constructed with `new`: `new Ldata(...)` throws `TypeError`, whose message gives the right usage, `layout.create_ldata(name)`; in the declarations the constructor is private, so TypeScript and a file checked with `checkJs` report it at compile time. `Ldata` is still exported, for `instanceof`, type annotations and `Ldata.on_access` / `off_access` (§2.8);
+- The data blocks of one layout share one class, a subclass of `Ldata`, which cannot be constructed with `new` either.
 
 ### 2.2 Properties
 
@@ -185,7 +186,7 @@ An ldata is stored big-endian internally. To exchange data with a device, conver
 
   A Bool and a single-byte tag (Byte, SInt, USInt) go by the 16-bit register they lie in: for `LE` and `BEBS` they sit in the other byte of the register, for `BE` and `LEBS` in place; a Bool changes only its own bit;
 - `load_tag` is the same as a write by name: it takes effect at once, detects, emits `change` and then `write`; inside a transaction it is handled at the commit. Put a batch of loads into a transaction (§2.6): one detection and one `write` at the commit;
-- Exchanging a whole block at once: `io_index_table(layout, endian)` returns the table of byte indexes; byte `i` of the data block is byte `table[i]` of the IO buffer. The user copies the bytes by it, then writes them with one `write_bytes` (§2.5);
+- Exchanging a whole block at once: the layout method `layout.io_index_table(endian)` (§6.6) returns the table of byte indexes; byte `i` of the data block is byte `table[i]` of the IO buffer. The user copies the bytes by it, then writes them with one `write_bytes` (§2.5);
 - Errors are checked before anything is changed: the ldata is unchanged and `load_tag` emits no `write` (errors in §5).
 
 ### 2.10 Reserved names
@@ -276,6 +277,8 @@ The interface throws exceptions on errors. It does not log or exit the process; 
 | Writing `NaN`, `Infinity`, a non-integer or an integer outside the range to an integer tag, or a finite number beyond float32 to a `Real` tag | `RangeError`, the old value is kept, no event and no `write` |
 | A handler throws | the first exception is thrown by the write statement after all events are dispatched; the value stands and `write` is emitted (§4.4) |
 | An ldata created with a name that is not a string | `TypeError` |
+| `new` on `Ldata` or on the Ldata subclass of a layout | `TypeError`, whose message gives `layout.create_ldata(name)` (§2.1) |
+| `get_layout` with a name that is not registered | `Error` (`unknown layout X`, §6.4) |
 | Invalid layout, or a reserved tag name (§2.10) | `Error` with `errors`, thrown by `register_layout`; nothing is registered (§6.4) |
 | `register_layout` called again after it registered layouts | `Error`, the layouts of the first call stay (§6.4) |
 | Writes triggered by handlers that do not settle | `Error`, thrown by the write statement after the events are dispatched (§4.4) |
@@ -287,7 +290,7 @@ The interface throws exceptions on errors. It does not log or exit the process; 
 
 ## 6. Layout description
 
-The flow is **register once, then use by name**: the layouts are described (§6.1 to §6.3), all of them are registered by one call of `register_layout` (§6.4), and from then on `new Ldata("Pump", "pump_1")` creates data blocks of a layout by its name. The user needs to know how to express a layout as a YAML structure and which name it has; whether it is compiled, and into what, is not part of the flow.
+The flow is **register once, get the layout, create from it**: the layouts are described (§6.1 to §6.3), all of them are registered by one call of `register_layout` (§6.4), and from then on `get_layout("Pump")` gets a layout by its name and its `create_ldata("pump_1")` creates data blocks (§2.1). The user needs to know how to express a layout as a YAML structure and which name it has; whether it is compiled, and into what, is not part of the flow.
 
 ### 6.1 Structure
 
@@ -356,7 +359,7 @@ There are two kinds of entry, and the declarations name them (`Layout_Item` is e
 register_layout("pump.yaml");                                     // one file
 register_layout(["common.yaml", "pump.yaml", "valve.yaml"]);      // several files
 register_layout(["common.yaml", { layouts: { INLINE: [...] } }]); // description files and objects
-const pump = new Ldata("Pump", "pump_1");                         // from then on, by the layout name
+const pump = get_layout("Pump").create_ldata("pump_1");           // from then on, get the layout and create
 ```
 
 `register_layout(descriptions)` registers the layouts of the descriptions. A layout can be used only after it is registered.
@@ -368,7 +371,7 @@ const pump = new Ldata("Pump", "pump_1");                         // from then o
 - Every layout is validated (§6.3), the omitted `length`s are filled in, and the descriptions given are not changed;
 - Any violation throws an `Error` whose `errors` property lists all violations of all descriptions, and nothing is registered: the descriptions are registered all or none. An unreadable file and a YAML syntax error are violations too. The layout and fragment errors name the layout or fragment, not the file;
 - Return value: `{ layouts, fragments }` for all the descriptions. `layouts` holds the registered layouts by name, as `get_layout(name)` returns them; `fragments` holds the entry lists by fragment name (references expanded, offsets relative to the start of the fragment), for the user to query, for example to get all tag names of a parameter block. Neither is needed for the flow above;
-- A layout name stays registered for the life of the process. `get_layout(name)` returns the registered layout (read-only, §6.6) and throws `unknown layout X` for a name that is not registered, as `new Ldata(name, ...)` does;
+- A layout name stays registered for the life of the process. `get_layout(name)` returns the registered layout (read-only, §6.6) and throws `unknown layout X` for a name that is not registered;
 - Consequences of registering once: a changed layout file takes effect only in a new process (no hot reload, and a REPL or a test cannot register a changed layout again); a library built on layout-data cannot call `register_layout` itself, it can only export the paths of its description files for the application to put in `descriptions`.
 - When the dependency tree holds two copies of the package (for example two versions), they share nothing: each allows its own single call of `register_layout`, and a layout registered through one is not found by name through the other.
 
@@ -385,7 +388,7 @@ register_layout({
     ],
   },
 });
-const data = new Ldata("Pump", "pump_1");
+const data = get_layout("Pump").create_ldata("pump_1");
 ```
 
 - the items are the entries of §6.2; `length` may be omitted; `coupling` and `includes` take an inline list or the name of a fragment of any of the descriptions;
@@ -394,7 +397,7 @@ const data = new Ldata("Pump", "pump_1");
 
 ### 6.6 The layout object
 
-A layout (`Layout`) is a read-only object that exposes only these members:
+A layout (`Layout`) is a read-only object with methods that exposes only these members:
 
 | Member | Description |
 | --- | --- |
@@ -402,9 +405,12 @@ A layout (`Layout`) is a read-only object that exposes only these members:
 | `length` | Total length in bits |
 | `size` | Total size in bytes |
 | `items` | The expanded descriptions of the tags, in layout order (a combined word before its bits) |
+| `create_ldata(name)` | Creates an ldata of the layout (§2.1) |
+| `io_index_table(endian)` | The byte index table for exchanging a whole block with a device (§2.9); an `endian` that is not one of the four byte orders throws `RangeError` |
 
 - Every item of `items` has: `name`; `type` (as written in the description, the case unchanged, while `Ltag.type` is always lower case); `offset` (the absolute bit offset; the byte position is `offset >> 3`); `length` (bits); `init_value`; `comment` (if given); `coupling` (for a combined word: the tag names of its bits; for a bit: the tag names of the combined words it belongs to). `includes` and `name_prefix` are expanded and no longer appear;
 - The layout and its `items` are deeply frozen: modifying them throws `TypeError`;
+- `Layout` is exported as a type only, not as a value that can be constructed: layouts are made only by registering (§6.4);
 - A layout does not expose the table by name, byte positions, bit masks, codecs or other internal data, and users need not know them: access by name goes through `data.get(name)`, which gives an Ltag, and exchanging data with a device through `load_tag` / `store_tag` or `load` / `store` of an Ltag (§2.9).
 
 ### 6.7 Type declarations for the editor
@@ -412,22 +418,22 @@ A layout (`Layout`) is a read-only object that exposes only these members:
 `render_types(layouts, options)` returns the text of a TypeScript declaration file (`.d.ts`) for layouts, so that an editor can complete the tags of a data block. It is a helper for building the program: after the layouts are registered, the program writes the text to a file beside its code, for example `layout_types.d.ts`. `layouts` is the `layouts` that `register_layout` returns.
 
 - For each layout it declares `<Layout>_Tags`, an interface with one property per tag (`boolean` for a Bool, `number` for every other type; a `comment` becomes the doc comment of the property), and `<Layout>_Ldata`, which is `Ldata & <Layout>_Tags`;
-- The layout name is used as it is, with the case it has: the layout `Pump` gives `Pump_Tags` and `Pump_Ldata`, `my_block` gives `my_block_Tags`, `Pump_Station` gives `Pump_Station_Tags`. The case style is the choice of the caller, and `Snake_Pascal_Case` is recommended, the style of the type names of this package; the library does not require it. The name is the one written in `new Ldata("Pump", ...)`, and two layouts with different names never give the same type name;
+- The layout name is used as it is, with the case it has: the layout `Pump` gives `Pump_Tags` and `Pump_Ldata`, `my_block` gives `my_block_Tags`, `Pump_Station` gives `Pump_Station_Tags`. The case style is the choice of the caller, and `Snake_Pascal_Case` is recommended, the style of the type names of this package; the library does not require it. The name is the one written in `get_layout("Pump")`, and two layouts with different names never give the same type name;
 - The keys of `layouts` are used as the layout names and must be identifiers of JavaScript. The names of registered layouts are (§6.3), so only keys given otherwise can fail; then `Error` is thrown, whose `errors` lists every such key. A tag name is always an identifier (§6.2), so it is written as the property name as it is. A `*/` in a comment is escaped, so the text is always a valid declaration file;
 - `options.source` names the layout file in the header comment of the text; without it the header only says that the text is generated. `options.ldata_module` is the module specifier the text imports `Ldata` from, relative to the output file; it is `"layout-data"` by default. Both options, and the argument `options` itself, may be omitted.
 
-Using the types. `new Ldata("Pump", "pump_1")` is typed `Ldata`: the constructor of a class cannot return another type according to its argument, so the type of the value is named by hand, once. In JavaScript a JSDoc cast, which is enough for an editor to complete the tags and, when the file is checked (`checkJs` or `// @ts-check`), to flag a misspelled tag or a value of the wrong type:
+Using the types. `get_layout("Pump").create_ldata("pump_1")` is typed `Ldata`: the declaration of `create_ldata` cannot return another type for each layout, so the type of the value is named by hand, once. In JavaScript a JSDoc cast, which is enough for an editor to complete the tags and, when the file is checked (`checkJs` or `// @ts-check`), to flag a misspelled tag or a value of the wrong type:
 
 ```js
-const pump = /** @type {import("./layout_types.js").Pump_Ldata} */ (new Ldata("Pump", "pump_1"));
+const pump = /** @type {import("./layout_types.js").Pump_Ldata} */ (get_layout("Pump").create_ldata("pump_1"));
 pump.pressure = 1.5;   // completed, and known to be a number
 ```
 
-The parentheses are part of the JSDoc cast. A `/** @type {...} */` written above `const pump = new Ldata(...)` also gives the completion, but a checked file then reports that `Ldata` is not assignable to `Pump_Ldata`.
+The parentheses are part of the JSDoc cast. A `/** @type {...} */` written above `const pump = get_layout("Pump").create_ldata(...)` also gives the completion, but a checked file then reports that `Ldata` is not assignable to `Pump_Ldata`.
 
-In TypeScript: `const pump = new Ldata("Pump", "pump_1") as Pump_Ldata;`.
+In TypeScript: `const pump = get_layout("Pump").create_ldata("pump_1") as Pump_Ldata;`.
 
 ## 7. Outside this interface
 
-- Exchanging data with devices (driver binding, the orchestration of reads and writes) is the job of the user's IO layer, which operates the ldata through this interface: `load_tag` / `store_tag` convert the byte order per tag (§2.9), a whole block is exchanged with `io_index_table` plus `read_bytes` / `write_bytes` (§2.5), and a batch of loads goes into a transaction (§2.6);
+- Exchanging data with devices (driver binding, the orchestration of reads and writes) is the job of the user's IO layer, which operates the ldata through this interface: `load_tag` / `store_tag` convert the byte order per tag (§2.9), a whole block is exchanged with the `io_index_table` of the layout plus `read_bytes` / `write_bytes` (§2.5), and a batch of loads goes into a transaction (§2.6);
 - Scheduling, rules and timing do not belong to this interface.

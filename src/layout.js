@@ -1,11 +1,123 @@
 import { readFileSync } from "node:fs";
 import { parseDocument } from "yaml";
 import { CODECS } from "./codecs.js";
-import { register, registered_of, set_compiled } from "./registry.js";
+import { io_index_table } from "./endian.js";
+import { build_ldata_class, new_ldata } from "./Ldata.js";
+import { register, registered_of } from "./registry.js";
 import { build_structure, validate_structure, IDENTIFIER, TYPE_BITS } from "./structure.js";
 
-/** @import { Layout_Description, Registered_Layouts, Layout } from "./typedefs.js" */
-/** @import { Data_Struct } from "./internal_types.js" */
+/** @import { Endian, Layout_Description, Layout_Tag, Registered_Layouts } from "./typedefs.js" */
+/** @import { Compiled_Layout, Data_Struct } from "./internal_types.js" */
+/** @import { Ldata } from "./Ldata.js" */
+
+/** The key of the constructor of Layout, private to this module. */
+const CREATE_KEY = Symbol("create layout");
+
+/** Set by a static block of Layout: reads the compiled data of a layout. */
+let read_compiled;
+
+/**
+ * A compiled layout (doc/spec-data-api.md §6.6), read-only and deeply
+ * frozen: `name`; `length` in bits; `size` in bytes; `items`, the tags in
+ * layout order (a combined word before its bits). Only a registration makes
+ * one; the package exports the type and not the class.
+ */
+export class Layout {
+	/**
+	 * The layout name.
+	 *
+	 * @readonly
+	 * @type {string}
+	 */
+	name;
+	/**
+	 * Total length in bits.
+	 *
+	 * @readonly
+	 * @type {number}
+	 */
+	length;
+	/**
+	 * Total size in bytes.
+	 *
+	 * @readonly
+	 * @type {number}
+	 */
+	size;
+	/**
+	 * The tags in layout order, a combined word before its bits.
+	 *
+	 * @readonly
+	 * @type {readonly Layout_Tag[]}
+	 */
+	items;
+	/** @type {Compiled_Layout} */
+	#compiled;
+	/** @type {typeof Ldata} */
+	#ldata_class;
+
+	/**
+	 * Not called by the user: register_structure makes the layouts.
+	 *
+	 * @private
+	 * @param {symbol} key - The key private to this module.
+	 * @param {Data_Struct} data_struct
+	 * @param {Compiled_Layout} compiled
+	 */
+	constructor(key, data_struct, compiled) {
+		if (key !== CREATE_KEY) throw new TypeError("a layout is made by register_layout");
+		this.name = data_struct.name;
+		this.length = data_struct.length;
+		this.size = data_struct.length >> 3;
+		this.items = Object.freeze(data_struct.items.map(public_tag));
+		this.#compiled = compiled;
+		this.#ldata_class = build_ldata_class(this, compiled);
+		Object.freeze(this);
+	}
+
+	/**
+	 * Creates a data block of this layout (doc/spec-data-api.md §2.1), the
+	 * only way to create one. Every tag holds its initial value and no event
+	 * is emitted.
+	 *
+	 * @param {string} name - The name of the ldata, a string that cannot be changed afterwards.
+	 * @returns {Ldata}
+	 * @throws {TypeError} When name is not a string.
+	 */
+	create_ldata(name) {
+		return new_ldata(this.#ldata_class, name);
+	}
+
+	/**
+	 * The index in a device-ordered IO buffer of every byte of a data block
+	 * of this layout: the byte `i` of the block is the byte `table[i]` of the
+	 * IO buffer (doc/spec-data-api.md §2.9).
+	 *
+	 * @param {Endian} endian - Device byte order: BE, LE, BEBS or LEBS.
+	 * @returns {Int32Array}
+	 * @throws {RangeError} For another byte order.
+	 */
+	io_index_table(endian) {
+		return io_index_table(this.size, this.#compiled, endian);
+	}
+
+	static {
+		read_compiled = (layout) => (#compiled in layout ? layout.#compiled : undefined);
+	}
+}
+
+/**
+ * The compiled data of a layout made by this package. Internal: for the tests.
+ *
+ * @param {Layout} layout
+ * @returns {Compiled_Layout}
+ * @throws {Error} For an object that is not a compiled layout.
+ */
+export function compiled_of(layout) {
+	const data = layout !== null && typeof layout === "object" ? read_compiled(layout) : undefined;
+	if (!data) throw new Error(`${layout?.name} is not a registered layout`);
+	return data;
+}
 
 /**
  * The canonical text of a value: object keys sorted, `comment` left out (it
@@ -23,11 +135,10 @@ function canonical(value, key) {
 
 /**
  * Compiles an expanded structure (the result of build_structure) into a Layout
- * (doc/design.md §3) and registers it under its name, the one source of the
- * layouts an Ldata is created from. Registering a structure whose canonical
- * text equals the registered one of that name gives the registered Layout, so
- * the same layout described twice is compiled once; another structure under a
- * used name throws. Throws on an unknown type or a duplicated tag name; the
+ * (doc/design.md §3) and registers it under its name, where get_layout finds
+ * it. Registering a structure whose canonical text equals the registered one
+ * of that name gives the registered Layout, so the same layout described
+ * twice is compiled once; another structure under a used name throws. Throws on an unknown type or a duplicated tag name; the
  * other layout rules are checked by validate_structure. Internal.
  *
  * @param {Data_Struct} data_struct
@@ -84,14 +195,7 @@ function compile_structure(data_struct) {
 
 	// the public layout holds the name, the sizes and frozen copies of the items;
 	// the entries and the lookup table stay out of reach (doc/spec-data-api.md §6.6)
-	const layout = Object.freeze({
-		name: data_struct.name,
-		length: data_struct.length,
-		size,
-		items: Object.freeze(data_struct.items.map(public_tag)),
-	});
-	set_compiled(layout, { entries, tags_at_byte });
-	return layout;
+	return new Layout(CREATE_KEY, data_struct, { entries, tags_at_byte });
 }
 
 /**
@@ -222,9 +326,10 @@ let registered_once = false;
 
 /**
  * Registers the layouts of the descriptions, once per process: a layout is
- * described, registered under its name, and then used by that name
- * (doc/spec-data-api.md §6.4). Nothing is registered when a description is
- * not valid, and such a call does not use up the single call.
+ * described, registered under its name, got by that name (get_layout), and
+ * creates its data blocks (doc/spec-data-api.md §6.4). Nothing is registered
+ * when a description is not valid, and such a call does not use up the single
+ * call.
  *
  * @param {string | Layout_Description | Array<string | Layout_Description>} descriptions - The path of a YAML description file, a description object, or a list of them.
  * @returns {Registered_Layouts}

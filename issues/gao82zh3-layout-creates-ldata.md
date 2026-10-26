@@ -1,9 +1,9 @@
 ---
 id: gao82zh3
 opened: 2026-10-26T08:36:00.584Z
-closed:
+closed: 2026-10-26T08:58:38.000Z
 title: 布局对象化，由布局产生 ldata
-status: open        # open | accepted | fixed | rejected | wontfix
+status: fixed       # open | accepted | fixed | rejected | wontfix
 fixed_in: []        # commit IDs, backfilled at version commit time
 labels: []
 remote:
@@ -48,3 +48,5 @@ spec-data-api §2.1 规定 `new Ldata(layout, name)` 的 `layout` 可以是已�
 - `io_index_table` 改为 `Ldata` 的静态方法：只是换个地方挂，还是要传布局；改为 ldata 的实例方法：会多一个保留名，tag 不能再用这个名字。
 
 ## 裁定
+
+按解决提案实施：布局改为带方法的对象，`layout.create_ldata(name)` 是创建 ldata 的唯一方式，`new Ldata(...)` 抛出 `TypeError`，`io_index_table` 改为布局的方法。理由见解决提案：取消按名创建的延迟报错和构造函数的绕弯，接口体现"ldata 由布局产生"。

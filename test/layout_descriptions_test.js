@@ -4,7 +4,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test, { describe } from "node:test";
 import { register_descriptions } from "../src/layout.js";
-import { Ldata } from "../src/Ldata.js";
 import { get_layout } from "../src/registry.js";
 
 const dir = mkdtempSync(join(tmpdir(), "tlms-descriptions-"));
@@ -62,9 +61,9 @@ describe("6.4 several descriptions", () => {
 		const { layouts, fragments } = register_descriptions([pump, valve, common]);
 		assert.deepEqual(Object.keys(layouts), ["Ms_Pump", "Ms_Valve"]);
 		assert.equal(fragments.status_bits.length, 2);
-		assert.equal(new Ldata("Ms_Pump", "p").status, 0x0001);
+		assert.equal(get_layout("Ms_Pump").create_ldata("p").status, 0x0001);
 		const other = register_descriptions([write(COMMON.replace("status_bits", "bits")), write(layout_text("Ms_Late").replace("status_bits", "bits"))]);
-		assert.equal(new Ldata(other.layouts.Ms_Late, "t").status, 0x0001);
+		assert.equal(other.layouts.Ms_Late.create_ldata("t").status, 0x0001);
 	});
 
 	test("description files and description objects can be mixed", () => {
@@ -74,7 +73,7 @@ describe("6.4 several descriptions", () => {
 			{ layouts: { Ms_Mixed: [{ name: "w", type: "Word", offset: 0, coupling: "status_bits" }] } },
 		]);
 		assert.equal(layouts.Ms_Mixed, get_layout("Ms_Mixed"));
-		assert.equal(new Ldata("Ms_Mixed", "t").w, 0x0001);
+		assert.equal(get_layout("Ms_Mixed").create_ldata("t").w, 0x0001);
 	});
 
 	test("one description can be given as itself, not in a list", () => {

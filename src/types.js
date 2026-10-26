@@ -21,14 +21,14 @@ function doc_comment(text, indent) {
  * Renders a declaration file with, for each layout, an interface of its tags
  * (`<Layout>_Tags`, one property per tag) and the type of its data block
  * (`<Layout>_Ldata`). The layout name is used as it is, with the case it has,
- * so that the type names are those of `new Ldata("<Layout>", ...)` and layouts
+ * so that the type names are those of `get_layout("<Layout>")` and layouts
  * with different names never get the same type name.
  *
  * In JavaScript a JSDoc cast names the type of the value, which an editor
  * uses for completion and, with `checkJs`, to check the tags:
  *
  * ```js
- * const pump = /** @type {import("./layout_types.js").Pump_Ldata} *\/ (new Ldata("Pump", "pump_1"));
+ * const pump = /** @type {import("./layout_types.js").Pump_Ldata} *\/ (get_layout("Pump").create_ldata("pump_1"));
  * ```
  *
  * @param {Record<string, import("./typedefs.js").Layout>} layouts - Registered layouts by name.
@@ -57,7 +57,7 @@ export function render_types(layouts, { source, ldata_module = "layout-data" } =
 		lines.push(
 			"//",
 			"// In JavaScript, a JSDoc cast names the type of the value:",
-			`//   const data = /** @type {import("<this file>").${names[0]}_Ldata} */ (new Ldata("${names[0]}", "data_1"));`,
+			`//   const data = /** @type {import("<this file>").${names[0]}_Ldata} */ (get_layout("${names[0]}").create_ldata("data_1"));`,
 		);
 	}
 	for (const [name, layout] of Object.entries(layouts)) {

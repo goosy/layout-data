@@ -20,7 +20,7 @@ describe("6.4 register_layout is called once", () => {
 			try { api.register_layout({ layouts: { Once_B: one } }); } catch (error) { message = error.message; }
 			let unknown = "";
 			try { api.get_layout("Once_B"); } catch (error) { unknown = error.message; }
-			console.log(JSON.stringify({ message, unknown, a: new api.Ldata("Once_A", "t").a }));
+			console.log(JSON.stringify({ message, unknown, a: api.get_layout("Once_A").create_ldata("t").a }));
 		`);
 		assert.equal(result.message, "register_layout can be called only once");
 		assert.match(result.unknown, /unknown layout Once_B/);
@@ -36,7 +36,7 @@ describe("6.4 register_layout is called once", () => {
 			let unknown = "";
 			try { api.get_layout("Retry_Good"); } catch (error) { unknown = error.message; }
 			api.register_layout({ layouts: { Retry_Good: good } });
-			console.log(JSON.stringify({ errors, unknown, a: new api.Ldata("Retry_Good", "t").a }));
+			console.log(JSON.stringify({ errors, unknown, a: api.get_layout("Retry_Good").create_ldata("t").a }));
 		`);
 		assert.ok(result.errors.length >= 1);
 		assert.match(result.unknown, /unknown layout Retry_Good/);
@@ -48,7 +48,7 @@ describe("6.4 register_layout is called once", () => {
 			let failed = false;
 			try { api.register_layout("no_such_layout_file.yaml"); } catch { failed = true; }
 			api.register_layout({ layouts: { Fallback: [{ name: "a", type: "UInt", offset: 0, init_value: 9 }] } });
-			console.log(JSON.stringify({ failed, a: new api.Ldata("Fallback", "t").a }));
+			console.log(JSON.stringify({ failed, a: api.get_layout("Fallback").create_ldata("t").a }));
 		`);
 		assert.deepEqual(result, { failed: true, a: 9 });
 	});

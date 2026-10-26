@@ -1,7 +1,6 @@
 import { register_items } from "./share.js";
 import assert from "node:assert/strict";
 import test, { describe } from "node:test";
-import { Ldata } from "../src/Ldata.js";
 
 const ITEMS = [
 	{ name: "a", type: "UInt", offset: 0, length: 16, init_value: 0 },
@@ -16,7 +15,7 @@ const ITEMS = [
 ];
 
 const LAYOUT = register_items("Sample", ITEMS);
-const create = () => new Ldata(LAYOUT, "sample");
+const create = () => LAYOUT.create_ldata("sample");
 
 const record = (data) => {
 	const events = [];

@@ -28,7 +28,7 @@ describe("6.7 render_types", () => {
 import type { Ldata } from "layout-data";
 //
 // In JavaScript, a JSDoc cast names the type of the value:
-//   const data = /** @type {import("<this file>").Ty_Basic_Ldata} */ (new Ldata("Ty_Basic", "data_1"));
+//   const data = /** @type {import("<this file>").Ty_Basic_Ldata} */ (get_layout("Ty_Basic").create_ldata("data_1"));
 
 /** Tags of the Ty_Basic data block. */
 export interface Ty_Basic_Tags {

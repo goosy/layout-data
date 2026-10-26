@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test, { describe } from "node:test";
 import * as api from "../src/index.js";
-import { Ldata, get_layout } from "../src/index.js";
+import { get_layout } from "../src/index.js";
 import { register_layout_data } from "../src/layout.js";
 
 const ITEMS = () => [
@@ -23,7 +23,7 @@ describe("6.5 layouts given in code (register_layout_data)", () => {
 		const { layouts } = register("Lc_Basic", ITEMS());
 		assert.equal(layouts.Lc_Basic, get_layout("Lc_Basic"));
 		assert.deepEqual([layouts.Lc_Basic.length, layouts.Lc_Basic.size], [64, 8]);
-		const data = new Ldata("Lc_Basic", "d");
+		const data = get_layout("Lc_Basic").create_ldata("d");
 		assert.equal(data.id, 7);
 		assert.equal(data.status, 0x0001);
 		assert.equal(data.pressure, 1.5);

@@ -1,12 +1,12 @@
 // Conversion between the device byte order of an IO buffer and the big-endian
 // buffer of an Ldata, per compiled layout entry (doc/spec-data-api.md §2.9,
 // doc/design.md §6). Device byte order acts per 16-bit register and per 32-bit
-// value; the IO buffer is indexed like the Ldata buffer. Only io_index_table is
-// exported by the package: Ldata calls the other functions with its own buffer.
-import { compiled_of } from "./registry.js";
+// value; the IO buffer is indexed like the Ldata buffer. Internal: the package
+// exports none of these functions. Ldata calls them with its own buffer, and
+// `Layout.io_index_table` calls io_index_table with its compiled data.
 
-/** @import { Endian, Layout } from "./typedefs.js" */
-/** @import { Layout_Entry } from "./internal_types.js" */
+/** @import { Endian } from "./typedefs.js" */
+/** @import { Compiled_Layout, Layout_Entry } from "./internal_types.js" */
 
 // The device byte orders; there are no aliases.
 const ENDIANS = ["BE", "LE", "BEBS", "LEBS"];
@@ -115,16 +115,17 @@ export function io_index(byte, endian) {
  * with `load_entry` / `store_entry` for every entry (a Bool or a single-byte
  * entry maps as `io_index`, a multi-byte entry as its endian).
  *
- * @param {Layout} layout - The compiled layout of the data block.
+ * @param {number} block_size - The size of the data block in bytes.
+ * @param {Compiled_Layout} compiled - The compiled data of its layout.
  * @param {Endian} endian - Device byte order: BE, LE, BEBS or LEBS.
  * @returns {Int32Array}
  * @throws {RangeError} For another byte order.
  */
-export function io_index_table(layout, endian) {
+export function io_index_table(block_size, compiled, endian) {
 	check_endian(endian);
-	const table = new Int32Array(layout.size);
+	const table = new Int32Array(block_size);
 	for (let i = 0; i < table.length; i++) table[i] = io_index(i, endian);
-	for (const { byte, size, type } of compiled_of(layout).entries.values()) {
+	for (const { byte, size, type } of compiled.entries.values()) {
 		if (size !== 4 || type === "bool") continue;
 		for (let k = 0; k < 4; k++) {
 			switch (endian) {

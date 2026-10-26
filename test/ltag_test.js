@@ -2,7 +2,7 @@ import { one_tag } from "./share.js";
 import assert from "node:assert/strict";
 import test, { describe } from "node:test";
 import { Ltag } from "../src/Ltag.js";
-import { compiled_of } from "../src/registry.js";
+import { compiled_of } from "../src/layout.js";
 
 describe("tag storage", () => {
 	const cases = [

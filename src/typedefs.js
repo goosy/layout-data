@@ -65,14 +65,11 @@
 /**
  * A compiled layout (doc/spec-data-api.md §6.6), read-only and deeply frozen:
  * `name`; `length` in bits; `size` in bytes; `items`, the tags in layout
- * order (a combined word before its bits).
+ * order (a combined word before its bits); the methods `create_ldata(name)`
+ * and `io_index_table(endian)`. A type only: the class is not exported, and
+ * only a registration makes a layout.
  *
- * @typedef {Readonly<{
- *   name: string,
- *   length: number,
- *   size: number,
- *   items: readonly Layout_Tag[],
- * }>} Layout
+ * @typedef {import("./layout.js").Layout} Layout
  */
 
 /**

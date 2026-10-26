@@ -7,14 +7,14 @@
 | 文件 | 职责 |
 | --- | --- |
 | `src/index.js` | 包的公开接口 |
-| `src/Ldata.js` / `src/Ltag.js` | 数据对象与 tag 句柄 |
-| `src/layout.js` | 描述的读取与合并、布局的编译、Layout、原型访问器 |
+| `src/Ldata.js` / `src/Ltag.js` | 数据对象与 tag 句柄；`Ldata.js` 还构建各布局的 Ldata 子类及其原型访问器 |
+| `src/layout.js` | 描述的读取与合并、布局的编译、`Layout` 类 |
 | `src/structure.js` | 结构展开（`build_structure`）与布局校验（`validate_structure`）；内部使用，包不导出 |
 | `src/dispatch.js` | `emit_all`：调用一个事件的每个监听函数，收集它们抛出的异常（内部使用，包不导出） |
 | `src/reserved.js` | 保留的 tag 名与保留的事件名的静态清单（内部使用，包不导出） |
 | `src/codecs.js` | 各类型在大端缓冲区上的编解码 |
 | `src/observer.js` | 快照比对，变化事件 |
-| `src/endian.js` | 单个条目和整块数据的设备字节序转换（只导出 `io_index_table`） |
+| `src/endian.js` | 单个条目和整块数据的设备字节序转换（内部使用，包不导出） |
 | `src/types.js` | 由布局生成 TypeScript 类型声明（`render_types`） |
 | `src/typedefs.js` | 公开类型的 JSDoc 定义（类型的唯一来源，无运行时内容） |
 | `dist/types/` | 构建时由 `tsc` 从 JSDoc 生成的声明文件（`tsconfig.json`），不入库 |
@@ -24,11 +24,11 @@
 
 | 部分 | 职责 | 实例数 | 可变性 |
 | --- | --- | --- | --- |
-| Layout | 由布局定义编译而来：各 tag 的字节位置、编解码、字节到 tag 的反查表、原型访问器 | 每种结构一个 | 不可变 |
+| Layout | 由布局定义编译而来：公开的 `name`、`length`、`size`、`items` 和方法 `create_ldata`、`io_index_table`；私有的编译数据（各 tag 的字节位置、编解码、字节到 tag 的反查表）和该布局的 Ldata 子类 | 每种结构一个 | 不可变 |
 | Ldata | 值缓冲区（私有，大端）、按名访问、原始读写方法、`get(name)` 返回的 Ltag | 每个 ldata 一个 | 可变 |
 | Observer | 快照比对，发出变化事件 | 每个 ldata 一个 | 可变 |
 
-依赖方向：Observer 依赖 Ldata 与 Layout，Ldata 只依赖 Layout，Layout 只依赖描述。使用方的调度和 IO 在包之外，包只通过 Ldata 的 `write` 事件通知它们，任何一方都可以监听。
+依赖方向：Layout 依赖描述和 Ldata（它构建子类、创建 ldata）；Ldata 使用 Layout 在构建子类时交给它的布局和编译数据，`Ldata.js` 不引用 `layout.js`，不成环；Observer 只使用 Ldata 交给它的缓冲区和编译数据。使用方的调度和 IO 在包之外，包只通过 Ldata 的 `write` 事件通知它们，任何一方都可以监听。
 
 ### 2.1 组件边界
 
@@ -44,7 +44,7 @@
 | --- | --- | --- |
 | 合并描述 | 一次注册的所有描述合并而成的那一份描述 | `register_layout_data` 的 `root` |
 | 结构 | 解析了片段引用、展开为扁平条目的布局定义 | `Data_Struct`，由 `build_structure` 生成 |
-| 编译数据 | `Ldata` 需要而公开的 Layout 不展示的部分：`entries` 和 `tags_at_byte` | `Compiled_Layout`，通过 `compiled_of` 读取 |
+| 编译数据 | `Ldata` 需要而公开的 Layout 不展示的部分：`entries` 和 `tags_at_byte` | `Compiled_Layout`，Layout 的私有字段 `#compiled` |
 
 - 描述是描述文件（YAML 1.2）或同样结构的描述对象：根键 `layouts` 把布局名映射到布局定义（条目列表）；其余根键都是片段，由条目按名称引用。
 - 每个条目包含 `{ name, type, offset, init_value }`，可选 `length`、`comment`；`offset` 和 `length` 的单位都是位（bit），`length` 省略时由类型决定。
@@ -55,8 +55,11 @@
 - `register_layout(descriptions)`（spec-data-api.zh-cn.md §6.4）由模块标志 `registered_once` 守护：标志已置位时抛出 `Error`，只有 `register_descriptions` 成功返回之后才置位，所以失败的调用不会置位。实际工作由 `register_descriptions(descriptions)` 完成，它是内部函数，测试调用的就是它，因为测试在一个进程里要注册很多次。
 - `register_descriptions(descriptions)` 把各描述整理成合并描述并交下去。第一阶段：按列表顺序读取每份描述，描述文件（字符串）用 `readFileSync` 和 `parseDocument`（YAML 1.2）读取，描述对象原样使用；读取或解析错误、根不是映射、`layouts` 不是映射，都带着出处（路径，或第 i 个对象的 `layout description #i`）进入 `errors`。各描述的布局和片段分别合并为一张表；名字已被前面的描述占用时报错并写出两处出处（`owners` 记着每个名字的出处）。空列表、列表里再放列表、合并后没有任何布局都是错误。发现的所有问题一起作为带 `errors` 的 `Error` 抛出。
 - `register_layout_data(root, origin)` 是第二阶段，接收合并描述（`root`，`{ layouts, ...fragments }`，spec-data-api.zh-cn.md §6.1），登记其中的布局并返回 `{ layouts, fragments }`。它报告每个不匹配 `IDENTIFIER`（`structure.js`）的布局名，在 `resolve_items` 中解析片段引用（不存在或循环引用时报错）并补全省略的 `length`，`resolve_items` 复制每个条目和嵌套列表，所以传入的描述从不被修改。再对每个布局调用 `build_structure` 展开为扁平的 `items`（计算结构总长 `length`，把 coupling 规范为名称数组），校验每个结构，检查与已登记布局的冲突（`find_conflicts`），然后才用 `register_structure` 把它们全部登记，所以一份描述要么全部登记，要么都不登记。除了测试辅助函数 `one_tag` 为了随意补齐数据块而直接调用 `register_structure` 之外，没有任何路径会登记未经校验的布局。
-- 每个布局编译为一个 Layout（`register_structure`）。公开的 Layout 是深度冻结的 `{ name, length, size, items }`（spec-data-api.zh-cn.md §6.6），其中 `items` 是展开后条目的冻结副本，只含文档规定的字段。编译结果，即按名称索引的条目表 `entries`（字节偏移、位掩码、编解码）和字节到 tag 的反查表 `tags_at_byte`，存放在 `registry.js` 的模块私有 `WeakMap` 里，由 `Ldata`、Observer 和 `endian.js` 通过 `compiled_of(layout)` 读取，从不挂在 Layout 上，所以公开接口里不出现 entry。布局是不可变的纯数据，不含类，`layout.js` 不依赖 `Ldata`。同一份描述内的布局名互不相同（它们是 `layouts` 的键）。
-- 已编译的布局按布局名保存在登记表中（`registry.js`，它不引用任何模块，所以 `layout.js` 写入、`Ldata` 读取而不成环）。`register_structure(struct)` 计算展开后结构的规范文本（`name`、`length`、`items`；对象键排序，不含 `comment`，类型名小写）。该名字已登记且文本相同，就返回已登记的 Layout；文本不同则抛出 `another layout is already named X`。`register_layout_data` 在登记任何一个之前先检查描述里的每个布局有无这种冲突，所以一份描述要么全部登记，要么都不登记。公开的 `register_layout` 只登记一次（见上），所以这两条规则只对内部函数有意义，测试会多次调用它们。`get_layout(name)` 返回已登记的布局，没有则抛出 `unknown layout X`。登记表不会清空：布局名在进程的整个生命期内有效。
+- 每个布局编译为一个 Layout（`register_structure`）。`Layout` 是 `layout.js` 里的类，实例深度冻结（构造函数最后 `Object.freeze(this)`），公开的属性只有 `name`、`length`、`size`、`items`（spec-data-api.zh-cn.md §6.6），其中 `items` 是展开后条目的冻结副本，只含文档规定的字段；方法 `create_ldata` 和 `io_index_table` 在原型上，所以 `{ ...layout }` 只复制这四个属性。编译结果，即按名称索引的条目表 `entries`（字节偏移、位掩码、编解码）和字节到 tag 的反查表 `tags_at_byte`，存放在私有字段 `#compiled`，从不作为属性出现，所以公开接口里不出现 entry。
+- 构造 Layout 时就调用 `Ldata.js` 的内部函数 `build_ldata_class(layout, compiled)` 构建该布局的 Ldata 子类（§4），存放在私有字段 `#ldata_class`，不公开，以免使用方拿它直接 `new`。`create_ldata(name)` 调用 `Ldata.js` 的内部函数 `new_ldata(#ldata_class, name)`（§5）；`io_index_table(endian)` 把 `size` 和 `#compiled` 交给 `endian.js` 的同名内部函数（§6）。tag 访问器要读写 `Ldata` 的私有缓冲区，所以子类在 `Ldata` 的类体内构建，由 `Ldata.js` 向布局提供这两个内部函数；`layout.js` 依赖 `Ldata.js`，`Ldata.js` 不依赖 `layout.js`。
+- Layout 的构造函数要求 `layout.js` 模块私有的键 `CREATE_KEY`，否则抛出 `TypeError`，所以布局只由注册产生，`new layout.constructor(...)` 也不行。类型声明中构造函数是私有的（JSDoc `@private`），`typedefs.js` 的 `Layout` 引用这个类，包只导出该类型，不导出类。测试通过 `layout.js` 的内部函数 `compiled_of(layout)` 读取编译数据：Layout 的静态初始化块把读取私有字段的函数交给模块，对不是 Layout 的对象抛出 `X is not a registered layout`。
+- 同一份描述内的布局名互不相同（它们是 `layouts` 的键）。
+- 已编译的布局按布局名保存在登记表中（`registry.js`，它不引用任何模块，由 `layout.js` 写入，`get_layout` 读取）。`register_structure(struct)` 计算展开后结构的规范文本（`name`、`length`、`items`；对象键排序，不含 `comment`，类型名小写）。该名字已登记且文本相同，就返回已登记的 Layout；文本不同则抛出 `another layout is already named X`。`register_layout_data` 在登记任何一个之前先检查描述里的每个布局有无这种冲突，所以一份描述要么全部登记，要么都不登记。公开的 `register_layout` 只登记一次（见上），所以这两条规则只对内部函数有意义，测试会多次调用它们。`get_layout(name)` 返回已登记的布局，没有则抛出 `unknown layout X`。登记表不会清空：布局名在进程的整个生命期内有效。
 - Bool 的定位规则：`byte = offset >> 3`，`bit = offset % 8`。内部缓冲按大端存放，一个字的第一个字节是寄存器的高字节，所以 coupling 中偏移 8–15 对应寄存器的 bit0–7，偏移 0–7 对应 bit8–15。布局文件按 8–15、0–7 的顺序列出，就是按寄存器 bit0 到 bit15 的顺序排列。
 
 ### 3.1 布局校验
@@ -80,19 +83,19 @@
 ## 4. 编解码与原型访问器
 
 - 编解码表 `codecs.js` 中每种类型有一项，`get(buffer, byte, mask)` 从大端缓冲区解码，`set(buffer, byte, mask, value)` 编码写入；设备字节序不在表中处理。
-- `Ldata` 持有一张从布局名到该布局的 Ldata 子类的表。某个名字第一次 `new Ldata(layout, ...)` 时构建子类，在其原型上为每个条目定义一次访问器，同一布局的实例共用，之后直接复用；子类带有静态属性 `layout`。只靠名字就能区分布局，因为登记表中一个名字只对应一个布局：
+- 每个布局在编译时构建一个 Ldata 子类（`Ldata.#build_class(layout, compiled)`，Ldata 的静态初始化块把它交给模块函数 `build_ldata_class`），在其原型上为每个条目定义一次访问器，同一布局的实例共用。子类由它的 Layout 私有保存（§3），`Ldata.js` 不按名字索引子类。子类的构造函数是 `(key, name)`，把它所属的布局和编译数据交给 `super`（§5），没有公开的静态属性。访问器：
   - getter 每次用编解码表从 `buffer` 解码，不缓存值；
   - setter 用编解码表写入 `buffer`，再调用 `after_write`。
 - 组合字与它的组成位共用同一块字节，写任何一方，另一方读到的自然是新值，不需要额外联动。
 - tag 名不得是保留名（spec-data-api.zh-cn.md §2.10），否则访问器会遮蔽成员。保留名是 `reserved.js` 里的静态集合：Ldata 的成员、Node.js 20.11 中 EventEmitter 的方法名与字段名、`Object.prototype` 的名字。运行时不做任何探测，所以集合不随 Node.js 版本而变。`reserved.js` 导出 `is_reserved_name(name)`，只供 `structure.js` 和 `Ldata.js` 使用；包不导出它，Ldata 也没有对应的静态方法。`validate_structure` 报告保留名，`Ldata` 构建子类时也会抛出错误。测试把该集合与运行中的 Node.js 里实例上能找到的名字比对，所以 EventEmitter 新增成员会使测试失败，那时再扩充集合。
 - 保留的事件名（`change`、`write`、`read`）是 `reserved.js` 里的常量 `RESERVED_EVENTS`，供测试和文档使用；这是对使用方的规则，运行时不强制。`Ldata` 和 `Ltag` 覆盖 `on`、`once`、`off`（各自只调用 `EventEmitter` 的同名方法），仅为携带带类型的重载：处理器类型由事件名通过 `typedefs.js` 里的条件类型 `Data_Listener<E>` 和 `Tag_Listener<E>` 决定，所以 `change`、`write` 的处理器写错是编译期错误，其他名字可以用任意处理器。从 1.0 起，以后给 Ldata 增加的成员只用 `Symbol` 为键或静态方法。
 - `access` 事件（spec-data-api.zh-cn.md §2.8）取代了原来的全局函数 `set_access_tracer`。监听器有两种。实例监听器是数据块的 `EventEmitter` 上的监听器；类监听器单独存放在 `Ldata.js` 模块私有的一个 `Set` 里（`Ldata.on_access` 和 `Ldata.off_access` 往里加、从里删），所以 `removeAllListeners()` 或任何对实例的调用都碰不到它们。在构造任何东西之前，`#has_access_listeners()` 判断 `class_access_listeners.size > 0 || this.listenerCount("access") > 0`，所以没有监听器的数据块，每次访问只多一次开销很小的检查。实例部分不缓存成由 `newListener`、`removeListener` 事件维护的标志，因为 `removeAllListeners()` 会把这两个内部监听器一起移除，标志就会出错；类部分由 `Set` 自己计数，而它只被两个静态方法改动。`#emit_access(kind, tags, errors)` 先通过 `emit_all` 调用实例监听器，再调用类监听器（各自在自己的 `try` 里，参数是 `(this, kind, tags)`），它们抛出的东西推入 `errors`。模块标志 `in_access` 在这两次调用期间置位，监听器自己在此期间对任何 ldata 的访问都不触发。读取在监听器都调用完之后抛出 `errors[0]`；写入把 `errors` 交给 `#written()`，它在 `touch()` 之后、检测之前发出 `access`，最后才抛出第一个错误，这样缓冲区、快照和事件始终一致。tags 是 `get(name)` 的句柄（用到时才创建）：按名访问是那一个 tag；字节范围则由 `#tags_in(start, end, mask)` 遍历 `tags_at_byte`，去重、去掉位不在 `mask` 内的 Bool，并按条目的序号排序。
-- `render_types(layouts, { source, ldata_module })`（spec-data-api.zh-cn.md §6.7）由布局生成类型声明：每个布局一个接口 `<布局>_Tags`（每个 tag 一个属性）和类型 `<布局>_Ldata = Ldata & <布局>_Tags`。布局名原样使用，不做大小写折叠（大小写风格由调用者决定），所以类型名就是 `new Ldata("<布局>", ...)` 里的名字，名字不同就不会冲突；`layouts` 的每个键都必须匹配 `IDENTIFIER`，即注册时检查布局名用的那个表达式，否则把所有不合格的键一起放进同一个 `Error` 的 `errors` 抛出。`IDENTIFIER` 使用 Unicode 属性 `ID_Start` 和 `ID_Continue`（加上 `_`、`$`），任何文字的名字都能接受。tag 名原样写出，因为校验已经保证它们是标识符。`doc_comment` 把 `comment` 写成单行或多行文档注释，并转义 `*/`。选项有默认值（`ldata_module` 是 `"layout-data"`，没有 `source` 时头部不写文件名），头部注释给出为值指定类型的 JSDoc 类型转换写法。`Ldata` 的构造函数不改：由类生成的声明无法让 `new` 的返回类型随参数而变。
+- `render_types(layouts, { source, ldata_module })`（spec-data-api.zh-cn.md §6.7）由布局生成类型声明：每个布局一个接口 `<布局>_Tags`（每个 tag 一个属性）和类型 `<布局>_Ldata = Ldata & <布局>_Tags`。布局名原样使用，不做大小写折叠（大小写风格由调用者决定），所以类型名就是 `get_layout("<布局>")` 里的名字，名字不同就不会冲突；`layouts` 的每个键都必须匹配 `IDENTIFIER`，即注册时检查布局名用的那个表达式，否则把所有不合格的键一起放进同一个 `Error` 的 `errors` 抛出。`IDENTIFIER` 使用 Unicode 属性 `ID_Start` 和 `ID_Continue`（加上 `_`、`$`），任何文字的名字都能接受。tag 名原样写出，因为校验已经保证它们是标识符。`doc_comment` 把 `comment` 写成单行或多行文档注释，并转义 `*/`。选项有默认值（`ldata_module` 是 `"layout-data"`，没有 `source` 时头部不写文件名），头部注释给出为值指定类型的 JSDoc 类型转换写法。`create_ldata` 的返回类型是 `Ldata`：同一个方法的声明不能随布局返回不同的类型。
 
 ## 5. Ldata
 
-- `new Ldata(layout, name)` 接收已登记的布局或其名字（由 `get_layout` 解析），返回按布局名构建的子类（见 §4）的实例；构造函数先调用 `super()`，再返回该实例。传来的布局对象不是其名字下已登记的那个时抛出错误（只比较引用，不比较结构）。`Ldata` 本身不会是任何实例的直接类。该实例分配 `buffer`（`layout.size` 字节），按条目的 `init_value` 依次编码写入。
-- `name`、`layout`、`size` 都只读（只有 getter，赋值抛出 `TypeError`）；`name` 是私有字段 `#name`，构造函数先于其他一切检查它是字符串（`TypeError`），再赋值。Ldata 的 `setMaxListeners(100)` 和 Ltag 的 `setMaxListeners(20)` 固定写在各自的构造函数里。缓冲区是私有字段（`#buffer`），没有访问器，统一按大端存放；Observer 和事务所需的缓冲区由创建它们的 Ldata 传入。带类型的访问走 tag，不带类型的访问走字节：没有按宽度分类的原始方法。
+- ldata 只由 `layout.create_ldata(name)` 创建（spec-data-api.zh-cn.md §2.1），它调用 `new_ldata(Layout_Data, name)`，即以 `Ldata.js` 模块私有的键 `CREATE_KEY` 构造布局的子类（§4）。`Ldata` 的构造函数是 `(key, name, layout, compiled)`：在调用 `super()` 之前，先检查 `key` 是 `CREATE_KEY`，否则抛出 `TypeError`（信息是 `an ldata is created by its layout: layout.create_ldata(name)`），再检查 `name` 是字符串（`TypeError`）。所以 `new Ldata(...)` 和对子类（例如 `data.constructor`）使用 `new` 都抛出错误；类型声明中构造函数是私有的（JSDoc `@private`），TypeScript 中既不能 `new` 也不能继承。`Ldata` 本身不会是任何实例的直接类。实例分配 `buffer`（`layout.size` 字节），按条目的 `init_value` 依次编码写入。
+- `name`、`layout`、`size` 都只读（只有 getter，赋值抛出 `TypeError`）；`name` 是私有字段 `#name`，构造函数在检查私有键之后、`super()` 之前检查它是字符串（`TypeError`），再赋值。Ldata 的 `setMaxListeners(100)` 和 Ltag 的 `setMaxListeners(20)` 固定写在各自的构造函数里。缓冲区是私有字段（`#buffer`），没有访问器，统一按大端存放；Observer 和事务所需的缓冲区由创建它们的 Ldata 传入。带类型的访问走 tag，不带类型的访问走字节：没有按宽度分类的原始方法。
 - 写缓冲区有两种途径，都经过 Ldata，任何时候都允许：
 
   | 途径 | 使用者 |
@@ -142,7 +145,7 @@
 
 ## 6. 字节序转换
 
-`endian.js` 按编译条目实现设备字节序与内部大端之间的转换（`load_entry` / `store_entry` / `io_index` / `io_range`），并为整个数据块生成字节下标表（`io_index_table`），与设备整块交换的使用方可以据此直接按字节复制。包只导出 `io_index_table`，其余是内部函数，由 Ldata 的 `load_tag` / `store_tag`（§5）传入私有缓冲区调用。下标表与 `load_entry` / `store_entry` 对每个条目的结果一致（有测试保证）。这些函数只接受 `BE`、`LE`、`BEBS`、`LEBS` 四种字节序（其他值抛出 `RangeError`，没有别名），都不检测变化：
+`endian.js` 按编译条目实现设备字节序与内部大端之间的转换（`load_entry` / `store_entry` / `io_index` / `io_range`），并为整个数据块生成字节下标表（`io_index_table(block_size, compiled, endian)`），与设备整块交换的使用方可以据此直接按字节复制。包不导出这些函数：下标表由布局的方法 `io_index_table(endian)`（§3）传入大小和编译数据调用，其余由 Ldata 的 `load_tag` / `store_tag`（§5）传入私有缓冲区调用。下标表与 `load_entry` / `store_entry` 对每个条目的结果一致（有测试保证）。这些函数只接受 `BE`、`LE`、`BEBS`、`LEBS` 四种字节序（其他值抛出 `RangeError`，没有别名），都不检测变化：
 
 - 2 字节：`BE` 原样复制；`LE` / `BEBS` 交换两个字节；
 - 4 字节：支持 `BE`、`LE`、`BEBS`、`LEBS` 四种排列；
@@ -151,5 +154,5 @@
 ## 7. 构建与测试
 
 - `pnpm build`：`tsc` 从 JSDoc 生成 `dist/types` 中的声明文件（不使用打包工具：包直接发布 `src`，并依赖 `yaml`）；
-- `pnpm bench`：`bench/change_detection_bench.js` 测量读取一个 86 个 tag、146 字节的数据块（从设备字节序缓冲装载每个 tag，并检测、报告变化）的开销。开发机上，在一个事务中对每个 tag 调用 `load_tag`，每周期无变化约 3.1–3.2 µs，少量变化 3.1–4.5 µs，全部变化 8.5–8.6 µs（每次 `load_tag` 还要检查一次是否有 `access` 监听器，86 个 tag 合计约 0.6 µs）；用 `io_index_table` 按字节复制再一次 `write_bytes` 时分别约 0.4 µs、0.6–1.7 µs、5.7–5.9 µs；
+- `pnpm bench`：`bench/change_detection_bench.js` 测量读取一个 86 个 tag、146 字节的数据块（从设备字节序缓冲装载每个 tag，并检测、报告变化）的开销。开发机上，在一个事务中对每个 tag 调用 `load_tag`，每周期无变化约 3.1–3.2 µs，少量变化 3.1–4.5 µs，全部变化 8.5–8.6 µs（每次 `load_tag` 还要检查一次是否有 `access` 监听器，86 个 tag 合计约 0.6 µs）；用 `layout.io_index_table` 按字节复制再一次 `write_bytes` 时分别约 0.4 µs、0.6–1.7 µs、5.7–5.9 µs；
 - `pnpm test`：先构建，再运行类型测试和 `node --test`；`pnpm lint`：ESLint。
