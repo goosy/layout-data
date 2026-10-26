@@ -74,9 +74,8 @@
 
 /**
  * A scope of layout names (doc/spec-layout.md §5.1): read-only `name`; the
- * methods `register_layout(descriptions)`, `get_layout(name)` and
- * `render_types(options)`. Frozen. A type only: the class is not exported,
- * and only create_scope makes a scope.
+ * methods `register_layout(descriptions)` and `get_layout(name)`. Frozen. A
+ * type only: the class is not exported, and only create_scope makes a scope.
  *
  * @typedef {import("./scope.js").Layout_Scope} Layout_Scope
  */

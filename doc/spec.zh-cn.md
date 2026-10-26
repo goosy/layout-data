@@ -19,7 +19,7 @@ layout-data 是一个结构化数据块库：提供基于 `Buffer`、面向数�
 | 布局定义 | 描述中一个布局的条目列表，位于它的布局名下 |
 | 片段 | 描述中具名的条目列表，供条目按名引用 |
 | 布局 | 一块数据的固定格式：每个 tag 的名称、类型、位偏移、初值。由布局定义注册而来，注册后不可变，即公开的 `Layout` 对象 |
-| 登记域 | 布局名的分隔单位，即公开的 `Layout_Scope` 对象：每个登记域有自己的布局和片段，各注册一次，布局名和片段名只在登记域内唯一。没有默认登记域，布局只能注册到显式创建的登记域里（[spec-layout.zh-cn.md](spec-layout.zh-cn.md) §5.1） |
+| 登记域 | 布局名的分隔单位，即公开的 `Layout_Scope` 对象：每个登记域有自己的布局和片段，各注册一次，布局名和片段名只在登记域内唯一。布局只能注册到显式创建的登记域里（[spec-layout.zh-cn.md](spec-layout.zh-cn.md) §5.1） |
 | Ldata / ldata | Ldata 是数据对象的类，ldata 是它的实例：按某个布局分配的一块数据，内部按大端存放 |
 | Ltag | ldata 中一个具名 tag 的操作接口 |
 | 组合字 | 由若干 Bool 组成的 Word，与各组成位共用同一块数据 |
@@ -51,9 +51,10 @@ layout-data 是一个结构化数据块库：提供基于 `Buffer`、面向数�
 
 ## 5. 发布形态
 
-- 以 ES 模块库发布，入口 `layout-data`，`yaml` 为运行时依赖；
+- 以 ES 模块库发布，运行时入口 `layout-data`，`yaml` 为运行时依赖；
+- 开发期入口 `layout-data/dev` 提供类型声明的生成，同一文件也是命令行工具 `layout-types`（`package.json` 的 `bin`），见 [spec-layout.zh-cn.md](spec-layout.zh-cn.md) §8；
 - 类型声明由源码的 JSDoc 生成（`src/typedefs.js` 与各函数的注释是唯一来源），随构建输出到 `dist/types`，不手写 `.d.ts`；
-- Node.js >= 20.11；
+- Node.js >= 20.11；命令行工具 `layout-types` 要求 Node.js >= 24.2，这只约束生成类型的开发环境；
 - 许可证：MPL-2.0（见 `LICENSE`）。本库可作为任意许可证产品的组成部分；对本库文件的修改须以 MPL-2.0 公开，并须保留版权声明。名称 "layout-data" 不在授权范围内（MPL-2.0 §2.3）。
 
 ## 6. 公开接口一览
@@ -63,8 +64,14 @@ layout-data 是一个结构化数据块库：提供基于 `Buffer`、面向数�
 | 导出 | 说明 |
 | --- | --- |
 | `Ldata`、`Ltag` | 数据对象和 tag 句柄（[spec-data-api.zh-cn.md](spec-data-api.zh-cn.md) §2 和 §3）；ldata 由布局的 `create_ldata` 创建，`Ldata` 不能用 `new` 构造 |
-| `create_scope` | 创建登记域（[spec-layout.zh-cn.md](spec-layout.zh-cn.md) §5.1）。登记域的 `register_layout` 注册各描述中的布局：描述文件或描述对象（在代码里给条目也用它），每个登记域一次；`get_layout` 按名取得已登记的布局，由布局创建 ldata；`render_types` 为登记域的布局生成 TypeScript 类型声明（同文 §8）。`Layout_Scope` 只作为类型导出 |
+| `create_scope` | 创建登记域（[spec-layout.zh-cn.md](spec-layout.zh-cn.md) §5.1）。登记域的 `register_layout` 注册各描述中的布局：描述文件或描述对象（在代码里给条目也用它），每个登记域一次；`get_layout` 按名取得已登记的布局，由布局创建 ldata。`Layout_Scope` 只作为类型导出 |
 | `get_scope` | 按登记域名取得已创建的登记域，没有时为 `undefined`（[spec-layout.zh-cn.md](spec-layout.zh-cn.md) §5.1） |
+
+开发期入口 `layout-data/dev` 导出：
+
+| 导出 | 说明 |
+| --- | --- |
+| `render_types` | `render_types(descriptions, options)` 由描述（与 `register_layout` 接受的相同）为其中的全部布局生成 TypeScript 类型声明的文本，供编辑器补全（[spec-layout.zh-cn.md](spec-layout.zh-cn.md) §8）；命令行工具 `layout-types` 做同样的事（同文 §8.1） |
 
 布局带有方法 `create_ldata` 和 `io_index_table`（[spec-layout.zh-cn.md](spec-layout.zh-cn.md) §7），`Layout` 只作为类型导出。
 
