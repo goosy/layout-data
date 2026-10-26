@@ -6,6 +6,12 @@ import { is_reserved_name } from "./reserved.js";
 /** @import { Layout_Item } from "./typedefs.js" */
 /** @import { Data_Struct } from "./internal_types.js" */
 
+/**
+ * An identifier of JavaScript, in any script: the form of a layout name
+ * (doc/spec-data-api.md §6.3), which is also part of a type name (§6.7).
+ */
+export const IDENTIFIER = /^[\p{ID_Start}_$][\p{ID_Continue}$\u200C\u200D]*$/u;
+
 function add_item(data_struct, item, base_offset, name_prefix) {
 	const items = data_struct.items;
 	// every entry that is not a pure inclusion is a tag, whatever its name: duplicated

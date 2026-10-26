@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { parseDocument } from "yaml";
 import { CODECS } from "./codecs.js";
 import { register, registered_of, set_compiled } from "./registry.js";
-import { build_structure, validate_structure, TYPE_BITS } from "./structure.js";
+import { build_structure, validate_structure, IDENTIFIER, TYPE_BITS } from "./structure.js";
 
 /** @import { Layout_Description, Registered_Layouts, Layout } from "./typedefs.js" */
 /** @import { Data_Struct } from "./internal_types.js" */
@@ -285,6 +285,7 @@ export function register_layout_data(root, origin = "the given object") {
 	}
 	const structs = {};
 	for (const [name, list] of Object.entries(layout_defs)) {
+		if (!IDENTIFIER.test(name)) errors.push(`layout ${JSON.stringify(name)}: the name is not an identifier`);
 		const items = resolve_items(list, fragment_defs, [], `layout ${name}`, errors);
 		structs[name] = build_structure({ name }, items);
 	}

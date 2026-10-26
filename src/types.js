@@ -1,8 +1,7 @@
 // Renders TypeScript declarations of registered layouts, for editor completion
 // of the tag accessors (doc/spec-data-api.md §6.7, doc/design.md §4).
 
-/** A name that can be part of a type name: an identifier of JavaScript, in any script. */
-const IDENTIFIER = /^[\p{ID_Start}_$][\p{ID_Continue}$‌‍]*$/u;
+import { IDENTIFIER } from "./structure.js";
 
 /**
  * Renders a text as a doc comment, one line or several, with the `*` and `/`

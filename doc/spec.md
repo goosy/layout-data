@@ -29,6 +29,7 @@ Out of scope: device communication, scheduling, business rules and logging. The 
 
 - **Fixed layout**: every tag has a definite type, byte offset and bit number.
 - **Valid layout**: a layout must obey the rules below. An invalid layout is a programming error, and validation reports all violations:
+  - layout names are identifiers of JavaScript (see §6.3 of [spec-data-api.md](spec-data-api.md));
   - tag names are identifiers (letters, digits and `_`, not starting with a digit), unique within an ldata, and not reserved names (see §2.10 and §6.2 of [spec-data-api.md](spec-data-api.md));
   - the bit length of a tag matches its type; multi-byte types (Int, UInt, Word, DInt, UDInt, DWord, Real) start at an even byte, single-byte types (Byte, SInt, USInt) start at a whole byte, a Bool may be at any bit;
   - the byte ranges of non-Bool tags do not overlap;

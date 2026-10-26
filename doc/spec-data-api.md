@@ -342,6 +342,7 @@ There are two kinds of entry, and the declarations name them (`Layout_Item` is e
 
 ### 6.3 Validity
 
+- Layout names are identifiers of JavaScript (letters of any script, digits, `_` and `$`, not starting with a digit), as a layout name is part of type names (§6.7);
 - Tag names are identifiers (letters, digits and `_`, not starting with a digit; a number, an empty name or a missing name is not one), are unique and are not reserved names (§2.10);
 - The byte ranges of non-Bool tags do not overlap; each bit belongs to at most one Bool;
 - A Bool inside the byte range of a non-Bool tag must be a bit (`coupling`) of that tag; every bit of a combined word must lie inside the word;
@@ -412,7 +413,7 @@ A layout (`Layout`) is a read-only object that exposes only these members:
 
 - For each layout it declares `<Layout>_Tags`, an interface with one property per tag (`boolean` for a Bool, `number` for every other type; a `comment` becomes the doc comment of the property), and `<Layout>_Ldata`, which is `Ldata & <Layout>_Tags`;
 - The layout name is used as it is, with the case it has: the layout `Pump` gives `Pump_Tags` and `Pump_Ldata`, `my_block` gives `my_block_Tags`, `Pump_Station` gives `Pump_Station_Tags`. The case style is the choice of the caller, and `Snake_Pascal_Case` is recommended, the style of the type names of this package; the library does not require it. The name is the one written in `new Ldata("Pump", ...)`, and two layouts with different names never give the same type name;
-- A layout name must be an identifier of JavaScript (letters of any script, digits, `_` and `$`, not starting with a digit), because it is part of a type name; otherwise `Error` is thrown, whose `errors` lists every such name. A tag name is always an identifier (§6.2), so it is written as the property name as it is. A `*/` in a comment is escaped, so the text is always a valid declaration file;
+- The keys of `layouts` are used as the layout names and must be identifiers of JavaScript. The names of registered layouts are (§6.3), so only keys given otherwise can fail; then `Error` is thrown, whose `errors` lists every such key. A tag name is always an identifier (§6.2), so it is written as the property name as it is. A `*/` in a comment is escaped, so the text is always a valid declaration file;
 - `options.source` names the layout file in the header comment of the text; without it the header only says that the text is generated. `options.ldata_module` is the module specifier the text imports `Ldata` from, relative to the output file; it is `"layout-data"` by default. Both options, and the argument `options` itself, may be omitted.
 
 Using the types. `new Ldata("Pump", "pump_1")` is typed `Ldata`: the constructor of a class cannot return another type according to its argument, so the type of the value is named by hand, once. In JavaScript a JSDoc cast, which is enough for an editor to complete the tags and, when the file is checked (`checkJs` or `// @ts-check`), to flag a misspelled tag or a value of the wrong type:

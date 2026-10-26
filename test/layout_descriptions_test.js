@@ -38,6 +38,22 @@ layouts:
     - { name: status, type: Word, offset: 16, coupling: status_bits }
 `;
 
+describe("6.3 layout names", () => {
+	test("a layout name must be an identifier of JavaScript, in any script", () => {
+		const items = [{ name: "a", type: "UInt", offset: 0, init_value: 0 }];
+		const { layouts } = register_descriptions({ layouts: { "Ms_Name_1": items, "$ms_dollar": items, "\u6cf5_Ms": items } });
+		assert.deepEqual(Object.keys(layouts), ["Ms_Name_1", "$ms_dollar", "\u6cf5_Ms"]);
+		const errors = errors_of({ layouts: { "ms-dash": items, "ms.dot": items, "1ms": items, "": items, "Ms_Bad_Fine": items } });
+		assert.deepEqual(errors, [
+			"layout \"ms-dash\": the name is not an identifier",
+			"layout \"ms.dot\": the name is not an identifier",
+			"layout \"1ms\": the name is not an identifier",
+			"layout \"\": the name is not an identifier",
+		]);
+		assert.throws(() => get_layout("Ms_Bad_Fine"), /unknown layout/);
+	});
+});
+
 describe("6.4 several descriptions", () => {
 	test("a layout names a fragment of another file, whatever the order of the files", () => {
 		const common = write(COMMON);

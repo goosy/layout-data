@@ -76,13 +76,10 @@ export type Ty_Basic_Ldata = Ldata & Ty_Basic_Tags;
 		assert.equal(text.match(/\bb: number;/).length, 1);
 	});
 
-	test("a layout name that is not an identifier throws Error with all of them in errors", () => {
-		const layouts = layouts_of([
-			["ty-dash", ITEMS],
-			["1ty_digit", ITEMS],
-			["TY_FINE", ITEMS],
-			["ty space", ITEMS],
-		]);
+	test("a key of layouts that is not an identifier throws Error with all of them in errors", () => {
+		// registered names are identifiers (§6.3), so only the keys given here can be wrong
+		const layout = register_items("Ty_Keyed", ITEMS);
+		const layouts = { "ty-dash": layout, "1ty_digit": layout, "TY_FINE": layout, "ty space": layout };
 		assert.throws(() => render_types(layouts), (error) => {
 			assert.ok(error instanceof Error);
 			assert.equal(error.errors.length, 3, error.errors.join("\n"));
