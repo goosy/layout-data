@@ -4,7 +4,7 @@ opened: 2026-10-24T14:45:09.502Z
 closed: 2026-10-26T10:47:45.000Z
 title: Separate layouts into scopes, each of which can register once
 status: fixed       # open | accepted | fixed | rejected | wontfix
-fixed_in: []        # commit IDs, backfilled at version commit time
+fixed_in: [85926c5]  # commit IDs, backfilled at version commit time
 labels: []
 remote:
 problem_title:

@@ -1,5 +1,31 @@
 # Changelog
 
+## v0.4.0
+
+### Breaking changes
+
+- **Layouts are registered in scopes, and there is no default scope.** `create_scope(name)` makes a scope of layout names, and `get_scope(name)` gets a scope that was created. A scope name is a JavaScript identifier, unique in the process. Every scope has `register_layout(descriptions)`, once per scope, with the same rules as before: the layouts are validated as a whole, all or none of them are registered, and a call that fails does not use up the single call. A scope also has `get_layout(name)` and `render_types(options)`, which renders the types of all the layouts of the scope. Layout and fragment names are unique within a scope only, so two libraries can each register their own layouts, and an application can use both. The global `register_layout`, `get_layout` and `render_types` are removed. Errors name a layout as `scope.Layout`, for example `unknown layout lib_a.Pump`. Migration: `register_layout(d)` becomes `create_scope("app").register_layout(d)`, `get_layout("Pump")` becomes `scope.get_layout("Pump")`, and `render_types(layouts, options)` becomes `scope.render_types(options)`.
+- **An ldata is created from its layout.** `layout.create_ldata(name)` is the only way to create an ldata. `new Ldata(...)` throws `TypeError`, and its constructor is private in the declarations. `Ldata` is still exported, for `instanceof`, type annotations and `Ldata.on_access` / `off_access`. A layout is now an object with methods: `create_ldata(name)`, `io_index_table(endian)`, which replaces the exported function `io_index_table(layout, endian)`, and `scope`. Migration: `new Ldata("Pump", name)` becomes `scope.get_layout("Pump").create_ldata(name)`.
+- **"Description" replaces "source".** The input of `register_layout` is called descriptions: a description file, a description object, or a list of them. The type `Layout_Source` is removed; use `string | Layout_Description`. The error texts that spoke of sources now speak of descriptions.
+- **Layout names must be identifiers.** A layout name that is not a JavaScript identifier is now reported at registration. Before, it was reported only by `render_types`.
+
+### Fixes
+
+- **`init_value` may be omitted, as the spec says.** Before, registration refused a tag without one. Now only a given `init_value` is checked. A tag without one has no `init_value` in `layout.items`, and in a data block it starts at `0` (`false` for a `Bool`). A combined word and its bits with no value on either side have none either. In the declarations `Layout_Tag.init_value` is now optional.
+
+## v0.4.0 (中文)
+
+### 破坏性变更
+
+- **布局在登记域中注册，没有默认登记域。** `create_scope(name)` 创建一个布局名的登记域，`get_scope(name)` 取得已创建的登记域。登记域名是 JavaScript 标识符，在进程内唯一。每个登记域有 `register_layout(descriptions)`，每个登记域只能调用一次，规则与原来相同：布局整体校验，要么全部登记，要么都不登记，失败的调用不会用掉这一次。登记域还有 `get_layout(name)` 和 `render_types(options)`，后者为该登记域的全部布局生成类型。布局名和片段名只在登记域内唯一，所以两个库可以各自注册自己的布局，应用可以同时使用它们。全局的 `register_layout`、`get_layout`、`render_types` 已取消。错误信息以 `登记域名.布局名` 指出布局，例如 `unknown layout lib_a.Pump`。迁移：`register_layout(d)` 改为 `create_scope("app").register_layout(d)`，`get_layout("Pump")` 改为 `scope.get_layout("Pump")`，`render_types(layouts, options)` 改为 `scope.render_types(options)`。
+- **由布局创建 ldata。** `layout.create_ldata(name)` 是创建 ldata 的唯一方式。`new Ldata(...)` 抛出 `TypeError`，类型声明中它的构造函数是私有的。`Ldata` 仍然导出，供 `instanceof`、类型标注和 `Ldata.on_access` / `off_access` 使用。布局现在是带方法的对象：`create_ldata(name)`；`io_index_table(endian)`，取代导出的函数 `io_index_table(layout, endian)`；以及 `scope`。迁移：`new Ldata("Pump", name)` 改为 `scope.get_layout("Pump").create_ldata(name)`。
+- **"描述"取代"来源"。** `register_layout` 的输入称为描述：描述文件、描述对象，或它们组成的列表。类型 `Layout_Source` 已移除，改用 `string | Layout_Description`。原来提到 sources 的错误信息改为 descriptions。
+- **布局名必须是标识符。** 不是 JavaScript 标识符的布局名现在在注册时就报告。原来只有 `render_types` 才会报告。
+
+### 修复
+
+- **`init_value` 可以省略，与规范一致。** 原来注册会拒绝没有初值的 tag。现在只校验给出的 `init_value`。没有初值的 tag 在 `layout.items` 中没有 `init_value`，在数据块中从 `0` 开始（`Bool` 为 `false`）。组合字与它的组成位双方都不给出初值时，都没有初值。类型声明中 `Layout_Tag.init_value` 改为可选。
+
 ## v0.3.0
 
 ### Breaking changes
