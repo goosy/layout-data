@@ -9,7 +9,7 @@
 
 | Name | Meaning |
 | --- | --- |
-| Layout | The fixed format of a data block: name, type, bit offset and initial value of every tag, given by a layout description (§6) and immutable once registered |
+| Layout | The fixed format of a data block: name, type, bit offset and initial value of every tag, given by a layout definition in a description (§6) and immutable once registered |
 | Ldata / ldata | Ldata is the class of data objects, an ldata is an instance: a block of data allocated for a layout, stored big-endian internally, with access by name and change events |
 | Ltag | The interface of one named tag of an ldata: read and write its value, subscribe to its changes |
 
@@ -17,7 +17,7 @@ The L in Ldata and Ltag stands for Layout: an ldata is stored in the fixed layou
 
 Tag types: `Bool`, `Byte`, `SInt`, `USInt`, `Int`, `UInt`, `Word`, `DInt`, `UDInt`, `DWord`, `Real`. The value of a `Bool` is `true` / `false`, all others are numbers. A `Word` made of several `Bool`s is called a combined word; it shares its data with its bits.
 
-`Tag_Type` is the exported TypeScript type of the lower case type names (`"bool" | "byte" | "usint" | "sint" | "int" | "uint" | "word" | "dint" | "udint" | "dword" | "real"`). Only `Ltag.type` (§3) has it, so that `switch (tag.type)` is checked. The `type` of a layout description and of the items of a layout (§6) is the text of the description (`string`).
+`Tag_Type` is the exported TypeScript type of the lower case type names (`"bool" | "byte" | "usint" | "sint" | "int" | "uint" | "word" | "dint" | "udint" | "dword" | "real"`). Only `Ltag.type` (§3) has it, so that `switch (tag.type)` is checked. The `type` of the entries of a description and of the items of a layout (§6) is the text of the description (`string`).
 
 Units: a `length` is in bits and a `size` is in bytes, everywhere in this interface (`Layout.length` and `Layout.size`, the `length` of a layout item, `Ldata.size`, `Ltag.size`).
 
@@ -289,9 +289,9 @@ The interface throws exceptions on errors. It does not log or exit the process; 
 
 The flow is **register once, then use by name**: the layouts are described (§6.1 to §6.3), all of them are registered by one call of `register_layout` (§6.4), and from then on `new Ldata("Pump", "pump_1")` creates data blocks of a layout by its name. The user needs to know how to express a layout as a YAML structure and which name it has; whether it is compiled, and into what, is not part of the flow.
 
-### 6.1 File
+### 6.1 Structure
 
-A layout description is a YAML 1.2 file that can define several layouts at once:
+A description can define several layouts at once. It takes one of two forms with the same structure: a **description file**, a YAML 1.2 file given by its path, and a **description object**, the same structure in code (§6.5). The structure is:
 
 - The root key `layouts`: a mapping from layout names (such as `NODE`) to lists of entries;
 - Every other root key is a fragment: its key is the fragment name and its value a list of entries, which entries can reference by name.
@@ -311,7 +311,7 @@ layouts:
     - { includes: node_parameters, offset: 144 }
 ```
 
-A file is complete in itself or is one of several sources (§6.4): a file may hold only fragments, only layouts, or both, and the fragments of every source are available to the layouts of every source.
+A description is complete in itself or is one of several descriptions registered together (§6.4): it may hold only fragments, only layouts, or both, and the fragments of every description are available to the layouts of every description.
 
 ### 6.2 Entries
 
@@ -337,7 +337,7 @@ There are two kinds of entry, and the declarations name them (`Layout_Item` is e
 | An inclusion | `includes` and `offset` are required; `name_prefix` is optional; it has no `name` and no `type` | `Include_Item` |
 
 - `coupling` is a fragment name or an inline list of tag entries, never a list of names: the names of the bits are a result of the registration (they appear in `Layout_Tag.coupling`, §6.6), not an input;
-- A whole description has the declaration `Layout_Description`: `layouts`, a mapping from layout names to lists of entries, and one list of entries for each fragment. The declaration of a source of layouts is `Layout_Source`, a file path or a description. In the declarations the parameter of `register_layout` is typed with them, so that an editor completes the fields of an entry and notices a misspelled one;
+- A description object has the declaration `Layout_Description`: `layouts`, a mapping from layout names to lists of entries, and one list of entries for each fragment. In the declarations the parameter of `register_layout` is typed with it (`string | Layout_Description`, or a list of them), so that an editor completes the fields of an entry and notices a misspelled one;
 - The `fragments` that `register_layout` returns hold the entries with the references expanded: `includes` and `coupling` are lists of entries, never names, and every `length` is present. Their declaration is the same `Layout_Item`.
 
 ### 6.3 Validity
@@ -354,25 +354,26 @@ There are two kinds of entry, and the declarations name them (`Layout_Item` is e
 ```js
 register_layout("pump.yaml");                                     // one file
 register_layout(["common.yaml", "pump.yaml", "valve.yaml"]);      // several files
-register_layout(["common.yaml", { layouts: { INLINE: [...] } }]); // files and descriptions
+register_layout(["common.yaml", { layouts: { INLINE: [...] } }]); // description files and objects
 const pump = new Ldata("Pump", "pump_1");                         // from then on, by the layout name
 ```
 
-`register_layout(sources)` registers the layouts of its sources. A layout can be used only after it is registered.
+`register_layout(descriptions)` registers the layouts of the descriptions. A layout can be used only after it is registered.
 
-- `sources`: one source or a list of sources, each either **a string, the path of a YAML 1.2 file**, or **an object, a description that is already parsed** (the structure of §6.1: `layouts` plus the fragments; this is also how items are given in code, §6.5). A list does not hold lists, and an empty list is an error. A string is always a path;
+- `descriptions`: one description or a list of descriptions, each either **a string, the path of a description file**, or **an object, a description object** (the structure of §6.1: `layouts` plus the fragments; this is also how items are given in code, §6.5). A list does not hold lists, and an empty list is an error. A string is always a path, never YAML text;
 - **Once per process.** The layouts are registered by one call, so that the layouts and fragments are all known together and nothing depends on the order of calls. A second call throws `Error` (`register_layout can be called only once`), and the layouts of the first stay. A call that fails registers nothing and does not use up the call, so the program may go on to register something else, for example a default description when its own file is not valid;
-- **The sources are merged, then resolved.** The layouts and the fragments of all the sources are collected first, and only then are the fragment references resolved, so a layout may name a fragment of any source, whatever the order of the list. A source needs no `layouts` key (a file of common fragments has none), but at least one source must define a layout;
-- The same fragment name or the same layout name in two sources is an error naming both sources (a file is named by its path, a description by its position in the list, `layout description #2`); nothing is overridden;
-- Every layout is validated (§6.3), the omitted `length`s are filled in, and the sources are not changed;
-- Any violation throws an `Error` whose `errors` property lists all violations of all sources, and nothing is registered: the sources are registered all or none. An unreadable file and a YAML syntax error are violations too. The layout and fragment errors name the layout or fragment, not the file;
-- Return value: `{ layouts, fragments }` for all the sources. `layouts` holds the registered layouts by name, as `get_layout(name)` returns them; `fragments` holds the entry lists by fragment name (references expanded, offsets relative to the start of the fragment), for the user to query, for example to get all tag names of a parameter block. Neither is needed for the flow above;
+- **The descriptions are merged, then resolved.** The layouts and the fragments of all the descriptions are collected first, and only then are the fragment references resolved, so a layout may name a fragment of any description, whatever the order of the list. A description needs no `layouts` key (a file of common fragments has none), but at least one description must define a layout;
+- The same fragment name or the same layout name in two descriptions is an error naming both (a description file by its path, a description object by its position in the list, `layout description #2`); nothing is overridden;
+- Every layout is validated (§6.3), the omitted `length`s are filled in, and the descriptions given are not changed;
+- Any violation throws an `Error` whose `errors` property lists all violations of all descriptions, and nothing is registered: the descriptions are registered all or none. An unreadable file and a YAML syntax error are violations too. The layout and fragment errors name the layout or fragment, not the file;
+- Return value: `{ layouts, fragments }` for all the descriptions. `layouts` holds the registered layouts by name, as `get_layout(name)` returns them; `fragments` holds the entry lists by fragment name (references expanded, offsets relative to the start of the fragment), for the user to query, for example to get all tag names of a parameter block. Neither is needed for the flow above;
 - A layout name stays registered for the life of the process. `get_layout(name)` returns the registered layout (read-only, §6.6) and throws `unknown layout X` for a name that is not registered, as `new Ldata(name, ...)` does;
-- Consequences of registering once: a changed layout file takes effect only in a new process (no hot reload, and a REPL or a test cannot register a changed layout again); a library built on layout-data cannot call `register_layout` itself, it can only export the paths of its layout files for the application to put in `sources`; when two copies of the package are installed, each has its own registry and its own single call, and neither sees the layouts of the other.
+- Consequences of registering once: a changed layout file takes effect only in a new process (no hot reload, and a REPL or a test cannot register a changed layout again); a library built on layout-data cannot call `register_layout` itself, it can only export the paths of its description files for the application to put in `descriptions`.
+- When the dependency tree holds two copies of the package (for example two versions), they share nothing: each allows its own single call of `register_layout`, and a layout registered through one is not found by name through the other.
 
 ### 6.5 Defining a layout in code
 
-A layout needs no file. Give a description, the structure of §6.1, to `register_layout` (§6.4), with the items of a layout as a list under its name:
+A layout needs no file. Give a description object, the structure of §6.1, to `register_layout` (§6.4), with the items of a layout as a list under its name:
 
 ```js
 register_layout({
@@ -386,8 +387,8 @@ register_layout({
 const data = new Ldata("Pump", "pump_1");
 ```
 
-- the items are the entries of §6.2; `length` may be omitted; `coupling` and `includes` take an inline list or the name of a fragment of any of the sources;
-- the description and the entries in it are not changed;
+- the items are the entries of §6.2; `length` may be omitted; `coupling` and `includes` take an inline list or the name of a fragment of any of the descriptions;
+- the description object and the entries in it are not changed;
 - there is no separate function that registers one list of items, nor any that expands or validates a structure by itself: registration is the single step that validates (§6.4).
 
 ### 6.6 The layout object

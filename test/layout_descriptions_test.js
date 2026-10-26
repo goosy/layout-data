@@ -3,26 +3,26 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test, { describe } from "node:test";
-import { register_sources } from "../src/layout.js";
+import { register_descriptions } from "../src/layout.js";
 import { Ldata } from "../src/Ldata.js";
 import { get_layout } from "../src/registry.js";
 
-const dir = mkdtempSync(join(tmpdir(), "tlms-sources-"));
+const dir = mkdtempSync(join(tmpdir(), "tlms-descriptions-"));
 let seq = 0;
 
 function write(text) {
-	const file = join(dir, `source_${++seq}.yaml`);
+	const file = join(dir, `description_${++seq}.yaml`);
 	writeFileSync(file, text);
 	return file;
 }
 
-function errors_of(sources) {
+function errors_of(descriptions) {
 	try {
-		register_sources(sources);
+		register_descriptions(descriptions);
 	} catch (error) {
 		return error.errors;
 	}
-	assert.fail("the sources were accepted");
+	assert.fail("the descriptions were accepted");
 }
 
 const COMMON = `
@@ -38,22 +38,22 @@ layouts:
     - { name: status, type: Word, offset: 16, coupling: status_bits }
 `;
 
-describe("6.4 several sources", () => {
+describe("6.4 several descriptions", () => {
 	test("a layout names a fragment of another file, whatever the order of the files", () => {
 		const common = write(COMMON);
 		const pump = write(layout_text("Ms_Pump"));
 		const valve = write(layout_text("Ms_Valve"));
-		const { layouts, fragments } = register_sources([pump, valve, common]);
+		const { layouts, fragments } = register_descriptions([pump, valve, common]);
 		assert.deepEqual(Object.keys(layouts), ["Ms_Pump", "Ms_Valve"]);
 		assert.equal(fragments.status_bits.length, 2);
 		assert.equal(new Ldata("Ms_Pump", "p").status, 0x0001);
-		const other = register_sources([write(COMMON.replace("status_bits", "bits")), write(layout_text("Ms_Late").replace("status_bits", "bits"))]);
+		const other = register_descriptions([write(COMMON.replace("status_bits", "bits")), write(layout_text("Ms_Late").replace("status_bits", "bits"))]);
 		assert.equal(new Ldata(other.layouts.Ms_Late, "t").status, 0x0001);
 	});
 
-	test("files and parsed descriptions can be mixed", () => {
+	test("description files and description objects can be mixed", () => {
 		const common = write(COMMON);
-		const { layouts } = register_sources([
+		const { layouts } = register_descriptions([
 			common,
 			{ layouts: { Ms_Mixed: [{ name: "w", type: "Word", offset: 0, coupling: "status_bits" }] } },
 		]);
@@ -61,17 +61,17 @@ describe("6.4 several sources", () => {
 		assert.equal(new Ldata("Ms_Mixed", "t").w, 0x0001);
 	});
 
-	test("one source can be given as itself, not in a list", () => {
-		const { layouts } = register_sources({ layouts: { Ms_Single: [{ name: "a", type: "UInt", offset: 0, init_value: 1 }] } });
+	test("one description can be given as itself, not in a list", () => {
+		const { layouts } = register_descriptions({ layouts: { Ms_Single: [{ name: "a", type: "UInt", offset: 0, init_value: 1 }] } });
 		assert.equal(layouts.Ms_Single.size, 2);
 	});
 
-	test("the layouts key is optional in a source, but some source must define a layout", () => {
-		assert.deepEqual(errors_of([write(COMMON)]), ["no layout is defined in the sources"]);
-		assert.deepEqual(errors_of([{}]), ["no layout is defined in the sources"]);
+	test("the layouts key is optional in a description, but some description must define a layout", () => {
+		assert.deepEqual(errors_of([write(COMMON)]), ["no layout is defined in the descriptions"]);
+		assert.deepEqual(errors_of([{}]), ["no layout is defined in the descriptions"]);
 	});
 
-	test("the same fragment or layout in two sources is an error naming both", () => {
+	test("the same fragment or layout in two descriptions is an error naming both", () => {
 		const first = write(COMMON + layout_text("Ms_Dup"));
 		const second = write(COMMON.replace("run", "go") + layout_text("Ms_Dup").replace("Ms_Dup", "Ms_Dup"));
 		const errors = errors_of([first, second]);
@@ -89,7 +89,7 @@ describe("6.4 several sources", () => {
 		assert.deepEqual(errors, ["layout Ms_O is defined in layout description #1 and layout description #2"]);
 	});
 
-	test("every problem of every source is reported, and nothing is registered", () => {
+	test("every problem of every description is reported, and nothing is registered", () => {
 		const errors = errors_of([
 			join(dir, "absent.yaml"),
 			{ layouts: [] },
@@ -103,13 +103,13 @@ describe("6.4 several sources", () => {
 	});
 
 	test("an empty list is an error", () => {
-		assert.deepEqual(errors_of([]), ["no source is given"]);
+		assert.deepEqual(errors_of([]), ["no description is given"]);
 	});
 
-	test("the sources are not changed", () => {
+	test("the descriptions are not changed", () => {
 		const description = { layouts: { Ms_Pure: [{ name: "w", type: "Word", offset: 0, coupling: "bits" }] }, bits: [{ name: "b", type: "Bool", offset: 0 }] };
 		const before = structuredClone(description);
-		register_sources([description]);
+		register_descriptions([description]);
 		assert.deepEqual(description, before);
 	});
 });

@@ -8,7 +8,7 @@
 | --- | --- |
 | `src/index.js` | 包的公开接口 |
 | `src/Ldata.js` / `src/Ltag.js` | 数据对象与 tag 句柄 |
-| `src/layout.js` | 布局描述文件的读取与编译、Layout、原型访问器 |
+| `src/layout.js` | 描述的读取与合并、布局的编译、Layout、原型访问器 |
 | `src/structure.js` | 结构展开（`build_structure`）与布局校验（`validate_structure`）；内部使用，包不导出 |
 | `src/dispatch.js` | `emit_all`：调用一个事件的每个监听函数，收集它们抛出的异常（内部使用，包不导出） |
 | `src/reserved.js` | 保留的 tag 名与保留的事件名的静态清单（内部使用，包不导出） |
@@ -24,30 +24,38 @@
 
 | 部分 | 职责 | 实例数 | 可变性 |
 | --- | --- | --- | --- |
-| Layout | 由布局描述编译而来：各 tag 的字节位置、编解码、字节到 tag 的反查表、原型访问器 | 每种结构一个 | 不可变 |
+| Layout | 由布局定义编译而来：各 tag 的字节位置、编解码、字节到 tag 的反查表、原型访问器 | 每种结构一个 | 不可变 |
 | Ldata | 值缓冲区（私有，大端）、按名访问、原始读写方法、`get(name)` 返回的 Ltag | 每个 ldata 一个 | 可变 |
 | Observer | 快照比对，发出变化事件 | 每个 ldata 一个 | 可变 |
 
-依赖方向：Observer 依赖 Ldata 与 Layout，Ldata 只依赖 Layout，Layout 只依赖布局描述。使用方的调度和 IO 在包之外，包只通过 Ldata 的 `write` 事件通知它们，任何一方都可以监听。
+依赖方向：Observer 依赖 Ldata 与 Layout，Ldata 只依赖 Layout，Layout 只依赖描述。使用方的调度和 IO 在包之外，包只通过 Ldata 的 `write` 事件通知它们，任何一方都可以监听。
 
 ### 2.1 组件边界
 
 - 包代码不依赖使用方的配置、业务和日志器；
 - 出错时抛出异常，不写日志、不调用 `process.exit`；
-- 布局描述对包是外部输入，由使用方提供文件路径。
+- 描述对包是外部输入：使用方按路径给出描述文件，或直接给出描述对象。
 
-## 3. 布局定义
+## 3. 描述与注册
 
-- 布局描述是一个 YAML 1.2 文件：根键 `layouts` 映射布局名到条目列表；其余根键都是片段，由条目按名称引用。
+公开的术语（描述、描述文件、描述对象、布局定义、片段、布局）见 spec.zh-cn.md §2。注册要经过几个阶段，各阶段的产物是内部的，本文这样称呼它们：
+
+| 术语 | 含义 | 代码中 |
+| --- | --- | --- |
+| 合并描述 | 一次注册的所有描述合并而成的那一份描述 | `register_layout_data` 的 `root` |
+| 结构 | 解析了片段引用、展开为扁平条目的布局定义 | `Data_Struct`，由 `build_structure` 生成 |
+| 编译数据 | `Ldata` 需要而公开的 Layout 不展示的部分：`entries` 和 `tags_at_byte` | `Compiled_Layout`，通过 `compiled_of` 读取 |
+
+- 描述是描述文件（YAML 1.2）或同样结构的描述对象：根键 `layouts` 把布局名映射到布局定义（条目列表）；其余根键都是片段，由条目按名称引用。
 - 每个条目包含 `{ name, type, offset, init_value }`，可选 `length`、`comment`；`offset` 和 `length` 的单位都是位（bit），`length` 省略时由类型决定。
 - 组合字与组成位只由一方给出 `init_value`：`build_structure` 展开时，组合字未给出则由组成位合成（未给出的位为 false），组合字给出则组成位的值从整字拆出；双方都给出时保留给出的值，由校验报告。
 - `type` 取值（大小写不敏感）：`Bool`、`Byte`、`SInt`、`USInt`、`Int`、`UInt`、`Word`、`DInt`、`UDInt`、`DWord`、`Real`。
 - `Word` 条目带 `coupling`（片段名或内联列表）时，表示由若干 Bool 组成的状态字或命令字；`is_combined: true` 只是说明性标记：整字与各位共用同一块字节，联动不依赖它。coupling 内各项的 `offset` 相对于该字的起点。
 - `{ includes: <片段名或内联列表>, offset }` 把一组公共条目整体偏移后拼接进来，可加 `name_prefix`。
-- `register_layout(sources)`（spec-data-api.zh-cn.md §6.4）由模块标志 `registered_once` 守护：标志已置位时抛出 `Error`，只有 `register_sources` 成功返回之后才置位，所以失败的调用不会置位。实际工作由 `register_sources(sources)` 完成，它是内部函数，测试调用的就是它，因为测试在一个进程里要注册很多次。
-- `register_sources(sources)` 把各来源整理成一份描述并交下去。第一阶段：按列表顺序读取每个来源，字符串用 `readFileSync` 和 `parseDocument`（YAML 1.2）读取，对象原样使用；读取或解析错误、根不是映射、`layouts` 不是映射，都带着来源（路径，或第 i 个对象的 `layout description #i`）进入 `errors`。各来源的布局和片段分别合并为一张表；名字已被前面的来源占用时报错并写出两个来源（`owners` 记着每个名字的来源）。空列表、列表里再放列表、合并后没有任何布局都是错误。发现的所有问题一起作为带 `errors` 的 `Error` 抛出。
-- `register_layout_data(root, origin)` 是第二阶段，接收合并后的描述（`{ layouts, ...fragments }`，spec-data-api.zh-cn.md §6.1），登记其中的布局并返回 `{ layouts, fragments }`。它在 `resolve_items` 中解析片段引用（不存在或循环引用时报错）并补全省略的 `length`，`resolve_items` 复制每个条目和嵌套列表，所以传入的描述从不被修改。再对每个布局调用 `build_structure` 展开为扁平的 `items`（计算结构总长 `length`，把 coupling 规范为名称数组），校验每个结构，检查与已登记布局的冲突（`find_conflicts`），然后才用 `register_structure` 把它们全部登记，所以一份描述要么全部登记，要么都不登记。除了测试辅助函数 `one_tag` 为了随意补齐数据块而直接调用 `register_structure` 之外，没有任何路径会登记未经校验的布局。
-- 每个布局编译为一个 Layout（`register_structure`）。公开的 Layout 是深度冻结的 `{ name, length, size, items }`（spec-data-api.zh-cn.md §6.6），其中 `items` 是展开后条目的冻结副本，只含文档规定的字段。编译结果，即按名称索引的条目表 `entries`（字节偏移、位掩码、编解码）和字节到 tag 的反查表 `tags_at_byte`，存放在 `registry.js` 的模块私有 `WeakMap` 里，由 `Ldata`、Observer 和 `endian.js` 通过 `compiled_of(layout)` 读取，从不挂在 Layout 上，所以公开接口里不出现 entry。布局是不可变的纯数据，不含类，`layout.js` 不依赖 `Ldata`。同一份布局描述内的布局名互不相同（它们是 `layouts` 的键）。
+- `register_layout(descriptions)`（spec-data-api.zh-cn.md §6.4）由模块标志 `registered_once` 守护：标志已置位时抛出 `Error`，只有 `register_descriptions` 成功返回之后才置位，所以失败的调用不会置位。实际工作由 `register_descriptions(descriptions)` 完成，它是内部函数，测试调用的就是它，因为测试在一个进程里要注册很多次。
+- `register_descriptions(descriptions)` 把各描述整理成合并描述并交下去。第一阶段：按列表顺序读取每份描述，描述文件（字符串）用 `readFileSync` 和 `parseDocument`（YAML 1.2）读取，描述对象原样使用；读取或解析错误、根不是映射、`layouts` 不是映射，都带着出处（路径，或第 i 个对象的 `layout description #i`）进入 `errors`。各描述的布局和片段分别合并为一张表；名字已被前面的描述占用时报错并写出两处出处（`owners` 记着每个名字的出处）。空列表、列表里再放列表、合并后没有任何布局都是错误。发现的所有问题一起作为带 `errors` 的 `Error` 抛出。
+- `register_layout_data(root, origin)` 是第二阶段，接收合并描述（`root`，`{ layouts, ...fragments }`，spec-data-api.zh-cn.md §6.1），登记其中的布局并返回 `{ layouts, fragments }`。它在 `resolve_items` 中解析片段引用（不存在或循环引用时报错）并补全省略的 `length`，`resolve_items` 复制每个条目和嵌套列表，所以传入的描述从不被修改。再对每个布局调用 `build_structure` 展开为扁平的 `items`（计算结构总长 `length`，把 coupling 规范为名称数组），校验每个结构，检查与已登记布局的冲突（`find_conflicts`），然后才用 `register_structure` 把它们全部登记，所以一份描述要么全部登记，要么都不登记。除了测试辅助函数 `one_tag` 为了随意补齐数据块而直接调用 `register_structure` 之外，没有任何路径会登记未经校验的布局。
+- 每个布局编译为一个 Layout（`register_structure`）。公开的 Layout 是深度冻结的 `{ name, length, size, items }`（spec-data-api.zh-cn.md §6.6），其中 `items` 是展开后条目的冻结副本，只含文档规定的字段。编译结果，即按名称索引的条目表 `entries`（字节偏移、位掩码、编解码）和字节到 tag 的反查表 `tags_at_byte`，存放在 `registry.js` 的模块私有 `WeakMap` 里，由 `Ldata`、Observer 和 `endian.js` 通过 `compiled_of(layout)` 读取，从不挂在 Layout 上，所以公开接口里不出现 entry。布局是不可变的纯数据，不含类，`layout.js` 不依赖 `Ldata`。同一份描述内的布局名互不相同（它们是 `layouts` 的键）。
 - 已编译的布局按布局名保存在登记表中（`registry.js`，它不引用任何模块，所以 `layout.js` 写入、`Ldata` 读取而不成环）。`register_structure(struct)` 计算展开后结构的规范文本（`name`、`length`、`items`；对象键排序，不含 `comment`，类型名小写）。该名字已登记且文本相同，就返回已登记的 Layout；文本不同则抛出 `another layout is already named X`。`register_layout_data` 在登记任何一个之前先检查描述里的每个布局有无这种冲突，所以一份描述要么全部登记，要么都不登记。公开的 `register_layout` 只登记一次（见上），所以这两条规则只对内部函数有意义，测试会多次调用它们。`get_layout(name)` 返回已登记的布局，没有则抛出 `unknown layout X`。登记表不会清空：布局名在进程的整个生命期内有效。
 - Bool 的定位规则：`byte = offset >> 3`，`bit = offset % 8`。内部缓冲按大端存放，一个字的第一个字节是寄存器的高字节，所以 coupling 中偏移 8–15 对应寄存器的 bit0–7，偏移 0–7 对应 bit8–15。布局文件按 8–15、0–7 的顺序列出，就是按寄存器 bit0 到 bit15 的顺序排列。
 
@@ -66,7 +74,7 @@
   - `init_value` 的类型与取值范围与 `type` 相符。
   - 组合字与它的组成位不同时给出 `init_value`（展开时记录冲突，由校验报告）。
 - `build_structure` 遇到重名或不合法的名字时保留条目，交给校验报告。只有纯包含条目（有 `includes` 且没有 name）才会被丢弃；其余条目都是 tag，所以缺少 name 的 tag 条目会被报告，不会丢失。名称前缀只加在字符串类型的名字前。
-- `register_layout` 对全部来源中的布局调用校验，有违规时抛出包含全部违规项的错误（`error.errors`）。
+- `register_layout` 对全部描述中的布局调用校验，有违规时抛出包含全部违规项的错误（`error.errors`）。
 - 校验通过后，Ldata 和 Ltag 不重复做这些检查；`register_structure` 只保留防御性断言。
 
 ## 4. 编解码与原型访问器

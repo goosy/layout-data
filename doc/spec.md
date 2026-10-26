@@ -17,7 +17,10 @@ Out of scope: device communication, scheduling, business rules and logging. The 
 
 | Term | Meaning |
 | --- | --- |
-| Layout | The fixed format of a data block: name, type, bit offset and initial value of every tag. Immutable once registered |
+| Description | The layout description in full: the root key `layouts` maps layout names to layout definitions, and every other root key is a fragment (§6.1 of [spec-data-api.md](spec-data-api.md)). It takes one of two forms with the same structure: a description file (YAML 1.2), given by its path, or a description object in code |
+| Layout definition | The entry list of one layout in a description, under its layout name |
+| Fragment | A named entry list of a description, which entries reference by name |
+| Layout | The fixed format of a data block: name, type, bit offset and initial value of every tag. Registered from a layout definition, immutable once registered; the public `Layout` object |
 | Ldata / ldata | Ldata is the class of data objects, an ldata is an instance: a block of data allocated for a layout, stored big-endian internally |
 | Ltag | The interface of one named tag of an ldata |
 | Combined word | A Word made of several Bools, sharing its data with its bits |
@@ -44,7 +47,7 @@ Out of scope: device communication, scheduling, business rules and logging. The 
 
 ## 4. Layout description
 
-A layout is given by a YAML 1.2 file; see §6 of [spec-data-api.md](spec-data-api.md).
+Layouts are given by descriptions, as YAML 1.2 description files or as description objects in code; see §6 of [spec-data-api.md](spec-data-api.md).
 
 ## 5. Distribution
 
@@ -60,7 +63,7 @@ The entry `layout-data` exports:
 | Export | Description |
 | --- | --- |
 | `Ldata`, `Ltag` | The data object and the tag handle (§2 and §3 of [spec-data-api.md](spec-data-api.md)) |
-| `register_layout` | Register the layouts of the sources, YAML files or parsed descriptions (also for items given in code), once per process; register first, then create `Ldata` by layout name (§6 of [spec-data-api.md](spec-data-api.md)) |
+| `register_layout` | Register the layouts of descriptions, description files or description objects (also for items given in code), once per process; register first, then create `Ldata` by layout name (§6 of [spec-data-api.md](spec-data-api.md)) |
 | `get_layout` | Look up a registered layout by name (§6.4 of [spec-data-api.md](spec-data-api.md)) |
 | `io_index_table` | The byte index table for exchanging a whole block with a device (§2.9 of [spec-data-api.md](spec-data-api.md)); the per-tag conversion is `load_tag` / `store_tag` of Ldata |
 | `render_types` | Generates TypeScript declarations from registered layouts |

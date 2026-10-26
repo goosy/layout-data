@@ -4,7 +4,7 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test, { describe } from "node:test";
-import { register_layout_data, register_sources } from "../src/layout.js";
+import { register_layout_data, register_descriptions } from "../src/layout.js";
 import { Ldata } from "../src/Ldata.js";
 import { compiled_of, get_layout } from "../src/registry.js";
 
@@ -15,7 +15,7 @@ let file_seq = 0;
 function compile(yaml) {
 	const file = join(dir, `layout_${++file_seq}.yaml`);
 	writeFileSync(file, yaml);
-	return register_sources(file);
+	return register_descriptions(file);
 }
 
 function errors_of(yaml) {
@@ -134,7 +134,7 @@ layouts:
 	});
 
 	test("a file without the layouts key defines no layout", () => {
-		assert.deepEqual(errors_of("x: []\n"), ["no layout is defined in the sources"]);
+		assert.deepEqual(errors_of("x: []\n"), ["no layout is defined in the descriptions"]);
 	});
 
 	test("the layouts key must be a mapping", () => {
@@ -144,7 +144,7 @@ layouts:
 	});
 
 	test("a missing file and a YAML syntax error are reported in errors", () => {
-		assert.throws(() => register_sources(join(dir, "missing.yaml")), (error) => {
+		assert.throws(() => register_descriptions(join(dir, "missing.yaml")), (error) => {
 			assert.match(error.errors[0], /ENOENT/);
 			return true;
 		});
@@ -169,15 +169,15 @@ describe("parsed layout description", () => {
 });
 
 describe("layout registry", () => {
-	const source = (name, init_value = 1, extra = "") =>
+	const layout_yaml = (name, init_value = 1, extra = "") =>
 		`layouts:
   ${name}:
     - { name: a, type: UInt, offset: 0, init_value: ${init_value}${extra} }
 `;
 
 	test("a file with the same layouts gives the same Layout objects, whatever its path", () => {
-		const first = compile(source("Reg_Same"));
-		const second = compile(source("Reg_Same"));
+		const first = compile(layout_yaml("Reg_Same"));
+		const second = compile(layout_yaml("Reg_Same"));
 		assert.equal(second.layouts.Reg_Same, first.layouts.Reg_Same);
 		assert.equal(get_layout("Reg_Same"), first.layouts.Reg_Same);
 		assert.equal(new Ldata("Reg_Same", "t").a, 1);
@@ -195,7 +195,7 @@ describe("layout registry", () => {
 	});
 
 	test("the comment and the case of the type do not make another layout", () => {
-		const first = compile(source("Reg_Text"));
+		const first = compile(layout_yaml("Reg_Text"));
 		const second = compile(`layouts:
   Reg_Text:
     - { name: a, type: uint, offset: 0, init_value: 1, comment: described }
@@ -204,7 +204,7 @@ describe("layout registry", () => {
 	});
 
 	test("another layout under a used name is an error, and nothing of the file is registered", () => {
-		compile(source("Reg_Used"));
+		compile(layout_yaml("Reg_Used"));
 		const errors = errors_of(`layouts:
   Reg_New:
     - { name: a, type: UInt, offset: 0, init_value: 1 }

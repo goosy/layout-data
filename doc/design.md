@@ -10,7 +10,7 @@
 | --- | --- |
 | `src/index.js` | The public interface of the package |
 | `src/Ldata.js` / `src/Ltag.js` | The data object and the tag handle |
-| `src/layout.js` | Reading and compiling layout description files, Layout, prototype accessors |
+| `src/layout.js` | Reading and merging descriptions, compiling layouts, Layout, prototype accessors |
 | `src/structure.js` | Structure expansion (`build_structure`) and layout validation (`validate_structure`); internal, not exported by the package |
 | `src/dispatch.js` | `emit_all`: calls every listener of an event, collecting what they throw (internal, not exported by the package) |
 | `src/reserved.js` | The static lists of reserved tag names and reserved event names (internal, not exported by the package) |
@@ -26,30 +26,38 @@
 
 | Part | Responsibility | Instances | Mutability |
 | --- | --- | --- | --- |
-| Layout | Compiled from a layout description: byte position and codec of every tag, a byte-to-tag lookup table, prototype accessors | One per structure | Immutable |
+| Layout | Compiled from a layout definition: byte position and codec of every tag, a byte-to-tag lookup table, prototype accessors | One per structure | Immutable |
 | Ldata | The value buffer (private, big-endian), access by name, raw read and write methods, the Ltag returned by `get(name)` | One per ldata | Mutable |
 | Observer | Snapshot comparison, emits change events | One per ldata | Mutable |
 
-Dependency direction: Observer depends on Ldata and Layout, Ldata depends only on Layout, Layout depends only on the layout description. The user's scheduling and IO are outside the package; the package notifies them only through the `write` event of an Ldata, which any party can listen to.
+Dependency direction: Observer depends on Ldata and Layout, Ldata depends only on Layout, Layout depends only on the description. The user's scheduling and IO are outside the package; the package notifies them only through the `write` event of an Ldata, which any party can listen to.
 
 ### 2.1 Component boundary
 
 - The package code does not depend on the user's configuration, business logic or logger;
 - Errors are thrown as exceptions; nothing is logged and `process.exit` is never called;
-- The layout description is external input to the package, and the user provides the file path.
+- Descriptions are external input to the package: the user gives description files by path, or description objects.
 
-## 3. Layout definition
+## 3. Descriptions and registration
 
-- A layout description is a YAML 1.2 file: the root key `layouts` maps layout names to entry lists; every other root key is a fragment, referenced by name from entries.
+The public terms (description, description file, description object, layout definition, fragment, layout) are those of spec.md §2. Registration passes through stages whose products are internal; this document names them:
+
+| Term | Meaning | In the code |
+| --- | --- | --- |
+| Merged description | The one description that all the descriptions of a registration are merged into | `root` of `register_layout_data` |
+| Structure | A layout definition with its fragment references resolved and expanded into flat items | `Data_Struct`, made by `build_structure` |
+| Compiled data | What `Ldata` needs of a layout and the public Layout does not show: `entries` and `tags_at_byte` | `Compiled_Layout`, read with `compiled_of` |
+
+- A description is a description file (YAML 1.2) or a description object of the same structure: the root key `layouts` maps layout names to layout definitions (entry lists); every other root key is a fragment, referenced by name from entries.
 - Every entry has `{ name, type, offset, init_value }` and optionally `length` and `comment`. `offset` and `length` are in bits; when `length` is omitted the type decides it.
 - Only one side of a combined word and its bits gives `init_value`. When `build_structure` expands them, a word without a value is composed from its bits (a bit without a value is false), and a word with a value passes its bits' values down. If both sides give values, the given values are kept and validation reports the conflict.
 - `type` values (case-insensitive): `Bool`, `Byte`, `SInt`, `USInt`, `Int`, `UInt`, `Word`, `DInt`, `UDInt`, `DWord`, `Real`.
 - A `Word` entry with `coupling` (a fragment name or an inline list) is a status or command word made of several Bools. `is_combined: true` is a descriptive mark only: the word and its bits share the same bytes, so the linkage does not depend on it. The `offset` of each item in `coupling` is relative to the start of the word.
 - `{ includes: <fragment name or inline list>, offset }` splices in a group of common entries shifted as a whole; `name_prefix` may be added.
-- `register_layout(sources)` (spec-data-api.md §6.4) is guarded by the module flag `registered_once`: it throws `Error` when the flag is set, and sets it only after `register_sources` returned, so a failed call leaves it unset. `register_sources(sources)` does the work and is internal, which is what the tests call, since they register many times in one process.
-- `register_sources(sources)` turns the sources into one description and hands it on. Stage one: each source is read in the order of the list, a string with `readFileSync` and `parseDocument` (YAML 1.2), an object as it is; a read or parse error, a root that is not a mapping and a `layouts` that is not a mapping go to `errors` with the origin (the path, or `layout description #i` for the i-th object). The layouts and the fragments of every source are merged into one table each; a name already taken by an earlier source is an error that names both origins (`owners` remembers the origin of each name). An empty list, a list inside the list and a merge without any layout are errors. Everything found is thrown together as the `Error` with `errors`.
-- `register_layout_data(root, origin)` is stage two and takes the merged description (`{ layouts, ...fragments }`, spec-data-api.md §6.1), registers its layouts and returns `{ layouts, fragments }`. It resolves the fragment references (an unknown or circular reference is an error) and fills in the omitted `length`s in `resolve_items`, which copies every item and nested list, so the description given is never changed. It calls `build_structure` for every layout to expand it into flat `items` (computing the total `length` of the structure and normalizing `coupling` to an array of names), validates each structure, checks the conflicts with the registered layouts (`find_conflicts`), and only then registers all of them with `register_structure`, so a description is registered all or none. No path registers a layout that has not been validated, except the test helper `one_tag`, which uses `register_structure` directly to pad a data block freely.
-- Every layout is compiled to a Layout (`register_structure`). The public Layout is the deeply frozen `{ name, length, size, items }` (spec-data-api.md §6.6), where `items` are frozen copies of the expanded items with only the documented fields. The compiled data, the table `entries` indexed by name (byte offset, bit mask, codec) and the byte-to-tag lookup table `tags_at_byte`, is kept in a module-private `WeakMap` of `registry.js` and read with `compiled_of(layout)` by `Ldata`, the Observer and `endian.js`; it is never attached to the Layout, so no entry appears in the public interface. A layout is plain, immutable data: it holds no class and `layout.js` does not depend on `Ldata`. Within one layout description the layout names are distinct (they are the keys of `layouts`).
+- `register_layout(descriptions)` (spec-data-api.md §6.4) is guarded by the module flag `registered_once`: it throws `Error` when the flag is set, and sets it only after `register_descriptions` returned, so a failed call leaves it unset. `register_descriptions(descriptions)` does the work and is internal, which is what the tests call, since they register many times in one process.
+- `register_descriptions(descriptions)` turns the descriptions into the merged description and hands it on. Stage one: each description is read in the order of the list, a description file (a string) with `readFileSync` and `parseDocument` (YAML 1.2), a description object as it is; a read or parse error, a root that is not a mapping and a `layouts` that is not a mapping go to `errors` with the origin (the path, or `layout description #i` for the i-th object). The layouts and the fragments of every description are merged into one table each; a name already taken by an earlier description is an error that names both origins (`owners` remembers the origin of each name). An empty list, a list inside the list and a merge without any layout are errors. Everything found is thrown together as the `Error` with `errors`.
+- `register_layout_data(root, origin)` is stage two and takes the merged description (`root`, `{ layouts, ...fragments }`, spec-data-api.md §6.1), registers its layouts and returns `{ layouts, fragments }`. It resolves the fragment references (an unknown or circular reference is an error) and fills in the omitted `length`s in `resolve_items`, which copies every item and nested list, so the description given is never changed. It calls `build_structure` for every layout to expand it into flat `items` (computing the total `length` of the structure and normalizing `coupling` to an array of names), validates each structure, checks the conflicts with the registered layouts (`find_conflicts`), and only then registers all of them with `register_structure`, so a description is registered all or none. No path registers a layout that has not been validated, except the test helper `one_tag`, which uses `register_structure` directly to pad a data block freely.
+- Every layout is compiled to a Layout (`register_structure`). The public Layout is the deeply frozen `{ name, length, size, items }` (spec-data-api.md §6.6), where `items` are frozen copies of the expanded items with only the documented fields. The compiled data, the table `entries` indexed by name (byte offset, bit mask, codec) and the byte-to-tag lookup table `tags_at_byte`, is kept in a module-private `WeakMap` of `registry.js` and read with `compiled_of(layout)` by `Ldata`, the Observer and `endian.js`; it is never attached to the Layout, so no entry appears in the public interface. A layout is plain, immutable data: it holds no class and `layout.js` does not depend on `Ldata`. Within one description the layout names are distinct (they are the keys of `layouts`).
 - The compiled layouts are kept in a registry by layout name (`registry.js`, which imports nothing, so `layout.js` writes to it and `Ldata` reads it without a cycle). `register_structure(struct)` computes the canonical text of the expanded structure (`name`, `length`, `items`; object keys sorted, `comment` left out, type names in lower case). If the name is registered with the same text it returns the registered Layout; with another text it throws `another layout is already named X`. `register_layout_data` checks every layout of the description for such a conflict before registering any, so a description is registered all or none. The public `register_layout` registers once (above), so these two rules only matter to the internal functions, which the tests call many times. `get_layout(name)` returns the registered layout and throws `unknown layout X` otherwise. The registry is never cleared: a layout name is used for the life of the process.
 - Bool placement: `byte = offset >> 3`, `bit = offset % 8`. The internal buffer is big-endian and the first byte of a word is the high byte of the register, so offsets 8-15 in `coupling` are register bit 0-7 and offsets 0-7 are register bit 8-15. Listing the bits in the order 8-15, 0-7 in the layout file therefore lists them from register bit 0 to bit 15.
 
@@ -68,7 +76,7 @@ The layout rules are validated centrally at the layout stage, not spread over th
   - The type and range of `init_value` match `type`.
   - A combined word and its bits do not both give `init_value` (the conflict is recorded during expansion and reported by validation).
 - `build_structure` keeps entries with duplicate or invalid names and leaves them to validation. An entry is dropped only when it is a pure inclusion (it has `includes` and no name); any other entry is a tag, so a tag entry without a name is reported and not lost. A name prefix is put only before a name that is a string.
-- `register_layout` validates all layouts of all the sources and, on violations, throws an error that contains all of them (`error.errors`).
+- `register_layout` validates all layouts of all the descriptions and, on violations, throws an error that contains all of them (`error.errors`).
 - After validation passes, Ldata and Ltag do not repeat these checks; `register_structure` keeps only defensive assertions.
 
 ## 4. Codecs and prototype accessors

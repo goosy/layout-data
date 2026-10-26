@@ -15,7 +15,10 @@ layout-data 是一个结构化数据块库：提供基于 `Buffer`、面向数�
 
 | 术语 | 含义 |
 | --- | --- |
-| 布局 | 一块数据的固定格式：每个 tag 的名称、类型、位偏移、初值，注册后不可变 |
+| 描述 | 即布局描述：根键 `layouts` 把布局名映射到布局定义，其余根键都是片段（[spec-data-api.zh-cn.md](spec-data-api.zh-cn.md) §6.1）。它有结构相同的两种形式：描述文件（YAML 1.2，按路径给出）和代码中的描述对象 |
+| 布局定义 | 描述中一个布局的条目列表，位于它的布局名下 |
+| 片段 | 描述中具名的条目列表，供条目按名引用 |
+| 布局 | 一块数据的固定格式：每个 tag 的名称、类型、位偏移、初值。由布局定义注册而来，注册后不可变，即公开的 `Layout` 对象 |
 | Ldata / ldata | Ldata 是数据对象的类，ldata 是它的实例：按某个布局分配的一块数据，内部按大端存放 |
 | Ltag | ldata 中一个具名 tag 的操作接口 |
 | 组合字 | 由若干 Bool 组成的 Word，与各组成位共用同一块数据 |
@@ -42,7 +45,7 @@ layout-data 是一个结构化数据块库：提供基于 `Buffer`、面向数�
 
 ## 4. 布局描述
 
-布局由 YAML 1.2 文件给出，格式见 [spec-data-api.zh-cn.md](spec-data-api.zh-cn.md) §6。
+布局由描述给出：YAML 1.2 描述文件，或代码中的描述对象，格式见 [spec-data-api.zh-cn.md](spec-data-api.zh-cn.md) §6。
 
 ## 5. 发布形态
 
@@ -58,7 +61,7 @@ layout-data 是一个结构化数据块库：提供基于 `Buffer`、面向数�
 | 导出 | 说明 |
 | --- | --- |
 | `Ldata`、`Ltag` | 数据对象和 tag 句柄（[spec-data-api.zh-cn.md](spec-data-api.zh-cn.md) §2 和 §3） |
-| `register_layout` | 注册各来源中的布局：YAML 文件或已解析的描述（在代码里给条目也用它），每个进程一次；先注册，再按布局名创建 `Ldata`（[spec-data-api.zh-cn.md](spec-data-api.zh-cn.md) §6） |
+| `register_layout` | 注册各描述中的布局：描述文件或描述对象（在代码里给条目也用它），每个进程一次；先注册，再按布局名创建 `Ldata`（[spec-data-api.zh-cn.md](spec-data-api.zh-cn.md) §6） |
 | `get_layout` | 按名取得已登记的布局（[spec-data-api.zh-cn.md](spec-data-api.zh-cn.md) §6.4） |
 | `io_index_table` | 与设备整块交换用的字节下标表（[spec-data-api.zh-cn.md](spec-data-api.zh-cn.md) §2.9）；按 tag 的转换是 Ldata 的 `load_tag` / `store_tag` |
 | `render_types` | 由已注册的布局生成 TypeScript 类型声明 |

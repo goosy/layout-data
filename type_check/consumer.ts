@@ -6,7 +6,7 @@ import {
 	Ldata, Ltag,
 	register_layout, get_layout,
 	io_index_table, render_types,
-	type Layout, type Layout_Tag, type Layout_Item, type Layout_Source,
+	type Layout, type Layout_Tag, type Layout_Item,
 	type Tag_Item, type Include_Item, type Layout_Description,
 	type Registered_Layouts, type Endian, type Tag_Type,
 } from "layout-data";
@@ -14,12 +14,12 @@ import {
 type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends (<T>() => T extends B ? 1 : 2) ? true : false;
 function assert_type<_T extends true>() {}
 
-// registering layouts: a file, a parsed description, or a list of them
+// registering layouts: a description file, a description object, or a list of them
 const compiled: Registered_Layouts = register_layout({ layouts: {} });
 const from_file: Registered_Layouts = register_layout("layout.yaml");
 const from_list: Registered_Layouts = register_layout(["common.yaml", "pump.yaml", { layouts: {} }]);
-const sources: Layout_Source[] = ["a.yaml", { layouts: {} }];
-register_layout(sources);
+const descriptions: Array<string | Layout_Description> = ["a.yaml", { layouts: {} }];
+register_layout(descriptions);
 void from_list;
 const layout: Layout = compiled.layouts.any;
 const fragment: Layout_Item[] = from_file.fragments.any;
@@ -36,9 +36,9 @@ layout.name = "x";
 // @ts-expect-error the items are read-only
 layout.items.push({ name: "a", type: "Int", offset: 0, length: 16, init_value: 0, coupling: [] });
 assert_type<Equal<typeof fragment, Layout_Item[]>>();
-// @ts-expect-error a source is a path or a description, not a number
+// @ts-expect-error a description is a path or a description object, not a number
 register_layout(1);
-// @ts-expect-error the sources are required
+// @ts-expect-error the descriptions are required
 register_layout();
 
 // the entries of a description: a tag, or an inclusion

@@ -4,7 +4,7 @@ import { CODECS } from "./codecs.js";
 import { register, registered_of, set_compiled } from "./registry.js";
 import { build_structure, validate_structure, TYPE_BITS } from "./structure.js";
 
-/** @import { Layout_Source, Registered_Layouts, Layout } from "./typedefs.js" */
+/** @import { Layout_Description, Registered_Layouts, Layout } from "./typedefs.js" */
 /** @import { Data_Struct } from "./internal_types.js" */
 
 /**
@@ -148,22 +148,22 @@ function resolve_items(list, fragments, stack, where, errors) {
 }
 
 /**
- * Reads the sources of the layouts (doc/design.md §3), merges their layouts
- * and fragments into one description and registers it with
- * register_layout_data. Each source is the path of a YAML layout file or a
- * parsed description; a list of sources is merged, so a layout may name a
- * fragment of any source whatever the order. The root key `layouts` of a
- * source maps layout names to item lists; every other root key is a fragment
- * referenced by name.
+ * Reads the layout descriptions (doc/design.md §3), merges their layouts and
+ * fragments into one description and registers it with register_layout_data.
+ * Each description is the path of a YAML description file or a description
+ * object; a list of descriptions is merged, so a layout may name a fragment
+ * of any description whatever the order. The root key `layouts` of a
+ * description maps layout names to item lists; every other root key is a
+ * fragment referenced by name.
  *
- * @param {Layout_Source | Layout_Source[]} sources
+ * @param {string | Layout_Description | Array<string | Layout_Description>} descriptions
  * @returns {Registered_Layouts}
- * @throws {Error} With `errors`, every violation found, when the sources are not valid.
+ * @throws {Error} With `errors`, every violation found, when the descriptions are not valid.
  */
-export function register_sources(sources) {
+export function register_descriptions(descriptions) {
 	const errors = [];
-	const list = Array.isArray(sources) ? sources : [sources];
-	if (list.length === 0) errors.push("no source is given");
+	const list = Array.isArray(descriptions) ? descriptions : [descriptions];
+	if (list.length === 0) errors.push("no description is given");
 	const origins = [];
 	const layout_defs = {};
 	const fragment_defs = {};
@@ -193,27 +193,27 @@ export function register_sources(sources) {
 		merge("layout", layouts ?? {}, layout_defs);
 		merge("fragment", fragments, fragment_defs);
 	};
-	list.forEach((source, index) => {
-		const label = Array.isArray(sources) ? `layout description #${index + 1}` : "layout description";
-		if (Array.isArray(source)) {
-			errors.push(`${label}: a list of sources must not contain a list`);
-		} else if (typeof source === "string") {
+	list.forEach((description, index) => {
+		const label = Array.isArray(descriptions) ? `layout description #${index + 1}` : "layout description";
+		if (Array.isArray(description)) {
+			errors.push(`${label}: a list of descriptions must not contain a list`);
+		} else if (typeof description === "string") {
 			let text;
 			try {
-				text = readFileSync(source, "utf8");
+				text = readFileSync(description, "utf8");
 			} catch (error) {
 				errors.push(error.message);
 				return;
 			}
 			const doc = parseDocument(text, { version: "1.2" });
-			if (doc.errors.length > 0) errors.push(...doc.errors.map((e) => `${source}: ${e.message}`));
-			else add(source, doc.toJS());
+			if (doc.errors.length > 0) errors.push(...doc.errors.map((e) => `${description}: ${e.message}`));
+			else add(description, doc.toJS());
 		} else {
-			add(label, source);
+			add(label, description);
 		}
 	});
-	if (errors.length === 0 && Object.keys(layout_defs).length === 0) errors.push("no layout is defined in the sources");
-	if (errors.length > 0) throw layout_error("layout sources", errors);
+	if (errors.length === 0 && Object.keys(layout_defs).length === 0) errors.push("no layout is defined in the descriptions");
+	if (errors.length > 0) throw layout_error("layout descriptions", errors);
 	return register_layout_data({ layouts: layout_defs, ...fragment_defs }, origins.join(", "));
 }
 
@@ -221,19 +221,19 @@ export function register_sources(sources) {
 let registered_once = false;
 
 /**
- * Registers the layouts of the sources, once per process: a layout is
+ * Registers the layouts of the descriptions, once per process: a layout is
  * described, registered under its name, and then used by that name
- * (doc/spec-data-api.md §6.4). Nothing is registered when a source is not
- * valid, and such a call does not use up the single call.
+ * (doc/spec-data-api.md §6.4). Nothing is registered when a description is
+ * not valid, and such a call does not use up the single call.
  *
- * @param {Layout_Source | Layout_Source[]} sources - The path of a YAML layout file, a parsed description, or a list of them.
+ * @param {string | Layout_Description | Array<string | Layout_Description>} descriptions - The path of a YAML description file, a description object, or a list of them.
  * @returns {Registered_Layouts}
- * @throws {Error} With `errors`, every violation found, when the sources are not valid.
+ * @throws {Error} With `errors`, every violation found, when the descriptions are not valid.
  * @throws {Error} When the layouts were registered by an earlier call.
  */
-export function register_layout(sources) {
+export function register_layout(descriptions) {
 	if (registered_once) throw new Error("register_layout can be called only once");
-	const result = register_sources(sources);
+	const result = register_descriptions(descriptions);
 	registered_once = true;
 	return result;
 }
@@ -264,7 +264,7 @@ function find_conflicts(structs) {
  * root key `layouts` and the fragments the layouts name. Internal.
  *
  * @param {Record<string, any>} root - The parsed description: `layouts` and the fragments.
- * @param {string} [origin] - Names the source in errors.
+ * @param {string} [origin] - Names the descriptions in errors.
  * @returns {Registered_Layouts}
  * @throws {Error} With `errors`, every violation found, when the description is not valid.
  */

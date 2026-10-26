@@ -102,7 +102,7 @@ describe("6.5 layouts given in code (register_layout_data)", () => {
 	test("the package exports register_layout; the steps behind it are not exported", () => {
 		assert.equal(typeof api.register_layout, "function");
 		assert.equal(api.register_layout.length, 1);
-		for (const name of ["compile_layout", "compile_layout_data", "register_layout_file", "register_layout_data", "register_sources", "build_structure", "validate_structure", "register_structure"]) {
+		for (const name of ["compile_layout", "compile_layout_data", "register_layout_file", "register_layout_data", "register_descriptions", "build_structure", "validate_structure", "register_structure"]) {
 			assert.equal(name in api, false, name);
 		}
 	});

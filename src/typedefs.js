@@ -36,9 +36,10 @@
  */
 
 /**
- * A layout description: `layouts` maps layout names to lists of entries, and
- * every other key is a fragment, a list of entries that can be named
- * (doc/spec-data-api.md §6.1).
+ * A description object, the form of a layout description in code (a
+ * description file is the YAML form): `layouts` maps layout names to lists
+ * of entries, and every other key is a fragment, a list of entries that can
+ * be named (doc/spec-data-api.md §6.1).
  *
  * @typedef {{ layouts?: Record<string, Layout_Item[]> } & Record<string, Layout_Item[] | Record<string, Layout_Item[]> | undefined>} Layout_Description
  */
@@ -78,13 +79,6 @@
  * Device byte order of an IO buffer (doc/spec-data-api.md §2.9).
  *
  * @typedef {"BE" | "LE" | "BEBS" | "LEBS"} Endian
- */
-
-/**
- * A source of layouts: the path of a YAML 1.2 layout file, or a description
- * that is already parsed (the same structure as the file, doc/spec-data-api.md §6.1).
- *
- * @typedef {string | Layout_Description} Layout_Source
  */
 
 /**

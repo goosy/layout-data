@@ -74,7 +74,7 @@ pump.transaction(() => {
 | Export | Purpose |
 | --- | --- |
 | `Ldata`, `Ltag` | The data object and the tag handle |
-| `register_layout(sources)` | Register the layouts of YAML files or parsed descriptions (a path, an object, or a list of them), once per process; then create `Ldata` by layout name |
+| `register_layout(descriptions)` | Register the layouts of descriptions, description files or description objects (a path, an object, or a list of them), once per process; then create `Ldata` by layout name |
 | `render_types(layouts, options)` | Generate TypeScript interfaces for layouts, for editor completion (see below) |
 | `get_layout(name)` | Look up a registered layout by name |
 | `io_index_table` | Byte index table for exchanging a whole block with a device (per-tag conversion is `load_tag` / `store_tag` of `Ldata`) |
