@@ -229,7 +229,7 @@ describe("layout validation", () => {
 	});
 });
 
-describe("the layout object (doc/spec-data-api.md §6.6)", () => {
+describe("the layout object (doc/spec-layout.md §7)", () => {
 	const layout = register_items("PUBLIC_SHAPE", VALID_ITEMS);
 
 	test("it exposes only name, length, size and items", () => {

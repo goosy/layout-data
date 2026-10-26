@@ -104,7 +104,8 @@ The types are named after the layout: `Pump_Tags` and `Pump_Ldata` for the layou
 The specification and design documents are in [doc/](doc/spec.md) (English, `*.md`; the Chinese primary version is `*.zh-cn.md`):
 
 - [Specification](doc/spec.md): goals, scope and data block requirements
-- [Data object interface](doc/spec-data-api.md): `Ldata`, `Ltag`, change events and the layout description format
+- [Layouts](doc/spec-layout.md): the description format, registration, the layout object and type declarations
+- [Data object interface](doc/spec-data-api.md): `Ldata`, `Ltag` and change events
 - [Design](doc/design.md): how it is implemented
 
 ## Development

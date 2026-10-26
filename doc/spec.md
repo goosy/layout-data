@@ -17,7 +17,7 @@ Out of scope: device communication, scheduling, business rules and logging. The 
 
 | Term | Meaning |
 | --- | --- |
-| Description | The layout description in full: the root key `layouts` maps layout names to layout definitions, and every other root key is a fragment (§6.1 of [spec-data-api.md](spec-data-api.md)). It takes one of two forms with the same structure: a description file (YAML 1.2), given by its path, or a description object in code |
+| Description | The layout description in full: the root key `layouts` maps layout names to layout definitions, and every other root key is a fragment (§2 of [spec-layout.md](spec-layout.md)). It takes one of two forms with the same structure: a description file (YAML 1.2), given by its path, or a description object in code |
 | Layout definition | The entry list of one layout in a description, under its layout name |
 | Fragment | A named entry list of a description, which entries reference by name |
 | Layout | The fixed format of a data block: name, type, bit offset and initial value of every tag. Registered from a layout definition, immutable once registered; the public `Layout` object |
@@ -29,8 +29,8 @@ Out of scope: device communication, scheduling, business rules and logging. The 
 
 - **Fixed layout**: every tag has a definite type, byte offset and bit number.
 - **Valid layout**: a layout must obey the rules below. An invalid layout is a programming error, and validation reports all violations:
-  - layout names are identifiers of JavaScript (see §6.3 of [spec-data-api.md](spec-data-api.md));
-  - tag names are identifiers (letters, digits and `_`, not starting with a digit), unique within an ldata, and not reserved names (see §2.10 and §6.2 of [spec-data-api.md](spec-data-api.md));
+  - layout names are identifiers of JavaScript (see §4 of [spec-layout.md](spec-layout.md));
+  - tag names are identifiers (letters, digits and `_`, not starting with a digit), unique within an ldata, and not reserved names (see §2.10 of [spec-data-api.md](spec-data-api.md) and §3 of [spec-layout.md](spec-layout.md));
   - the bit length of a tag matches its type; multi-byte types (Int, UInt, Word, DInt, UDInt, DWord, Real) start at an even byte, single-byte types (Byte, SInt, USInt) start at a whole byte, a Bool may be at any bit;
   - the byte ranges of non-Bool tags do not overlap;
   - each bit belongs to at most one Bool tag;
@@ -48,7 +48,7 @@ Out of scope: device communication, scheduling, business rules and logging. The 
 
 ## 4. Layout description
 
-Layouts are given by descriptions, as YAML 1.2 description files or as description objects in code; see §6 of [spec-data-api.md](spec-data-api.md).
+Layouts are given by descriptions, as YAML 1.2 description files or as description objects in code; see [spec-layout.md](spec-layout.md).
 
 ## 5. Distribution
 
@@ -64,12 +64,12 @@ The entry `layout-data` exports:
 | Export | Description |
 | --- | --- |
 | `Ldata`, `Ltag` | The data object and the tag handle (§2 and §3 of [spec-data-api.md](spec-data-api.md)); an ldata is created by the `create_ldata` of its layout, and `Ldata` cannot be constructed with `new` |
-| `register_layout` | Register the layouts of descriptions, description files or description objects (also for items given in code), once per process; register first, then get a layout by name and create ldata from it (§6 of [spec-data-api.md](spec-data-api.md)) |
-| `get_layout` | Look up a registered layout by name (§6.4 of [spec-data-api.md](spec-data-api.md)); a layout has the methods `create_ldata` and `io_index_table` (§6.6), and `Layout` is exported as a type only |
-| `render_types` | Generates TypeScript declarations from registered layouts |
+| `register_layout` | Register the layouts of descriptions, description files or description objects (also for items given in code), once per process; register first, then get a layout by name and create ldata from it ([spec-layout.md](spec-layout.md)) |
+| `get_layout` | Look up a registered layout by name (§5 of [spec-layout.md](spec-layout.md)); a layout has the methods `create_ldata` and `io_index_table` (§7 of the same), and `Layout` is exported as a type only |
+| `render_types` | Generates TypeScript declarations from registered layouts (§8 of [spec-layout.md](spec-layout.md)) |
 
 ## 7. Documents
 
-- The Chinese documents are the primary ones: [spec.zh-cn.md](spec.zh-cn.md), [spec-data-api.zh-cn.md](spec-data-api.zh-cn.md), [design.zh-cn.md](design.zh-cn.md);
+- The Chinese documents are the primary ones: [spec.zh-cn.md](spec.zh-cn.md), [spec-layout.zh-cn.md](spec-layout.zh-cn.md) (layouts: descriptions, registration, the layout object, type declarations), [spec-data-api.zh-cn.md](spec-data-api.zh-cn.md) (data objects: Ldata, Ltag, events), [design.zh-cn.md](design.zh-cn.md);
 - This directory holds the English versions, which correspond to them; update both when the specification changes;
 - For a quick start see [../README.md](../README.md).

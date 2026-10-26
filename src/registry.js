@@ -30,7 +30,7 @@ export function register(name, entry) {
 }
 
 /**
- * The registered layout of a name (doc/spec-data-api.md §6.4).
+ * The registered layout of a name (doc/spec-layout.md §5).
  *
  * @param {string} name
  * @returns {Layout}
