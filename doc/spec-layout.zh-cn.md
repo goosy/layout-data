@@ -82,10 +82,10 @@ get_scope("lib_a").get_layout("Pump");                            // 在别处�
 登记域（`Layout_Scope`）是布局名的分隔单位，让基于 layout-data 的库能自带并自己注册布局，应用可以在同一进程里组合多个这样的库。
 
 - 每个登记域有自己的布局和片段：布局名和片段名只在登记域内唯一，一个登记域的布局只能引用本登记域的片段，不同登记域里的同名布局、同名片段互不冲突；
-- **没有默认登记域。** 布局只能注册到显式创建的登记域里，应用也要创建自己的登记域；包不提供全局的注册、取得布局和类型生成，它们都是登记域的方法；
+- **布局只注册到显式创建的登记域里。** 库和应用都创建自己的登记域，注册和取得布局都通过登记域的方法；
 - `create_scope(name)` 创建登记域。登记域名和布局名一样必须是 JavaScript 的标识符（§4），所以不含 `.`；包名这类含 `@`、`/`、`-` 的字符串不能直接用作登记域名。登记域名在进程内唯一，由创建它的库或应用选择；不是字符串时抛出 `TypeError`，不是标识符时抛出 `Error`，已被别的登记域使用时抛出 `Error`（`a scope is already named X`）。登记域创建后一直存在，不能删除；
 - `get_scope(name)` 返回已创建的那个登记域，没有这个名字的登记域时返回 `undefined`，所以也可以用来判断登记域是否存在；
-- 登记域的成员：只读的 `name`，即登记域名；`register_layout(descriptions)`，注册布局（§5.2）；`get_layout(name)`，按布局名（不带登记域名）取得本登记域的布局；`render_types(options)`，为本登记域的全部布局生成类型声明（§8）。登记域对象是冻结的：任何模块都能按名取得它，但不能替换它的方法和属性，修改抛出 `TypeError`。`Layout_Scope` 只作为类型导出，登记域只由 `create_scope` 产生；
+- 登记域的成员：只读的 `name`，即登记域名；`register_layout(descriptions)`，注册布局（§5.2）；`get_layout(name)`，按布局名（不带登记域名）取得本登记域的布局。登记域对象是冻结的：任何模块都能按名取得它，但不能替换它的方法和属性，修改抛出 `TypeError`。`Layout_Scope` 只作为类型导出，登记域只由 `create_scope` 产生；
 - 布局的 `scope` 是它所属的登记域（§7）。错误信息写成 `登记域名.布局名` 来指出布局，例如 `unknown layout lib_a.Pump`、`lib_a.Pump: changes do not settle after 16 rounds`；布局名本身仍是 `Pump`；
 - 谁可以向哪个登记域注册，本包不作规定：任何取得登记域的一方都能向它注册，冲突只由"每个登记域只注册一次"保证（§5.2），第二次注册总是报错。库要防止自己的布局被别人决定，就在创建登记域时立即注册，例如在模块顶层创建后紧接着注册，此前别的代码取不到这个登记域；库也可以把登记域留给使用方注册，例如让使用方在库的描述之外补充自己的布局。库与使用方如何交互，由库自行约定。
 
@@ -147,13 +147,44 @@ const data = scope.get_layout("Pump").create_ldata("pump_1");
 
 ## 8. 供编辑器使用的类型声明
 
-`scope.render_types(options)` 为登记域的全部布局返回一份 TypeScript 声明文件（`.d.ts`）的文本，让编辑器能补全数据块的 tag。它是构建程序时用的辅助：布局注册之后，程序把文本写到代码旁边的文件里，例如 `layout_types.d.ts`。声明只供编辑器读取类型，所以总是为整个登记域生成，不能只为部分布局生成，多出来的类型无害。
+类型声明让编辑器能补全数据块的 tag。生成它是开发时的事：布局改动后由开发脚本或命令行运行一次，把文本写到代码旁边的文件里，例如 `layout_types.d.ts`；应用运行时用不到它。所以它不在运行时入口 `layout-data` 里，而由开发期入口 `layout-data/dev` 提供，这个入口同时是命令行工具 `layout-types`（§8.1）。
+
+`render_types(descriptions, options)`（从 `layout-data/dev` 导入）由描述生成一份 TypeScript 声明文件（`.d.ts`）的文本。生成类型只需要描述：`descriptions` 与 `register_layout` 接受的相同（§5.2），即描述文件的路径、描述对象，或它们的列表；函数在内部创建登记域并注册这些描述，为其中的全部布局生成文本。声明只供编辑器读取类型，所以总是为全部布局生成，不能只为部分布局生成，多出来的类型无害。描述不合法时抛出与 `register_layout` 相同的带 `errors` 的 `Error`。
 
 - 每个布局生成 `<布局>_Tags` 和 `<布局>_Ldata`：前者是接口，每个 tag 一个属性（Bool 是 `boolean`，其余类型都是 `number`；`comment` 成为该属性的文档注释），后者是 `Ldata & <布局>_Tags`；
 - 布局名原样使用，大小写不变：布局 `Pump` 生成 `Pump_Tags` 和 `Pump_Ldata`，`my_block` 生成 `my_block_Tags`，`Pump_Station` 生成 `Pump_Station_Tags`。大小写风格由调用者决定，建议用 `Snake_Pascal_Case`，也就是本包类型名的风格，库不强制。它就是 `scope.get_layout("Pump")` 里写的名字，同一登记域里名字不同的两个布局不会生成同名的类型；
 - 不同登记域的同名布局生成同名的类型，所以每个登记域生成到自己的文件，由 import 路径区分，例如库的 `lib_a/layout_types.d.ts` 和应用的 `layout_types.d.ts` 各有一个 `Pump_Ldata`；
 - 布局名和 tag 名都是标识符（§3、§4），所以原样作为类型名的一部分和属性名。注释里的 `*/` 会被转义，所以生成的文本总是合法的声明文件；
-- `options.source` 在文本的头部注释里写出布局文件的名字，省略时头部只说明这是生成的文本。`options.ldata_module` 是文本导入 `Ldata` 的模块说明符，相对于输出文件，默认是 `"layout-data"`。两个选项以及 `options` 参数本身都可以省略。
+- 文本固定写 `import type { Ldata } from "layout-data";`：`"layout-data"` 是本包的名字，不是一个位置，本包不替调用方决定怎样组织模块。类型在开发时生成，开发者的项目依赖本包，生成的声明由这个项目的编辑器读取，所以它总能解析；
+- `options.scope` 是登记域名，只用于头部注释给出的示例（`get_scope("<登记域>")`），默认 `app`，应当写应用里实际使用的登记域名。它也是内部创建的登记域的名字，不合法时抛出与 `create_scope` 相同的异常（§5.1）；
+- `options.source` 是头部注释写出的来源。省略时，描述全是文件路径则写这些文件名（以 `, ` 连接），否则头部只说明这是生成的文本。`options` 参数本身可以省略。
+
+在开发脚本里使用函数入口：
+
+```js
+import { writeFileSync } from "node:fs";
+import { render_types } from "layout-data/dev";
+
+writeFileSync("layout_types.d.ts", render_types("pump.yaml", { scope: "app" }));
+```
+
+### 8.1 命令行工具 `layout-types`
+
+```
+layout-types <描述文件...> [--scope <登记域名>] [-o|--out <输出文件>]
+```
+
+命令行只解析参数，再调用 `render_types`：
+
+- 位置参数是描述文件，至少一个，即 `descriptions`；
+- `--scope` 即 `options.scope`，默认 `app`；
+- `-o`/`--out` 是输出文件，省略时写到标准输出；
+- `-h`/`--help` 显示用法，包括版本要求；
+- 参数不对、描述不合法时，在标准错误输出写出原因（描述不合法时列出每一条错误），退出码非 0，不写输出文件。
+
+命令行只能处理描述文件。布局在代码里以描述对象给出时，用函数入口写开发脚本。
+
+命令行要求 Node.js >= 24.2（判断入口用 `import.meta.main`）。这只约束生成类型的开发环境：运行时入口和函数入口仍是 Node.js >= 20.11。在更早的 Node.js 上运行命令行时，它不生成任何东西，在标准错误输出说明所需的版本、当前的版本，以及可以改用函数入口，退出码非 0。
 
 怎样使用这些类型。`scope.get_layout("Pump").create_ldata("pump_1")` 的类型是 `Ldata`：`create_ldata` 的声明不能随布局返回不同的类型，所以值的类型要手工指定一次。在 JavaScript 里用 JSDoc 类型转换就够了，编辑器能据此补全 tag；文件开启检查（`checkJs` 或 `// @ts-check`）时，还能指出拼错的 tag 和类型不对的值：
 
@@ -177,3 +208,4 @@ pump.pressure = 1.5;   // 会补全，且知道它是数字
 | `scope.get_layout` 的名字在该登记域中未登记 | `Error`（`unknown layout X.Y`，§5.2） |
 | 布局不合法、tag 名是保留名（[spec-data-api.zh-cn.md](spec-data-api.zh-cn.md) §2.10） | `scope.register_layout` 抛出带 `errors` 的 `Error`，什么都不登记（§5.2） |
 | `scope.register_layout` 在该登记域成功登记之后再次调用 | `Error`，第一次登记的布局保持不变（§5.2） |
+| `layout-data/dev` 的 `render_types` 的描述不合法，或 `options.scope` 不是合法的登记域名 | 与 `scope.register_layout`、`create_scope` 相同（§8） |

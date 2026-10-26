@@ -7,7 +7,14 @@
 		".": {
 			"types": "./dist/types/index.d.ts",
 			"default": "./src/index.js"
+		},
+		"./dev": {
+			"types": "./dist/types/dev.d.ts",
+			"default": "./src/dev.js"
 		}
+	},
+	"bin": {
+		"layout-types": "./src/dev.js"
 	},
 	"files": [
 		"src",

@@ -9,6 +9,7 @@ import {
 	type Tag_Item, type Include_Item, type Layout_Description,
 	type Registered_Layouts, type Endian, type Tag_Type, type Layout_Scope,
 } from "layout-data";
+import { render_types } from "layout-data/dev";
 
 type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends (<T>() => T extends B ? 1 : 2) ? true : false;
 function assert_type<_T extends true>() {}
@@ -29,8 +30,6 @@ create_scope(1);
 void (await import("layout-data")).register_layout;
 // @ts-expect-error a layout is got from its scope
 void (await import("layout-data")).get_layout;
-// @ts-expect-error the types are rendered by a scope
-void (await import("layout-data")).render_types;
 
 // registering layouts: a description file, a description object, or a list of them
 const compiled: Registered_Layouts = scope.register_layout({ layouts: {} });
@@ -258,12 +257,23 @@ tag?.load(bytes);
 // @ts-expect-error the entry functions are not exported
 void (await import("layout-data")).load_entry;
 
-// type rendering: all the layouts of a scope
-const text: string = scope.render_types({ source: "layout.yaml", ldata_module: "layout-data" });
-scope.render_types();
-scope.render_types({ source: "layout.yaml" });
-scope.render_types({ ldata_module: "../src/index.js" });
+// type rendering: from descriptions, in the development entry
+const text: string = render_types("layout.yaml", { scope: "app", source: "layout.yaml" });
+render_types("layout.yaml");
+render_types({ layouts: {} });
+render_types(["common.yaml", { layouts: {} }], { scope: "app" });
+assert_type<Equal<Parameters<typeof render_types>[0], string | Layout_Description | Array<string | Layout_Description>>>();
+// @ts-expect-error a scope is not a description
+render_types(scope);
 // @ts-expect-error the source is a string
-scope.render_types({ source: 1 });
+render_types("layout.yaml", { source: 1 });
+// @ts-expect-error the scope is a name
+render_types("layout.yaml", { scope: 1 });
+// @ts-expect-error the module of Ldata is not an option
+render_types("layout.yaml", { ldata_module: "layout-data" });
+// @ts-expect-error the types are rendered by the development entry, not by a scope
+void scope.render_types;
+// @ts-expect-error the run-time entry does not render types
+void (await import("layout-data")).render_types;
 
 export { bytes, table, text };

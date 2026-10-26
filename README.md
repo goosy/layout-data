@@ -13,7 +13,7 @@ A data block is a fixed-layout `Buffer` (big-endian inside). The layout is descr
 - **Immediate detection and transactions**: events fire when a write returns; `transaction(fn)` makes a group of writes one whole, with its events emitted together at the end and its writes undone if `fn` fails.
 - **Device byte order**: `BE`, `LE`, `BEBS`, `LEBS` conversion per tag (`load_tag` / `store_tag`), or by a byte index table for a whole block (`io_index_table` of a layout).
 - **Scopes**: layout names are separated by scopes, so a library can register its own layouts and an application can combine several such libraries.
-- **TypeScript types**: declarations are generated from JSDoc, and `render_types` of a scope generates per-layout interfaces for editor completion.
+- **TypeScript types**: declarations are generated from JSDoc, and the development entry `layout-data/dev` (also the command `layout-types`) generates per-layout interfaces for editor completion.
 
 ## Install
 
@@ -76,12 +76,14 @@ pump.transaction(() => {
 | Export | Purpose |
 | --- | --- |
 | `Ldata`, `Ltag` | The data object and the tag handle; an ldata is created by `layout.create_ldata(name)`, never with `new Ldata` |
-| `create_scope(name)` | Create a scope of layout names. A scope has `register_layout(descriptions)`, which registers the layouts of descriptions, description files or description objects (a path, an object, or a list of them), once per scope; `get_layout(name)`, which looks up a registered layout by name; and `render_types(options)`, which generates TypeScript interfaces for its layouts, for editor completion (see below) |
+| `create_scope(name)` | Create a scope of layout names. A scope has `register_layout(descriptions)`, which registers the layouts of descriptions, description files or description objects (a path, an object, or a list of them), once per scope; and `get_layout(name)`, which looks up a registered layout by name |
 | `get_scope(name)` | Get a created scope by its name, `undefined` when there is none |
+
+The development entry `layout-data/dev` exports `render_types(descriptions, options)`, which generates TypeScript interfaces for the layouts of descriptions, for editor completion (see below). It is not needed at run time.
 
 A layout has `create_ldata(name)` and `io_index_table(endian)`, the byte index table for exchanging a whole block with a device (per-tag conversion is `load_tag` / `store_tag` of `Ldata`), and `scope`, the scope it belongs to.
 
-There is no default scope. A library built on layout-data creates a scope of its own and, to keep its layouts from being decided by others, registers in it right away, at the top level of its module:
+A library built on layout-data creates a scope of its own and, to keep its layouts from being decided by others, registers in it right away, at the top level of its module:
 
 ```js
 // lib_a/index.js
@@ -95,16 +97,27 @@ The application gets it with `get_scope("lib_a")` or from the export of the libr
 
 ## Editor completion
 
-`scope.get_layout("Pump").create_ldata("pump_1")` is typed `Ldata`. To have the tags of the layout completed, generate the types of the layouts of the scope once, write them to a file beside your code, and name the type of the value with a JSDoc cast:
+`scope.get_layout("Pump").create_ldata("pump_1")` is typed `Ldata`. To have the tags of the layout completed, generate the types of the layouts once during development (again after the layouts change), write them to a file beside your code, and name the type of the value with a JSDoc cast.
+
+With the command line tool (requires Node.js >= 24.2; only the development environment needs it):
+
+```bash
+pnpm exec layout-types pump.yaml --scope app -o layout_types.d.ts
+```
+
+Or in a development script, which also works with layouts given in code (Node.js >= 20.11):
 
 ```js
 import { writeFileSync } from "node:fs";
-import { create_scope } from "layout-data";
+import { render_types } from "layout-data/dev";
 
-const scope = create_scope("app");
-scope.register_layout("pump.yaml");
-writeFileSync("layout_types.d.ts", scope.render_types({ source: "pump.yaml" }));
+// descriptions as for register_layout; scope is the name used in the header comment
+writeFileSync("layout_types.d.ts", render_types("pump.yaml", { scope: "app" }));
 ```
+
+The generated file imports `Ldata` from `"layout-data"`, which your project has as a (development) dependency; how you bundle the run-time code does not matter.
+
+Then:
 
 ```js
 const pump = /** @type {import("./layout_types.js").Pump_Ldata} */ (scope.get_layout("Pump").create_ldata("pump_1"));

@@ -1,9 +1,8 @@
 // Scopes of layout names (doc/spec-layout.md §5.1): every scope holds its own
-// layouts and fragments and registers them once. There is no default scope.
+// layouts and fragments and registers them once.
 import { register_descriptions } from "./layout.js";
 import { add_scope, find_scope, layouts_of } from "./registry.js";
 import { IDENTIFIER } from "./structure.js";
-import { render_types } from "./types.js";
 
 /** @import { Layout, Layout_Description, Registered_Layouts } from "./typedefs.js" */
 
@@ -69,19 +68,6 @@ export class Layout_Scope {
 		const layout = layouts_of(this).get(name);
 		if (!layout) throw new Error(`unknown layout ${this.#name}.${name}`);
 		return layout;
-	}
-
-	/**
-	 * Renders a TypeScript declaration file for all the layouts of this scope,
-	 * for editor completion of the tags (doc/spec-layout.md §8).
-	 *
-	 * @param {object} [options]
-	 * @param {string} [options.source] - The layout file, named in the header; the header names none when it is omitted.
-	 * @param {string} [options.ldata_module] - Module specifier of Ldata, relative to the output file; "layout-data" by default.
-	 * @returns {string}
-	 */
-	render_types(options) {
-		return render_types(this.#name, [...layouts_of(this).values()], options);
 	}
 }
 

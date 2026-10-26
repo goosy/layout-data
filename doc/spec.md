@@ -21,7 +21,7 @@ Out of scope: device communication, scheduling, business rules and logging. The 
 | Layout definition | The entry list of one layout in a description, under its layout name |
 | Fragment | A named entry list of a description, which entries reference by name |
 | Layout | The fixed format of a data block: name, type, bit offset and initial value of every tag. Registered from a layout definition, immutable once registered; the public `Layout` object |
-| Scope | The unit that separates layout names, the public `Layout_Scope` object: every scope has its own layouts and fragments and registers once, and layout and fragment names are unique only within a scope. There is no default scope: layouts are registered only in a scope created explicitly (§5.1 of [spec-layout.md](spec-layout.md)) |
+| Scope | The unit that separates layout names, the public `Layout_Scope` object: every scope has its own layouts and fragments and registers once, and layout and fragment names are unique only within a scope. Layouts are registered only in a scope created explicitly (§5.1 of [spec-layout.md](spec-layout.md)) |
 | Ldata / ldata | Ldata is the class of data objects, an ldata is an instance: a block of data allocated for a layout, stored big-endian internally |
 | Ltag | The interface of one named tag of an ldata |
 | Combined word | A Word made of several Bools, sharing its data with its bits |
@@ -53,9 +53,10 @@ Layouts are given by descriptions, as YAML 1.2 description files or as descripti
 
 ## 5. Distribution
 
-- Published as an ES module library with the entry `layout-data`. `yaml` is a run-time dependency installed with it;
+- Published as an ES module library with the run-time entry `layout-data`. `yaml` is a run-time dependency installed with it;
+- The development entry `layout-data/dev` renders the type declarations, and the same file is the command line tool `layout-types` (the `bin` of `package.json`); see §8 of [spec-layout.md](spec-layout.md);
 - Type declarations are generated from the JSDoc of the source (`src/typedefs.js` and the comments of the functions are the only source). They are emitted to `dist/types` by the build; no hand-written `.d.ts`;
-- Node.js >= 20.11;
+- Node.js >= 20.11; the command line tool `layout-types` requires Node.js >= 24.2, which binds only the development environment that renders the types;
 - License: MPL-2.0 (see `LICENSE`). The library may be used as a component of products under any license; modifications to its files must be published under MPL-2.0, and copyright notices must be kept. The name "layout-data" is not covered by the license (MPL-2.0 §2.3).
 
 ## 6. Public interface at a glance
@@ -65,8 +66,14 @@ The entry `layout-data` exports:
 | Export | Description |
 | --- | --- |
 | `Ldata`, `Ltag` | The data object and the tag handle (§2 and §3 of [spec-data-api.md](spec-data-api.md)); an ldata is created by the `create_ldata` of its layout, and `Ldata` cannot be constructed with `new` |
-| `create_scope` | Create a scope (§5.1 of [spec-layout.md](spec-layout.md)). `register_layout` of the scope registers the layouts of descriptions, description files or description objects (also for items given in code), once per scope; its `get_layout` looks up a registered layout by name, and ldata is created from the layout; its `render_types` generates TypeScript declarations for the layouts of the scope (§8 of the same). `Layout_Scope` is exported as a type only |
+| `create_scope` | Create a scope (§5.1 of [spec-layout.md](spec-layout.md)). `register_layout` of the scope registers the layouts of descriptions, description files or description objects (also for items given in code), once per scope; its `get_layout` looks up a registered layout by name, and ldata is created from the layout. `Layout_Scope` is exported as a type only |
 | `get_scope` | Get a created scope by its name, `undefined` when there is none (§5.1 of [spec-layout.md](spec-layout.md)) |
+
+The development entry `layout-data/dev` exports:
+
+| Export | Description |
+| --- | --- |
+| `render_types` | `render_types(descriptions, options)` renders, from descriptions (what `register_layout` takes), the text of the TypeScript declarations of all their layouts, for editor completion (§8 of [spec-layout.md](spec-layout.md)); the command line tool `layout-types` does the same (§8.1 of the same) |
 
 A layout has the methods `create_ldata` and `io_index_table` (§7 of [spec-layout.md](spec-layout.md)), and `Layout` is exported as a type only.
 
