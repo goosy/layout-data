@@ -4,12 +4,42 @@
 
 ## 1. 形式
 
-描述有结构相同的两种形式：
+描述是**描述对象**，即代码中的 §2 结构（§6）。同一结构也可以写成 YAML 1.2 文本，放在**描述文件**里或写在代码里；运行时入口 `layout-data` 把这样的文本变成描述对象（§1.1）。
 
-- **描述文件**：YAML 1.2 文件，按路径给出；
-- **描述对象**：代码中的同一结构（§6）。
+描述对象交给登记域的 `register_layout` 注册（[spec-layout.zh-cn.md](spec-layout.zh-cn.md) §3）。一次注册可以给出多份描述，它们合并后一起处理（§4）。
 
-描述交给登记域的 `register_layout` 注册（[spec-layout.zh-cn.md](spec-layout.zh-cn.md) §3）。一次注册可以给出多份描述，它们合并后一起处理（§4）。
+### 1.1 读取 YAML
+
+```js
+import { create_scope, yaml, yaml_file } from "layout-data";
+
+create_scope("app").register_layout([
+  yaml_file`common.yaml`,
+  yaml`
+layouts: [Pump]
+item_tables:
+  Pump:
+    - { includes: common_head, offset: 0 }
+    - { name: id, type: UInt, offset: 16 }
+`,
+]);
+```
+
+- `yaml` 把 YAML 1.2 文本解析成描述对象。它是模板字面量的标签，``yaml`...` ``，也可以用文本普通调用，`yaml(text)`；
+- `yaml_file` 读取一个描述文件并解析成描述对象。它也是标签，``yaml_file`pump.yaml` ``，也可以用路径字符串或 `file:` URL 普通调用，`yaml_file(new URL("./pump.yaml", import.meta.url))`。相对路径按当前工作目录解析。一次调用读一个文件：多个文件就是多次调用，由调用方放进一个列表；
+- 作为标签时，两者取模板的原始文本，与 `String.raw` 相同：反斜杠按原样保留，所以 Windows 路径和 YAML 双引号字符串的转义原样到达文件系统和 YAML 解析器。插值按字符串放进文本；
+- 所以模板里的文本按 YAML 解释，不按 JavaScript 解释：`\t`、`\n` 这样的转义只在 YAML 的双引号字符串里表示制表符、换行。单引号字符串和不加引号的标量按原样保留反斜杠，也不报错，所以在 JavaScript 字符串里看起来一样的写法，在这里得到的是另一个值：
+
+  ```js
+  yaml`comment: "tab\tdone"`  // { comment: "tab<TAB>done" }，制表符
+  yaml`comment: 'tab\tdone'`  // { comment: "tab\\tdone" }，反斜杠和 t
+  yaml`comment: tab\tdone`    // { comment: "tab\\tdone" }，反斜杠和 t
+  ```
+
+  用字符串普通调用时，`yaml(text)` 拿到的是 JavaScript 已经处理过转义的文本，与任何字符串相同；
+- 读取或解析错误在调用时抛出，是 `errors` 属性列出各项错误的 `Error`，与注册的错误相同：`yaml` 的标题是 `invalid YAML text`，`yaml_file` 的是 `invalid description file <路径>`。其他类型的参数抛出 `TypeError`；
+- 读取时不检查结构：根不是映射以及 §5 的其他违规由注册报告；
+- `yaml_file` 返回的描述对象记得它的文件，所以注册的错误（§5.1）和生成的类型的头部（[spec-layout.zh-cn.md](spec-layout.zh-cn.md) §5）用路径称呼它。只有返回的那个对象带着它：副本，例如 `{ ...description }`，不带。
 
 ## 2. 结构
 
@@ -93,7 +123,7 @@ item_tables:
 - 合并后的 `layouts` 至少有一个名字，且名字互不重复：同一份描述中重复，或不同描述中重复，都是违规，不做去重；
 - `layouts` 列出的名字必须是 JavaScript 的标识符（任何文字的字母、数字、`_` 和 `$`，不以数字开头），因为布局名是类型名的一部分（[spec-layout.zh-cn.md](spec-layout.zh-cn.md) §5）；
 - `layouts` 列出的名字和条目引用的条目表名都必须在 `item_tables` 中有对应的条目表，且它是条目列表，不是列表时是违规；
-- 遍历到的条目表在两份描述中都有定义时是违规，错误写出这两份描述（描述文件用路径，描述对象用它在列表中的位置，如 `layout description #2`）；不做覆盖；
+- 遍历到的条目表在两份描述中都有定义时是违规，错误写出这两份描述（由 `yaml_file` 读取的描述用它的文件路径，其他描述用它在列表中的位置，如 `layout description #2`）；不做覆盖；
 - 条目表之间不得循环引用；
 - 每个条目是 §3 的 tag 条目或包含条目之一，字段符合 §3 的规定。
 
@@ -111,7 +141,7 @@ item_tables:
 
 ## 6. 在代码中给出描述
 
-描述不一定要有文件。把一个描述对象，即 §2 的结构，交给登记域的 `register_layout`：
+描述不一定要有文件。把一个描述对象，即 §2 的结构，交给登记域的 `register_layout`，写成对象，或用 `yaml` 写成 YAML 文本（§1.1）：
 
 ```js
 const scope = create_scope("app");

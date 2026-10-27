@@ -7,9 +7,9 @@
 流程是**创建登记域，注册一次，取得布局，由布局创建**：先描述布局（[spec-description.zh-cn.md](spec-description.zh-cn.md)），创建一个登记域，用它的一次 `register_layout` 调用把布局全部注册（§3），此后用登记域的 `get_layout("Pump")` 按名取得布局（§4），再用它的 `create_ldata("pump_1")` 创建数据块（[spec-data-api.zh-cn.md](spec-data-api.zh-cn.md) §2.1）。使用方需要知道的是怎样把布局表达成 YAML 结构、它叫什么名字、注册在哪个登记域；它是否经过编译、编译成什么，不属于这个流程。
 
 ```js
-import { create_scope, get_scope } from "layout-data";
+import { create_scope, get_scope, yaml_file } from "layout-data";
 const scope = create_scope("lib_a");                              // 创建登记域
-scope.register_layout(["common.yaml", "pump.yaml"]);              // 每个登记域注册一次
+scope.register_layout([yaml_file`common.yaml`, yaml_file`pump.yaml`]); // 每个登记域注册一次
 const pump = scope.get_layout("Pump").create_ldata("pump_1");     // 此后取得布局，由它创建
 get_scope("lib_a").get_layout("Pump");                            // 在别处按登记域名取得登记域
 ```
@@ -30,9 +30,9 @@ get_scope("lib_a").get_layout("Pump");                            // 在别处�
 
 `scope.register_layout(descriptions)` 把各描述中的布局注册到登记域。布局注册之后才能使用。描述怎样合并、遍历和校验，见 [spec-description.zh-cn.md](spec-description.zh-cn.md) §4、§5。
 
-- `descriptions`：一份描述，或描述的列表；每份描述是**字符串，即描述文件的路径**，或是**对象，即描述对象**（[spec-description.zh-cn.md](spec-description.zh-cn.md) §1）。列表里不能再放列表，空列表是错误。字符串永远是路径，不是 YAML 文本；
+- `descriptions`：一个描述对象，或描述对象的列表（[spec-description.zh-cn.md](spec-description.zh-cn.md) §1）。列表里不能再放列表，空列表是错误。注册不读文件，也不解析 YAML：字符串不是描述，描述文件用 `yaml_file` 读取，YAML 文本用 `yaml` 解析（[spec-description.zh-cn.md](spec-description.zh-cn.md) §1.1）；
 - **每个登记域只能调用一次。** 布局一次注册，登记域的布局和条目表就是同时全部已知的，不依赖调用的先后。第二次调用抛出 `Error`（`register_layout can be called only once in scope X`），第一次登记的布局保持不变。失败的调用什么都不登记，也不算用掉这一次，所以可以在同一登记域重试，例如自己的文件不合法时改用备用描述；
-- 有任何违规时抛出 `Error`，其 `errors` 属性列出所有描述的全部违规项，且什么都不登记：这些描述要么全部登记，要么都不登记。读不到的文件和 YAML 语法错误也是违规。错误的标题写出登记域名（如 `invalid layout descriptions of scope lib_a`）；布局和条目表方面的错误写出布局或条目表的名字，不写文件名；
+- 有任何违规时抛出 `Error`，其 `errors` 属性列出所有描述的全部违规项，且什么都不登记：这些描述要么全部登记，要么都不登记。错误的标题写出登记域名（如 `invalid layout descriptions of scope lib_a`）；布局和条目表方面的错误写出布局或条目表的名字，不写文件名；
 - 传入的描述不会被修改；
 - 返回值：`{ layouts, tables }`。`layouts` 是按名字索引的已登记布局，与 `scope.get_layout(name)` 返回的相同；`tables` 是遍历到的全部条目表（[spec-description.zh-cn.md](spec-description.zh-cn.md) §4）。上面的流程不需要它们；
 - 布局在进程的整个生命期内保持登记。`scope.get_layout(name)` 返回已登记的布局（§4），名字未登记时抛出 `unknown layout X.Y`（X 是登记域名，Y 是布局名）；
@@ -71,15 +71,16 @@ get_scope("lib_a").get_layout("Pump");                            // 在别处�
 - 布局名和 tag 名都是标识符（[spec-description.zh-cn.md](spec-description.zh-cn.md) §5），所以原样作为类型名的一部分和属性名。注释里的 `*/` 会被转义，所以生成的文本总是合法的声明文件；
 - 文本固定写 `import type { Ldata } from "layout-data";`：`"layout-data"` 是本包的名字，不是一个位置，本包不替调用方决定怎样组织模块。类型在开发时生成，开发者的项目依赖本包，生成的声明由这个项目的编辑器读取，所以它总能解析；
 - `options.scope` 是登记域名，只用于头部注释给出的示例（`get_scope("<登记域>")`），默认 `app`，应当写应用里实际使用的登记域名。它也是内部创建的登记域的名字，不合法时抛出与 `create_scope` 相同的异常（§2）；
-- `options.source` 是头部注释写出的来源。省略时，描述全是文件路径则写这些文件名（以 `, ` 连接），否则头部只说明这是生成的文本。`options` 参数本身可以省略。
+- `options.source` 是头部注释写出的来源。省略时，描述全由 `yaml_file` 读取则写这些文件名（以 `, ` 连接，[spec-description.zh-cn.md](spec-description.zh-cn.md) §1.1），否则头部只说明这是生成的文本。`options` 参数本身可以省略。
 
 在开发脚本里使用函数入口：
 
 ```js
 import { writeFileSync } from "node:fs";
+import { yaml_file } from "layout-data";
 import { render_types } from "layout-data/dev";
 
-writeFileSync("layout_types.d.ts", render_types("pump.yaml", { scope: "app" }));
+writeFileSync("layout_types.d.ts", render_types(yaml_file`pump.yaml`, { scope: "app" }));
 ```
 
 ### 5.1 命令行工具 `layout-types`
@@ -90,7 +91,7 @@ layout-types <描述文件...> [--scope <登记域名>] [-o|--out <输出文件>
 
 命令行只解析参数，再调用 `render_types`：
 
-- 位置参数是描述文件，至少一个，即 `descriptions`；
+- 位置参数是描述文件，至少一个。每个文件用 `yaml_file` 读取，得到的描述对象即 `descriptions`；有文件不能读取或解析时，一并报告全部这些文件的错误，什么都不生成；
 - `--scope` 即 `options.scope`，默认 `app`；
 - `-o`/`--out` 是输出文件，省略时写到标准输出；
 - `-h`/`--help` 显示用法，包括版本要求；
@@ -113,12 +114,14 @@ pump.pressure = 1.5;   // 会补全，且知道它是数字
 
 ## 6. 错误
 
-登记域的创建、布局的注册、查找和类型声明生成出错时抛出异常：
+YAML 的读取、登记域的创建、布局的注册、查找和类型声明生成出错时抛出异常：
 
 | 情况 | 异常 |
 | --- | --- |
 | `create_scope` 的登记域名不是字符串 | `TypeError`（§2） |
 | `create_scope` 的登记域名不是标识符，或已被别的登记域使用 | `Error`（§2） |
+| `yaml` 或 `yaml_file` 的文本不是合法的 YAML，或文件不能读取 | 带 `errors` 的 `Error`（[spec-description.zh-cn.md](spec-description.zh-cn.md) §1.1） |
+| `yaml` 或 `yaml_file` 的参数不是文本、路径或 `file:` URL | `TypeError`（[spec-description.zh-cn.md](spec-description.zh-cn.md) §1.1） |
 | `scope.get_layout` 的名字在该登记域中未登记 | `Error`（`unknown layout X.Y`，§3） |
 | 描述不合法（[spec-description.zh-cn.md](spec-description.zh-cn.md) §5），包括 tag 名是保留名 | `scope.register_layout` 抛出带 `errors` 的 `Error`，什么都不登记（§3） |
 | `scope.register_layout` 在该登记域成功登记之后再次调用 | `Error`，第一次登记的布局保持不变（§3） |

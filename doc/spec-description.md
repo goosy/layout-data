@@ -6,12 +6,42 @@
 
 ## 1. Forms
 
-A description takes one of two forms with the same structure:
+A description is a **description object**, the structure of §2 in code (§6). The same structure may be written as YAML 1.2 text, in a **description file** or in code; the run-time entry `layout-data` turns such text into a description object (§1.1).
 
-- a **description file**: a YAML 1.2 file, given by its path;
-- a **description object**: the same structure in code (§6).
+Description objects are registered by `register_layout` of a scope ([spec-layout.md](spec-layout.md) §3). One registration may give several descriptions; they are merged and processed together (§4).
 
-Descriptions are registered by `register_layout` of a scope ([spec-layout.md](spec-layout.md) §3). One registration may give several descriptions; they are merged and processed together (§4).
+### 1.1 Reading YAML
+
+```js
+import { create_scope, yaml, yaml_file } from "layout-data";
+
+create_scope("app").register_layout([
+  yaml_file`common.yaml`,
+  yaml`
+layouts: [Pump]
+item_tables:
+  Pump:
+    - { includes: common_head, offset: 0 }
+    - { name: id, type: UInt, offset: 16 }
+`,
+]);
+```
+
+- `yaml` parses YAML 1.2 text into a description object. It is the tag of a template literal, ``yaml`...` ``, or is called with the text, `yaml(text)`;
+- `yaml_file` reads a description file and parses it into a description object. It is a tag too, ``yaml_file`pump.yaml` ``, or is called with a path string or a `file:` URL, `yaml_file(new URL("./pump.yaml", import.meta.url))`. A relative path is resolved against the current working directory. One call reads one file: several files are several calls, put in one list by the caller;
+- As tags, both take the raw text of the template, as `String.raw` does: a backslash is kept as written, so a Windows path and the escapes of YAML double-quoted strings reach the file system and the YAML parser unchanged. An interpolated value is put into the text as a string;
+- So the text of a template is YAML, not JavaScript: an escape such as `\t` or `\n` means a tab or a line break only inside a YAML double-quoted string. A single-quoted string and an unquoted scalar keep the backslash as written, with no error, so a value that looks the same in a JavaScript string is a different one here:
+
+  ```js
+  yaml`comment: "tab\tdone"`  // { comment: "tab<TAB>done" }, a tab
+  yaml`comment: 'tab\tdone'`  // { comment: "tab\\tdone" }, a backslash and t
+  yaml`comment: tab\tdone`    // { comment: "tab\\tdone" }, a backslash and t
+  ```
+
+  Called with a string, `yaml(text)` gets the text after JavaScript has read its escapes, as any string;
+- A read or parse error is thrown at the call, as an `Error` whose `errors` property lists the errors, like the errors of registration: the title is `invalid YAML text` for `yaml` and `invalid description file <path>` for `yaml_file`. An argument of another type throws `TypeError`;
+- The structure is not checked when reading: a root that is not a mapping and the other violations of §5 are reported by registration;
+- The description object returned by `yaml_file` remembers its file, so that the errors of registration (§5.1) and the header of rendered types ([spec-layout.md](spec-layout.md) §5) name it by its path. Only the object returned carries it: a copy, for example `{ ...description }`, does not.
 
 ## 2. Structure
 
@@ -95,7 +125,7 @@ Breaking any of the rules below is a violation. Registration reports all the vio
 - The merged `layouts` has at least one name, and no name twice: a name repeated in one description or in different descriptions is a violation, and is not deduplicated;
 - The names listed by `layouts` are identifiers of JavaScript (letters of any script, digits, `_` and `$`, not starting with a digit), as a layout name is part of type names ([spec-layout.md](spec-layout.md) §5);
 - The names listed by `layouts` and the item table names referenced by items have an item table in `item_tables`, which is a list of items; a value that is not a list is a violation;
-- An item table reached that is defined in two descriptions is a violation naming both (a description file by its path, a description object by its position in the list, `layout description #2`); nothing is overridden;
+- An item table reached that is defined in two descriptions is a violation naming both (a description read by `yaml_file` by the path of its file, any other by its position in the list, `layout description #2`); nothing is overridden;
 - Item tables do not reference each other in a cycle;
 - Every item is either a tag item or an include item of §3, with the fields §3 requires.
 
@@ -113,7 +143,7 @@ An item table only referenced and not listed in `layouts` is not validated as a 
 
 ## 6. Giving a description in code
 
-A description needs no file. Give a description object, the structure of §2, to `register_layout` of a scope:
+A description needs no file. Give a description object, the structure of §2, to `register_layout` of a scope, written as an object or as YAML text with `yaml` (§1.1):
 
 ```js
 const scope = create_scope("app");

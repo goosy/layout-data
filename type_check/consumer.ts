@@ -4,7 +4,7 @@
 import { Buffer } from "node:buffer";
 import {
 	Ldata, Ltag,
-	create_scope, get_scope,
+	create_scope, get_scope, yaml, yaml_file,
 	type Layout, type Layout_Tag, type Layout_Item,
 	type Tag_Item, type Include_Item, type Layout_Description,
 	type Registered_Layouts, type Endian, type Tag_Type, type Layout_Scope,
@@ -31,12 +31,21 @@ void (await import("layout-data")).register_layout;
 // @ts-expect-error a layout is got from its scope
 void (await import("layout-data")).get_layout;
 
-// registering layouts: a description file, a description object, or a list of them
+// registering layouts: a description object or a list of them, read from YAML by yaml and yaml_file
 const compiled: Registered_Layouts = scope.register_layout({ layouts: [] });
-const from_file: Registered_Layouts = scope.register_layout("layout.yaml");
-const from_list: Registered_Layouts = scope.register_layout(["common.yaml", "pump.yaml", { layouts: [] }]);
-const descriptions: Array<string | Layout_Description> = ["a.yaml", { layouts: [] }];
+const from_file: Registered_Layouts = scope.register_layout(yaml_file`layout.yaml`);
+const from_list: Registered_Layouts = scope.register_layout([yaml_file("common.yaml"), yaml_file(new URL("file:///pump.yaml")), yaml`layouts: []`, { layouts: [] }]);
+const descriptions: Layout_Description[] = [yaml("layouts: []"), { layouts: [] }];
 scope.register_layout(descriptions);
+assert_type<Equal<ReturnType<typeof yaml_file>, Layout_Description>>();
+// @ts-expect-error a path is read by yaml_file, not by register_layout
+scope.register_layout("layout.yaml");
+// @ts-expect-error a list of descriptions holds no path
+scope.register_layout(["common.yaml", { layouts: [] }]);
+// @ts-expect-error yaml takes text
+yaml(1);
+// @ts-expect-error yaml_file takes a path or a URL
+yaml_file(1);
 void from_list;
 const layout: Layout = compiled.layouts.any;
 const item_table: Layout_Item[] = from_file.tables.any;
@@ -265,19 +274,21 @@ tag?.load(bytes);
 void (await import("layout-data")).load_entry;
 
 // type rendering: from descriptions, in the development entry
-const text: string = render_types("layout.yaml", { scope: "app", source: "layout.yaml" });
-render_types("layout.yaml");
+const text: string = render_types(yaml_file`layout.yaml`, { scope: "app", source: "layout.yaml" });
+render_types(yaml_file("layout.yaml"));
 render_types({ layouts: [] });
-render_types(["common.yaml", { layouts: [] }], { scope: "app" });
-assert_type<Equal<Parameters<typeof render_types>[0], string | Layout_Description | Array<string | Layout_Description>>>();
+render_types([yaml_file("common.yaml"), { layouts: [] }], { scope: "app" });
+assert_type<Equal<Parameters<typeof render_types>[0], Layout_Description | Layout_Description[]>>();
+// @ts-expect-error a path is read by yaml_file
+render_types("layout.yaml");
 // @ts-expect-error a scope is not a description
 render_types(scope);
 // @ts-expect-error the source is a string
-render_types("layout.yaml", { source: 1 });
+render_types({ layouts: [] }, { source: 1 });
 // @ts-expect-error the scope is a name
-render_types("layout.yaml", { scope: 1 });
+render_types({ layouts: [] }, { scope: 1 });
 // @ts-expect-error the module of Ldata is not an option
-render_types("layout.yaml", { ldata_module: "layout-data" });
+render_types({ layouts: [] }, { ldata_module: "layout-data" });
 // @ts-expect-error the types are rendered by the development entry, not by a scope
 void scope.render_types;
 // @ts-expect-error the run-time entry does not render types

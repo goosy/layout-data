@@ -6,9 +6,11 @@
 // the Node.js of the run-time entry.
 import { realpathSync, writeFileSync } from "node:fs";
 import { parseArgs } from "node:util";
+import { ORIGIN } from "./internal.js";
 import { layouts_of } from "./registry.js";
 import { create_scope } from "./scope.js";
 import { render_declarations } from "./types.js";
+import { yaml_file } from "./yaml.js";
 
 /** @import { Layout_Description } from "./typedefs.js" */
 
@@ -36,10 +38,10 @@ given in code, call render_types of "layout-data/dev" in a script instead.`;
  * are registered in a scope created here. The text imports `Ldata` from
  * "layout-data", which the project rendering the types depends on.
  *
- * @param {string | Layout_Description | Array<string | Layout_Description>} descriptions - As for register_layout: the path of a YAML description file, a description object, or a list of them.
+ * @param {Layout_Description | Layout_Description[]} descriptions - As for register_layout: a description object or a list of them.
  * @param {object} [options]
  * @param {string} [options.scope] - The scope name used in the example of the header comment; "app" by default.
- * @param {string} [options.source] - The source named in the header; by default the description files, when all the descriptions are paths.
+ * @param {string} [options.source] - The source named in the header; by default the description files, when yaml_file read all the descriptions.
  * @returns {string}
  * @throws {Error} With `errors`, as register_layout, when the descriptions are not valid.
  * @throws {TypeError | Error} As create_scope, when the scope name is not valid.
@@ -48,7 +50,9 @@ export function render_types(descriptions, { scope: scope_name = "app", source }
 	const scope = create_scope(scope_name);
 	scope.register_layout(descriptions);
 	const list = Array.isArray(descriptions) ? descriptions : [descriptions];
-	if (source === undefined && list.every((description) => typeof description === "string")) source = list.join(", ");
+	if (source === undefined && list.every((description) => typeof description?.[ORIGIN] === "string")) {
+		source = list.map((description) => description[ORIGIN]).join(", ");
+	}
 	return render_declarations(scope.name, [...layouts_of(scope).values()], { source });
 }
 
@@ -85,17 +89,35 @@ function run_cli(args) {
 		process.stderr.write(`layout-types: no description file is given\n\n${USAGE}\n`);
 		return 1;
 	}
+	const descriptions = [];
+	const read_errors = [];
+	for (const file of files) {
+		try {
+			descriptions.push(yaml_file(file));
+		} catch (error) {
+			read_errors.push(...(Array.isArray(error.errors) ? error.errors : [error.message]));
+		}
+	}
+	if (read_errors.length > 0) {
+		process.stderr.write(`layout-types: invalid description files\n${list_errors(read_errors)}`);
+		return 1;
+	}
 	let text;
 	try {
-		text = render_types(files, { scope: values.scope });
+		text = render_types(descriptions, { scope: values.scope });
 	} catch (error) {
-		const details = Array.isArray(error.errors) ? error.errors.map((item) => `  ${item}\n`).join("") : "";
+		const details = Array.isArray(error.errors) ? list_errors(error.errors) : "";
 		process.stderr.write(`layout-types: ${error.message}\n${details}`);
 		return 1;
 	}
 	if (values.out === undefined) process.stdout.write(text);
 	else writeFileSync(values.out, text);
 	return 0;
+}
+
+/** The errors one per indented line, for the standard error. */
+function list_errors(errors) {
+	return errors.map((item) => `  ${item}\n`).join("");
 }
 
 /** Whether this file is the script node was started with, found without import.meta.main. */
@@ -116,8 +138,9 @@ if (is_main === true) {
 The command line needs it only to render the types, not to run the application.
 Run it with a newer Node.js, or call render_types of "layout-data/dev" in a script:
 
+  import { yaml_file } from "layout-data";
   import { render_types } from "layout-data/dev";
-  process.stdout.write(render_types("pump.yaml", { scope: "app" }));
+  process.stdout.write(render_types(yaml_file("pump.yaml"), { scope: "app" }));
 `);
 	process.exitCode = 1;
 }

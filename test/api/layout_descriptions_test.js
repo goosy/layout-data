@@ -4,15 +4,20 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test, { describe } from "node:test";
 import { fresh_scope, register } from "./share.js";
+import { yaml_file } from "./target.js";
 
 const dir = mkdtempSync(join(tmpdir(), "tlms-descriptions-"));
 let seq = 0;
 
+/** Writes a description file and returns its path. */
 function write(text) {
 	const file = join(dir, `description_${++seq}.yaml`);
 	writeFileSync(file, text);
 	return file;
 }
+
+/** Writes a description file and reads it with yaml_file. */
+const read = (text) => yaml_file(write(text));
 
 function errors_of(descriptions, scope = fresh_scope()) {
 	try {
@@ -61,19 +66,19 @@ describe("6.3 layout names", () => {
 
 describe("6.4 several descriptions", () => {
 	test("a layout names an item table of another file, whatever the order of the files", () => {
-		const common = write(COMMON);
-		const pump = write(layout_text("Ms_Pump"));
-		const valve = write(layout_text("Ms_Valve"));
+		const common = read(COMMON);
+		const pump = read(layout_text("Ms_Pump"));
+		const valve = read(layout_text("Ms_Valve"));
 		const { scope, layouts, tables } = register([pump, valve, common]);
 		assert.deepEqual(Object.keys(layouts), ["Ms_Pump", "Ms_Valve"]);
 		assert.equal(tables.status_bits.length, 2);
 		assert.equal(scope.get_layout("Ms_Pump").create_ldata("p").status, 0x0001);
-		const other = register([write(COMMON.replace("status_bits", "bits")), write(layout_text("Ms_Late").replace("status_bits", "bits"))]);
+		const other = register([read(COMMON.replace("status_bits", "bits")), read(layout_text("Ms_Late").replace("status_bits", "bits"))]);
 		assert.equal(other.layouts.Ms_Late.create_ldata("t").status, 0x0001);
 	});
 
-	test("description files and description objects can be mixed", () => {
-		const common = write(COMMON);
+	test("descriptions read from files and description objects can be mixed", () => {
+		const common = read(COMMON);
 		const { scope, layouts } = register([
 			common,
 			{ layouts: ["Ms_Mixed"], item_tables: { Ms_Mixed: [{ name: "w", type: "Word", offset: 0, coupling: "status_bits" }] } },
@@ -88,7 +93,7 @@ describe("6.4 several descriptions", () => {
 	});
 
 	test("the layouts key is optional in a description, but some description must list a layout", () => {
-		assert.deepEqual(errors_of([write(COMMON)]), ["no layout is listed in the descriptions"]);
+		assert.deepEqual(errors_of([read(COMMON)]), ["no layout is listed in the descriptions"]);
 		assert.deepEqual(errors_of([{}]), ["no layout is listed in the descriptions"]);
 		assert.deepEqual(errors_of([{ item_tables: { Ms_Unlisted: ITEMS } }]), ["no layout is listed in the descriptions"]);
 		assert.deepEqual(errors_of([{ layouts: [] }]), ["no layout is listed in the descriptions"]);
@@ -109,14 +114,26 @@ describe("6.4 several descriptions", () => {
 		const first = write(layout_text("Ms_Dup") + COMMON.replace("item_tables:\n", ""));
 		const second = write(COMMON.replace("run", "go"));
 		const scope = fresh_scope();
-		const errors = errors_of([first, second], scope);
+		const errors = errors_of([yaml_file(first), yaml_file(second)], scope);
 		assert.deepEqual(errors, [`item table status_bits is defined in ${first} and ${second}`]);
 		assert.throws(() => scope.get_layout("Ms_Dup"), /unknown layout Test_\d+\.Ms_Dup/);
 	});
 
-	test("objects are named by their position in the list", () => {
+	test("objects are named by their position in the list, also a copy of a description read from a file", () => {
 		const errors = errors_of([listing(["Ms_O"]), { item_tables: { Ms_O: ITEMS } }]);
 		assert.deepEqual(errors, ["item table Ms_O is defined in layout description #1 and layout description #2"]);
+		const copy = { ...read(COMMON) };
+		const file = write(COMMON);
+		const word = [{ name: "w", type: "Word", offset: 0, coupling: "status_bits" }];
+		assert.deepEqual(errors_of([copy, listing(["Ms_C"], word), yaml_file(file)]), [
+			`item table status_bits is defined in layout description #1 and ${file}`,
+		]);
+	});
+
+	test("a string is not a description: a description file is read with yaml_file", () => {
+		assert.deepEqual(errors_of(["pump.yaml", listing(["Ms_Str"])]), [
+			"layout description #1: a description is an object, not a string; read a description file with yaml_file, parse YAML text with yaml",
+		]);
 	});
 
 	test("only the item tables reached from layouts are read, compared and returned", () => {
@@ -166,7 +183,7 @@ describe("6.4 several descriptions", () => {
 	test("every problem of every description is reported, and nothing is registered", () => {
 		const scope = fresh_scope();
 		const errors = errors_of([
-			join(dir, "absent.yaml"),
+			"absent.yaml",
 			{ layouts: { Ms_Map: ITEMS } },
 			42,
 			[["nested"]],

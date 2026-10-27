@@ -16,3 +16,12 @@ export const LDATA_FACTORY = Symbol("ldata factory");
  * Defined by layout.js, read by the tests.
  */
 export const COMPILED = Symbol("compiled");
+
+/**
+ * The property `description[ORIGIN]`: the path of the description file a
+ * description object was read from, not enumerable. Defined by yaml.js, read
+ * by layout.js and dev.js. A registered Symbol, not a Symbol of its own: each
+ * entry is bundled with its own copy of yaml.js, and an object read by the
+ * yaml_file of one entry is given to the other.
+ */
+export const ORIGIN = Symbol.for("layout-data.origin");

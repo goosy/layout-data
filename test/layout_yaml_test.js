@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test, { describe } from "node:test";
 import { COMPILED } from "../src/internal.js";
+import { yaml_file } from "../src/yaml.js";
 import { fresh_scope, register } from "./share.js";
 
 const dir = mkdtempSync(join(tmpdir(), "tlms-layout-"));
@@ -17,9 +18,9 @@ function write(yaml) {
 	return file;
 }
 
-/** Writes a YAML layout file and registers it in a scope of its own. */
+/** Writes a YAML layout file, reads it and registers it in a scope of its own. */
 function compile(yaml, scope = fresh_scope()) {
-	return scope.register_layout(write(yaml));
+	return scope.register_layout(yaml_file(write(yaml)));
 }
 
 function errors_of(yaml, scope = fresh_scope()) {
@@ -152,7 +153,7 @@ item_tables:
 	});
 
 	test("a missing file and a YAML syntax error are reported in errors", () => {
-		assert.throws(() => register(join(dir, "missing.yaml")), (error) => {
+		assert.throws(() => register(yaml_file(join(dir, "missing.yaml"))), (error) => {
 			assert.match(error.errors[0], /ENOENT/);
 			return true;
 		});
@@ -177,7 +178,7 @@ describe("parsed layout description", () => {
 	test("errors name the scope", () => {
 		const file = write("layouts: [Bad]\nitem_tables:\n  Bad:\n    - { name: a, type: Byte, offset: 0, init_value: 0 }\n");
 		const scope = fresh_scope();
-		assert.throws(() => scope.register_layout(file), new RegExp(`invalid layout descriptions of scope ${scope.name}:`));
+		assert.throws(() => scope.register_layout(yaml_file(file)), new RegExp(`invalid layout descriptions of scope ${scope.name}:`));
 		assert.throws(() => scope.register_layout({ x: [] }), new RegExp(`invalid layout descriptions of scope ${scope.name}:`));
 	});
 });
