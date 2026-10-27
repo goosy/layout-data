@@ -4,7 +4,7 @@ opened: 2026-10-26T19:26:00.817Z
 closed: 2026-10-26T19:45:28.000Z
 title: 类型生成移到开发期入口，由描述生成，不再定位 Ldata 的模块
 status: fixed       # open | accepted | fixed | rejected | wontfix
-fixed_in: []        # commit IDs, backfilled at version commit time
+fixed_in: [24bde95]  # commit IDs, backfilled at version commit time
 labels: []
 remote:
 problem_title: 问题描述

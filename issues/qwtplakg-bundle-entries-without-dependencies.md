@@ -4,7 +4,7 @@ opened: 2026-10-27T03:45:49.281Z
 closed: 2026-10-27T04:30:16.000Z
 title: 恢复打包：两个入口各自打包，排除依赖
 status: fixed       # open | accepted | fixed | rejected | wontfix
-fixed_in: []        # commit IDs, backfilled at version commit time
+fixed_in: [672c0ec]  # commit IDs, backfilled at version commit time
 labels: []
 remote:
 problem_title: 问题描述
