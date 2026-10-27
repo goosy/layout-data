@@ -1,5 +1,29 @@
 # Changelog
 
+## v0.5.0
+
+### Breaking changes
+
+- **A description lists its layouts and holds item tables under `item_tables`.** The root key `layouts` is now a list of layout names, and the root key `item_tables` maps names to item tables, lists of items; every layout is an item table. An item table may be a layout and be referenced by `includes` or `coupling` as well. The package uses no other root key, so they may hold anything and never collide with an item table name. Only the item tables reached from `layouts` are read, validated and returned; the result of `register_layout` gives them as `tables`, which replaces `fragments`. The description format has its own specification, doc/spec-description.md. Migration: `layouts: { Pump: [...] }` becomes `layouts: [Pump]` plus `item_tables: { Pump: [...] }`, fragments move under `item_tables`, and `fragments` of the result becomes `tables`.
+- **Registration takes description objects only.** `register_layout` and `render_types` of `layout-data/dev` take a description object or a list of them, and read no file. Migration: `register_layout("pump.yaml")` becomes ``register_layout(yaml_file`pump.yaml`)``, and the same for `render_types`.
+
+### Features
+
+- **`yaml` and `yaml_file` make description objects from YAML 1.2.** Both are exported by `layout-data` and work as template tags or as plain calls. `yaml` parses YAML text written in code. `yaml_file` reads a description file given by a path or a `file:` URL, for example `yaml_file(new URL("./pump.yaml", import.meta.url))` in a library. As tags they take the raw text, so escapes are those of YAML double-quoted strings. A read or parse error throws at the call, as an `Error` with `errors`. A description read by `yaml_file` remembers its file, so registration errors and the header of rendered types still name it.
+- The command `layout-types` reports the read and parse errors of all its files together.
+
+## v0.5.0 (中文)
+
+### 破坏性变更
+
+- **描述列出它的布局，条目表放在 `item_tables` 下。** 根键 `layouts` 现在是布局名的列表，根键 `item_tables` 是名字到条目表（条目的列表）的映射，每个布局是一个条目表。条目表可以既是布局，又被 `includes` 或 `coupling` 引用。本包不使用其他根键，所以它们可以存放任何内容，也不会与条目表名冲突。只有从 `layouts` 出发能到达的条目表才会被读取、校验和返回；`register_layout` 的结果以 `tables` 给出它们，取代 `fragments`。描述格式有了单独的规范 doc/spec-description.md。迁移：`layouts: { Pump: [...] }` 改为 `layouts: [Pump]` 加上 `item_tables: { Pump: [...] }`，原来的片段移入 `item_tables`，结果中的 `fragments` 改为 `tables`。
+- **注册只接受描述对象。** `register_layout` 和 `layout-data/dev` 的 `render_types` 接受一个描述对象或描述对象的列表，不再读取文件。迁移：`register_layout("pump.yaml")` 改为 ``register_layout(yaml_file`pump.yaml`)``，`render_types` 同样修改。
+
+### 功能
+
+- **`yaml` 和 `yaml_file` 由 YAML 1.2 生成描述对象。** 二者由 `layout-data` 导出，既可以作模板标签，也可以普通调用。`yaml` 解析写在代码中的 YAML 文本。`yaml_file` 读取由路径或 `file:` URL 指定的描述文件，例如在库中写 `yaml_file(new URL("./pump.yaml", import.meta.url))`。作为标签时它们取原始文本，所以转义是 YAML 双引号字符串的转义。读取或解析出错时在调用处抛出带 `errors` 的 `Error`。由 `yaml_file` 读取的描述记得它的文件，所以注册错误和生成类型的文件头仍然写出文件名。
+- 命令 `layout-types` 把所有文件的读取和解析错误一起报告。
+
 ## v0.4.1
 
 ### Development entry

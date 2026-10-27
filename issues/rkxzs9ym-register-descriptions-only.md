@@ -4,7 +4,7 @@ opened: 2026-10-27T06:08:40.924Z
 closed: 2026-10-27T09:43:54.782Z
 title: register_layout accepts only description objects, and YAML text and files are parsed by the exported yaml and yaml_file
 status: fixed       # open | accepted | fixed | rejected | wontfix
-fixed_in: []        # commit IDs, backfilled at version commit time
+fixed_in: [15f0f55]  # commit IDs, backfilled at version commit time
 labels: []
 remote:
 problem_title:
