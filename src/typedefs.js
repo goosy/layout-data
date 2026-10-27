@@ -1,5 +1,5 @@
 // Type definitions of the public interface. This file has no run-time content:
-// the JSDoc here is the source of the generated declaration file (dist/types).
+// the JSDoc here is the source of the generated declaration files (dist).
 // The types of the internals are in internal_types.js and are not exported.
 
 /**

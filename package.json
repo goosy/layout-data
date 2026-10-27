@@ -5,20 +5,19 @@
 	"type": "module",
 	"exports": {
 		".": {
-			"types": "./dist/types/index.d.ts",
-			"default": "./src/index.js"
+			"types": "./dist/index.d.ts",
+			"default": "./dist/index.js"
 		},
 		"./dev": {
-			"types": "./dist/types/dev.d.ts",
-			"default": "./src/dev.js"
+			"types": "./dist/dev.d.ts",
+			"default": "./dist/dev.js"
 		}
 	},
 	"bin": {
-		"layout-types": "./src/dev.js"
+		"layout-types": "./dist/dev.js"
 	},
 	"files": [
-		"src",
-		"dist/types",
+		"dist",
 		"CHANGELOG.md"
 	],
 	"engines": {
@@ -33,13 +32,15 @@
 		"@types/node": "^20.19.43",
 		"eslint": "10.12.0",
 		"globals": "17.13.0",
+		"rolldown": "1.2.15",
 		"typescript": "^5.9.3"
 	},
 	"scripts": {
-		"build": "tsc -p tsconfig.json",
+		"build": "rolldown -c && tsc -p tsconfig.json",
 		"typecheck": "tsc -p tsconfig.json --noEmit false --emitDeclarationOnly --outDir .local/types",
-		"test": "pnpm build && pnpm test:types && node --test",
+		"test": "pnpm build && pnpm test:types && node --test && pnpm test:dist",
 		"test:types": "tsc -p type_check",
+		"test:dist": "node --test --import ./test/api/dist.js \"test/api/*_test.js\"",
 		"lint": "eslint .",
 		"bench": "node bench/change_detection_bench.js",
 		"prepare": "pnpm build"

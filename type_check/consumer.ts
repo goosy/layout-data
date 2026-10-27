@@ -1,4 +1,4 @@
-// Type tests of the generated declarations (dist/types), checked by `pnpm test:types`.
+// Type tests of the generated declarations (dist), checked by `pnpm test:types`.
 // The package is imported by its own name, so the "types" of package.json is what
 // is tested. A `@ts-expect-error` that no longer fails is an error too.
 import { Buffer } from "node:buffer";

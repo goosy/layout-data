@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import test, { describe } from "node:test";
-import { Ldata } from "../src/Ldata.js";
-import { Ltag } from "../src/Ltag.js";
+import { Ldata, Ltag } from "./target.js";
 import { register_items } from "./share.js";
 
 // bytes: id 0-1, status 2-3 (fault is bit 0 of byte 2, run is bit 0 of byte 3), pressure 4-7
@@ -296,7 +295,7 @@ describe("2.8 the access event", () => {
 	});
 
 	test("the global tracer is gone from the package", async () => {
-		const api = await import("../src/index.js");
+		const { index: api } = await import("./target.js");
 		assert.equal("set_access_tracer" in api, false);
 	});
 });
