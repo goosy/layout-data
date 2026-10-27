@@ -31,7 +31,7 @@ function scope_name() {
 
 /** A description object of the entries, [name, items] each. */
 function description_of(entries) {
-	return { layouts: Object.fromEntries(entries) };
+	return { layouts: entries.map(([name]) => name), item_tables: Object.fromEntries(entries) };
 }
 
 /** The text of the layouts of the entries, in a scope of its own. */
@@ -81,8 +81,8 @@ export type Ty_Basic_Ldata = Ldata & Ty_Basic_Tags;
 		try {
 			const a = join(dir, "a.yaml");
 			const b = join(dir, "b.yaml");
-			writeFileSync(a, "layouts:\n  Ty_File_A:\n    - { name: x, type: UInt, offset: 0 }\n");
-			writeFileSync(b, "layouts:\n  Ty_File_B:\n    - { name: y, type: UInt, offset: 0 }\n");
+			writeFileSync(a, "layouts: [Ty_File_A]\nitem_tables:\n  Ty_File_A:\n    - { name: x, type: UInt, offset: 0 }\n");
+			writeFileSync(b, "layouts: [Ty_File_B]\nitem_tables:\n  Ty_File_B:\n    - { name: y, type: UInt, offset: 0 }\n");
 			const one = render_types(a, { scope: scope_name() });
 			assert.ok(one.startsWith(`// Generated from ${a}. Do not edit.\n`), one);
 			const both = render_types([a, b], { scope: scope_name() });
@@ -106,7 +106,7 @@ export type Ty_Basic_Ldata = Ldata & Ty_Basic_Tags;
 
 	test("invalid descriptions and scope names throw as register_layout and create_scope do", () => {
 		assert.throws(() => render_of([["Ty_Invalid", [{ name: "a", type: "Nope", offset: 0 }]]]), (error) => Array.isArray(error.errors) && error.errors.length > 0);
-		assert.throws(() => render_types({ layouts: {} }, { scope: scope_name() }), Error);
+		assert.throws(() => render_types({ layouts: [] }, { scope: scope_name() }), Error);
 		assert.throws(() => render_types(description_of([["Ty_Bad_Scope", ITEMS]]), { scope: "not-an-identifier" }), /not an identifier/);
 		assert.throws(() => render_types(description_of([["Ty_Bad_Scope", ITEMS]]), { scope: 1 }), TypeError);
 	});
@@ -172,9 +172,9 @@ describe("8.1 the command line layout-types", { skip: typeof import.meta.main !=
 	after(() => rmSync(dir, { recursive: true, force: true }));
 
 	const pump_file = join(dir, "pump.yaml");
-	writeFileSync(pump_file, "layouts:\n  Pump:\n    - { name: pressure, type: Real, offset: 0, init_value: 0, comment: Outlet pressure }\n    - { name: run, type: Bool, offset: 32 }\n    - { name: pad, type: Byte, offset: 40 }\n    - { name: id, type: UInt, offset: 48 }\n");
+	writeFileSync(pump_file, "layouts: [Pump]\nitem_tables:\n  Pump:\n    - { name: pressure, type: Real, offset: 0, init_value: 0, comment: Outlet pressure }\n    - { name: run, type: Bool, offset: 32 }\n    - { name: pad, type: Byte, offset: 40 }\n    - { name: id, type: UInt, offset: 48 }\n");
 	const bad_file = join(dir, "bad.yaml");
-	writeFileSync(bad_file, "layouts:\n  Bad:\n    - { name: a, type: Nope, offset: 0 }\n    - { name: b, type: UInt, offset: 3 }\n");
+	writeFileSync(bad_file, "layouts: [Bad]\nitem_tables:\n  Bad:\n    - { name: a, type: Nope, offset: 0 }\n    - { name: b, type: UInt, offset: 3 }\n");
 
 	/** Runs the command line as a user does, with the running Node.js. */
 	function run(...args) {

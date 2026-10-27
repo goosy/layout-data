@@ -16,7 +16,7 @@ const ITEMS = () => [
 ];
 
 /** Registers one layout in a scope of its own. */
-const register = (name, items, scope = fresh_scope()) => ({ scope, ...scope.register_layout({ layouts: { [name]: items } }) });
+const register = (name, items, scope = fresh_scope()) => ({ scope, ...scope.register_layout({ layouts: [name], item_tables: { [name]: items } }) });
 
 describe("6.5 layouts given in code", () => {
 	test("registered by name, the layout is used by its name", () => {
@@ -74,7 +74,8 @@ describe("6.5 layouts given in code", () => {
 	test("all or none: a bad layout keeps the good ones of the same description unregistered", () => {
 		const scope = fresh_scope();
 		assert.throws(() => scope.register_layout({
-			layouts: {
+			layouts: ["Lc_Good", "Lc_Broken"],
+			item_tables: {
 				Lc_Good: [{ name: "a", type: "UInt", offset: 0, init_value: 0 }],
 				Lc_Broken: [{ name: "a", type: "Byte", offset: 0, init_value: 0 }],
 			},
@@ -95,13 +96,16 @@ describe("6.5 layouts given in code", () => {
 		assert.throws(() => register("Lc_String", "text"), (error) => Array.isArray(error.errors));
 	});
 
-	test("fragments may be named in the description given in code", () => {
-		const { layouts, fragments } = fresh_scope().register_layout({
-			common: [{ name: "x", type: "UInt", offset: 0, init_value: 1 }, { name: "y", type: "UInt", offset: 16, init_value: 2 }],
-			layouts: { Lc_Fragment: [{ type: "Word", offset: 32, includes: "common", name_prefix: "p_" }] },
+	test("item tables may be named in the description given in code", () => {
+		const { layouts, tables } = fresh_scope().register_layout({
+			layouts: ["Lc_Fragment"],
+			item_tables: {
+				Lc_Fragment: [{ type: "Word", offset: 32, includes: "common", name_prefix: "p_" }],
+				common: [{ name: "x", type: "UInt", offset: 0, init_value: 1 }, { name: "y", type: "UInt", offset: 16, init_value: 2 }],
+			},
 		});
 		assert.deepEqual(layouts.Lc_Fragment.items.map((item) => [item.name, item.offset]), [["p_x", 32], ["p_y", 48]]);
-		assert.equal(fragments.common.length, 2);
+		assert.equal(tables.common.length, 2);
 	});
 
 	test("the package exports create_scope and get_scope; the steps behind registration are not exported", () => {

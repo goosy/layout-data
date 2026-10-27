@@ -8,13 +8,14 @@ import { is_reserved_name } from "./reserved.js";
 
 /**
  * An identifier of JavaScript, in any script: the form of a layout name
- * (doc/spec-layout.md §4), which is also part of a type name (§8).
+ * (doc/spec-description.md §5.1), which is also part of a type name
+ * (doc/spec-layout.md §5).
  */
 export const IDENTIFIER = /^[\p{ID_Start}_$][\p{ID_Continue}$\u200C\u200D]*$/u;
 
 function add_item(data_struct, item, base_offset, name_prefix) {
 	const items = data_struct.items;
-	// every entry that is not a pure inclusion is a tag, whatever its name: duplicated
+	// every item that is not a pure inclusion is a tag, whatever its name: duplicated
 	// and invalid names are kept and reported by validate_structure
 	if (item.includes === undefined || item.name !== undefined) items.push(item);
 	if (name_prefix && typeof item.name === "string") item.name = name_prefix + item.name;
@@ -121,7 +122,7 @@ export const TYPE_BITS = {
 
 /**
  * A tag name: letters, digits and `_`, not starting with a digit, an
- * identifier in every language (doc/spec-layout.md §3).
+ * identifier in every language (doc/spec-description.md §5.2).
  */
 const TAG_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
 

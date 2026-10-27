@@ -3,49 +3,49 @@
 // The types of the internals are in internal_types.js and are not exported.
 
 /**
- * An entry of a layout description that defines a tag (doc/spec-layout.md §3).
+ * An item of an item table that defines a tag (doc/spec-description.md §3).
  *
  * @typedef {object} Tag_Item
  * @property {string} name - Tag name.
  * @property {string} type - Tag type, case-insensitive (see Tag_Type).
- * @property {number} offset - Bit offset, relative to the parent entry until expanded.
+ * @property {number} offset - Bit offset, relative to the parent item until expanded.
  * @property {number} [length] - Length in bits, filled in from the type when omitted.
  * @property {number | boolean} [init_value] - Initial value.
  * @property {string} [comment] - Description, rendered into the generated types.
  * @property {boolean} [is_combined] - Descriptive mark of a combined word; the linkage is decided by `coupling`.
- * @property {Tag_Item[] | string} [coupling] - The bits of a combined word, as an inline list or the name of a fragment.
- * @property {never} [includes] - A tag entry does not include entries.
+ * @property {Tag_Item[] | string} [coupling] - The bits of a combined word, as an inline list or the name of an item table.
+ * @property {never} [includes] - A tag item does not include items.
  */
 
 /**
- * An entry of a layout description that splices in other entries (doc/spec-layout.md §3).
+ * An item of an item table that splices in other items (doc/spec-description.md §3).
  *
  * @typedef {object} Include_Item
- * @property {Layout_Item[] | string} includes - The entries to include, as an inline list or the name of a fragment.
- * @property {number} offset - Bit offset by which the included entries are shifted as a whole.
- * @property {string} [name_prefix] - Prefix of the names of the included entries.
+ * @property {Layout_Item[] | string} includes - The items to include, as an inline list or the name of an item table.
+ * @property {number} offset - Bit offset by which the included items are shifted as a whole.
+ * @property {string} [name_prefix] - Prefix of the names of the included items.
  * @property {never} [name] - An inclusion defines no tag.
  * @property {never} [type] - An inclusion defines no tag.
  */
 
 /**
- * One entry of a layout description, as written by the user in a layout file
- * or given to register_layout (doc/spec-layout.md).
+ * One item of an item table, as written by the user in a description file
+ * or a description object (doc/spec-description.md §3).
  *
  * @typedef {Tag_Item | Include_Item} Layout_Item
  */
 
 /**
  * A description object, the form of a layout description in code (a
- * description file is the YAML form): `layouts` maps layout names to lists
- * of entries, and every other key is a fragment, a list of entries that can
- * be named (doc/spec-layout.md §2).
+ * description file is the YAML form): `layouts` lists layout names, and
+ * `item_tables` maps item table names to lists of items; other root keys may
+ * hold anything and are not read (doc/spec-description.md §2).
  *
- * @typedef {{ layouts?: Record<string, Layout_Item[]> } & Record<string, Layout_Item[] | Record<string, Layout_Item[]> | undefined>} Layout_Description
+ * @typedef {{ layouts?: string[], item_tables?: Record<string, Layout_Item[]> } & Record<string, unknown>} Layout_Description
  */
 
 /**
- * One tag of a compiled layout (doc/spec-layout.md §7), read-only:
+ * One tag of a compiled layout (doc/spec-layout.md §4), read-only:
  * `name`; `type`, as written in the description; `offset`, the absolute bit
  * offset; `length` in bits; `init_value` and `comment`, if given; `coupling`,
  * the tag names of the bits of a combined word, or of the combined words a
@@ -63,7 +63,7 @@
  */
 
 /**
- * A compiled layout (doc/spec-layout.md §7), read-only and deeply frozen:
+ * A compiled layout (doc/spec-layout.md §4), read-only and deeply frozen:
  * `name`; `scope`, the scope it is registered in; `length` in bits; `size`
  * in bytes; `items`, the tags in layout order (a combined word before its
  * bits); the methods `create_ldata(name)` and `io_index_table(endian)`. A type only: the class is not exported, and
@@ -73,7 +73,7 @@
  */
 
 /**
- * A scope of layout names (doc/spec-layout.md §5.1): read-only `name`; the
+ * A scope of layout names (doc/spec-layout.md §2): read-only `name`; the
  * methods `register_layout(descriptions)` and `get_layout(name)`. Frozen. A
  * type only: the class is not exported, and only create_scope makes a scope.
  *
@@ -91,7 +91,7 @@
  *
  * @typedef {object} Registered_Layouts
  * @property {Record<string, Layout>} layouts
- * @property {Record<string, Layout_Item[]>} fragments
+ * @property {Record<string, Layout_Item[]>} tables - Every item table reached from `layouts`, references expanded.
  */
 
 /**

@@ -25,18 +25,20 @@ pnpm add layout-data
 
 ## Usage
 
-Describe the layout (`pump.yaml`). Entries other than `layouts` are fragments that entries can reference by name. Offsets are in bits.
+Describe the layout (`pump.yaml`). `item_tables` maps names to item tables, lists of items; `layouts` lists the item tables that are layouts, and items reference other item tables by name. Other root keys are not read. Offsets are in bits.
 
 ```yaml
-status_bits:
-  - { name: run, type: Bool, offset: 8 }
-  - { name: fault, type: Bool, offset: 9, comment: Fault latch }
+layouts: [Pump]
 
-layouts:
+item_tables:
   Pump:
     - { name: id, type: UInt, offset: 0, init_value: 1 }
     - { name: status, type: Word, offset: 16, coupling: status_bits }
     - { name: pressure, type: Real, offset: 32, init_value: 0.5, comment: Outlet pressure }
+
+  status_bits:
+    - { name: run, type: Bool, offset: 8 }
+    - { name: fault, type: Bool, offset: 9, comment: Fault latch }
 ```
 
 Create a scope, register the layouts in it once, then get a layout by its name and create data blocks from it:
@@ -133,7 +135,8 @@ The types are named after the layout: `Pump_Tags` and `Pump_Ldata` for the layou
 The specification and design documents are in [doc/](doc/spec.md) (English, `*.md`; the Chinese primary version is `*.zh-cn.md`):
 
 - [Specification](doc/spec.md): goals, scope and data block requirements
-- [Layouts](doc/spec-layout.md): the description format, registration, the layout object and type declarations
+- [Descriptions](doc/spec-description.md): the description format: `layouts`, `item_tables` and items
+- [Layouts](doc/spec-layout.md): scopes, registration, the layout object and type declarations
 - [Data object interface](doc/spec-data-api.md): `Ldata`, `Ltag` and change events
 - [Design](doc/design.md): how it is implemented
 

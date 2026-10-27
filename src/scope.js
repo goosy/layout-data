@@ -1,5 +1,5 @@
-// Scopes of layout names (doc/spec-layout.md §5.1): every scope holds its own
-// layouts and fragments and registers them once.
+// Scopes of layout names (doc/spec-layout.md §2): every scope holds its own
+// layouts and item tables and registers them once.
 import { register_descriptions } from "./layout.js";
 import { add_scope, find_scope, layouts_of } from "./registry.js";
 import { IDENTIFIER } from "./structure.js";
@@ -10,9 +10,9 @@ import { IDENTIFIER } from "./structure.js";
 const CREATE_KEY = Symbol("create scope");
 
 /**
- * A scope of layout names (doc/spec-layout.md §5.1): the layouts and fragments
- * registered in it are named apart from those of other scopes. Made by
- * create_scope and frozen; the package exports the type and not the class.
+ * A scope of layout names (doc/spec-layout.md §2): the layouts and item
+ * tables registered in it are named apart from those of other scopes. Made
+ * by create_scope and frozen; the package exports the type and not the class.
  */
 export class Layout_Scope {
 	/** @type {string} */
@@ -42,7 +42,7 @@ export class Layout_Scope {
 
 	/**
 	 * Registers the layouts of the descriptions in this scope, once per scope
-	 * (doc/spec-layout.md §5.2). Nothing is registered when a description is not
+	 * (doc/spec-layout.md §3). Nothing is registered when a description is not
 	 * valid, and such a call does not use up the single call.
 	 *
 	 * @param {string | Layout_Description | Array<string | Layout_Description>} descriptions - The path of a YAML description file, a description object, or a list of them.
@@ -72,7 +72,7 @@ export class Layout_Scope {
 }
 
 /**
- * Creates a scope of layout names (doc/spec-layout.md §5.1).
+ * Creates a scope of layout names (doc/spec-layout.md §2).
  *
  * @param {string} name - The scope name: an identifier, unique in the process.
  * @returns {Layout_Scope}
@@ -86,7 +86,7 @@ export function create_scope(name) {
 }
 
 /**
- * The scope of a name (doc/spec-layout.md §5.1), undefined when no scope of
+ * The scope of a name (doc/spec-layout.md §2), undefined when no scope of
  * that name has been created.
  *
  * @param {string} name

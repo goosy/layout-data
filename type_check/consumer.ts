@@ -32,14 +32,14 @@ void (await import("layout-data")).register_layout;
 void (await import("layout-data")).get_layout;
 
 // registering layouts: a description file, a description object, or a list of them
-const compiled: Registered_Layouts = scope.register_layout({ layouts: {} });
+const compiled: Registered_Layouts = scope.register_layout({ layouts: [] });
 const from_file: Registered_Layouts = scope.register_layout("layout.yaml");
-const from_list: Registered_Layouts = scope.register_layout(["common.yaml", "pump.yaml", { layouts: {} }]);
-const descriptions: Array<string | Layout_Description> = ["a.yaml", { layouts: {} }];
+const from_list: Registered_Layouts = scope.register_layout(["common.yaml", "pump.yaml", { layouts: [] }]);
+const descriptions: Array<string | Layout_Description> = ["a.yaml", { layouts: [] }];
 scope.register_layout(descriptions);
 void from_list;
 const layout: Layout = compiled.layouts.any;
-const fragment: Layout_Item[] = from_file.fragments.any;
+const item_table: Layout_Item[] = from_file.tables.any;
 assert_type<Equal<typeof layout.size, number>>();
 assert_type<Equal<typeof layout.name, string>>();
 assert_type<Equal<typeof layout.scope, Layout_Scope>>();
@@ -53,13 +53,13 @@ void layout.tags_at_byte;
 layout.name = "x";
 // @ts-expect-error the items are read-only
 layout.items.push({ name: "a", type: "Int", offset: 0, length: 16, init_value: 0, coupling: [] });
-assert_type<Equal<typeof fragment, Layout_Item[]>>();
+assert_type<Equal<typeof item_table, Layout_Item[]>>();
 // @ts-expect-error a description is a path or a description object, not a number
 scope.register_layout(1);
 // @ts-expect-error the descriptions are required
 scope.register_layout();
 
-// the entries of a description: a tag, or an inclusion
+// the items of a description: a tag item, or an include item
 const tag_item: Tag_Item = { name: "a", type: "UInt", offset: 0, init_value: 1, comment: "first", length: 16 };
 const include_item: Include_Item = { includes: "common", offset: 16, name_prefix: "p_" };
 const combined: Tag_Item = {
@@ -73,28 +73,35 @@ const either: Layout_Item[] = [tag_item, include_item, combined, coupled_by_name
 const typed_include: Include_Item = { includes: "common", offset: 0, type: "UInt" };
 // @ts-expect-error an inclusion has no name
 const named_include: Include_Item = { includes: "common", offset: 0, name: "x" };
-// @ts-expect-error a tag does not include entries
+// @ts-expect-error a tag item does not include items
 const including_tag: Tag_Item = { name: "a", type: "UInt", offset: 0, includes: "common" };
-// @ts-expect-error the bits of a combined word are entries or a fragment name, not a list of names
+// @ts-expect-error the bits of a combined word are items or an item table name, not a list of names
 const named_bits: Tag_Item = { name: "w", type: "Word", offset: 0, coupling: ["a", "b"] };
 // @ts-expect-error a tag needs a name
 const nameless: Layout_Item = { type: "UInt", offset: 0 };
 // @ts-expect-error a tag needs an offset
 const offsetless: Layout_Item = { name: "a", type: "UInt" };
-const description: Layout_Description = { layouts: { Pump: either }, common: [tag_item] };
+const description: Layout_Description = { layouts: ["Pump"], item_tables: { Pump: either, common: [tag_item] } };
 scope.register_layout(description);
-scope.register_layout({ layouts: { Pump: [{ name: "a", type: "UInt", offset: 0 }] }, common: [{ name: "b", type: "Byte", offset: 0 }] });
-// @ts-expect-error a field of an entry is misspelled
-scope.register_layout({ layouts: { Pump: [{ name: "a", type: "UInt", offest: 0 }] } });
-// @ts-expect-error layouts maps layout names to lists of entries
-scope.register_layout({ layouts: [] });
-// @ts-expect-error a fragment is a list of entries
-scope.register_layout({ layouts: {}, common: 3 });
+scope.register_layout({
+	layouts: ["Pump"],
+	item_tables: { Pump: [{ name: "a", type: "UInt", offset: 0 }], common: [{ name: "b", type: "Byte", offset: 0 }] },
+});
+// other root keys may hold anything: they are not read
+scope.register_layout({ layouts: ["Pump"], item_tables: { Pump: either }, version: 3, settings: { port: 502 } });
+// @ts-expect-error a field of an item is misspelled
+scope.register_layout({ layouts: ["Pump"], item_tables: { Pump: [{ name: "a", type: "UInt", offest: 0 }] } });
+// @ts-expect-error layouts lists layout names
+scope.register_layout({ layouts: { Pump: either } });
+// @ts-expect-error a layout name is a string
+scope.register_layout({ layouts: [1] });
+// @ts-expect-error an item table is a list of items
+scope.register_layout({ layouts: ["Pump"], item_tables: { Pump: 3 } });
 void [typed_include, named_include, including_tag, named_bits, nameless, offsetless];
 
 // items given in code are a description, registered and then used by name
 const items: Layout_Item[] = [{ name: "a", type: "word", offset: 0, init_value: 1 }];
-const same_layout: Layout = scope.register_layout({ layouts: { s: items } }).layouts.s;
+const same_layout: Layout = scope.register_layout({ layouts: ["s"], item_tables: { s: items } }).layouts.s;
 assert_type<Equal<typeof same_layout, Layout>>();
 // @ts-expect-error the old compile names are gone
 void (await import("layout-data")).compile_layout;
@@ -260,8 +267,8 @@ void (await import("layout-data")).load_entry;
 // type rendering: from descriptions, in the development entry
 const text: string = render_types("layout.yaml", { scope: "app", source: "layout.yaml" });
 render_types("layout.yaml");
-render_types({ layouts: {} });
-render_types(["common.yaml", { layouts: {} }], { scope: "app" });
+render_types({ layouts: [] });
+render_types(["common.yaml", { layouts: [] }], { scope: "app" });
 assert_type<Equal<Parameters<typeof render_types>[0], string | Layout_Description | Array<string | Layout_Description>>>();
 // @ts-expect-error a scope is not a description
 render_types(scope);

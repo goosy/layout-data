@@ -17,5 +17,5 @@ export function register(descriptions) {
 
 /** Registers the items of one layout by name, as a user does in code, and returns the layout. */
 export function register_items(name, items) {
-	return register({ layouts: { [name]: items } }).layouts[name];
+	return register({ layouts: [name], item_tables: { [name]: items } }).layouts[name];
 }
