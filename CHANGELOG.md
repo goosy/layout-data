@@ -1,5 +1,31 @@
 # Changelog
 
+## v0.4.1
+
+### Development entry
+
+The run-time API is unchanged. Type rendering moves out of it, which breaks only code that renders the types:
+
+- **Types are rendered from descriptions in the new entry `layout-data/dev`.** `render_types(descriptions, options)` takes the descriptions that `register_layout` takes, registers them in a scope of its own and renders all their layouts; `options.scope` names the scope in the header example (`"app"` by default). The same file is the command `layout-types`, for example `pnpm exec layout-types pump.yaml --scope app -o layout_types.d.ts`. The command needs Node.js >= 24.2; an earlier Node.js gets an explanatory error. The function `render_types` and the run-time entry need only Node.js >= 20.11.
+- **`scope.render_types(options)` and the option `ldata_module` are removed.** The rendered text always imports `Ldata` from `"layout-data"`. Migration: replace `scope.render_types(options)` with `render_types(descriptions, { scope })` imported from `"layout-data/dev"`, and drop `ldata_module`.
+
+### Packaging
+
+- The two entries are bundled each on its own into `dist/index.js` and `dist/dev.js`, with `yaml` and the Node.js built-in modules left as imports. Only `dist` is published, with the declarations beside the bundles; `src` is no longer shipped. The run-time bundle contains no code of the development entry.
+
+## v0.4.1 (中文)
+
+### 开发期入口
+
+运行时 API 不变。类型生成移出运行时，只影响生成类型的代码：
+
+- **在新入口 `layout-data/dev` 中由描述生成类型。** `render_types(descriptions, options)` 接受与 `register_layout` 相同的描述，把它们登记在自己的登记域中，并生成其全部布局的类型；`options.scope` 是文件头示例中使用的登记域名（默认 `"app"`）。同一个文件也是命令 `layout-types`，例如 `pnpm exec layout-types pump.yaml --scope app -o layout_types.d.ts`。该命令需要 Node.js >= 24.2，更早的 Node.js 会得到说明原因的错误。函数 `render_types` 和运行时入口只需要 Node.js >= 20.11。
+- **移除 `scope.render_types(options)` 和选项 `ldata_module`。** 生成的文本总是从 `"layout-data"` 导入 `Ldata`。迁移：把 `scope.render_types(options)` 改为从 `"layout-data/dev"` 导入的 `render_types(descriptions, { scope })`，并去掉 `ldata_module`。
+
+### 打包
+
+- 两个入口各自打包为 `dist/index.js` 和 `dist/dev.js`，`yaml` 和 Node.js 内置模块保留为导入。只发布 `dist`，类型声明与打包文件并列；不再发布 `src`。运行时打包文件不含开发期入口的代码。
+
 ## v0.4.0
 
 ### Breaking changes

@@ -4,7 +4,7 @@ opened: 2026-10-26T19:26:00.817Z
 closed: 2026-10-26T19:45:28.000Z
 title: Move type generation to a development entry, generate from descriptions, and stop locating the module of Ldata
 status: fixed       # open | accepted | fixed | rejected | wontfix
-fixed_in: []        # commit IDs, backfilled at version commit time
+fixed_in: [086dfd5]  # commit IDs, backfilled at version commit time
 labels: []
 remote:
 problem_title:

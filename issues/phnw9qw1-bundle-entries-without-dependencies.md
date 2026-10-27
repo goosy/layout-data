@@ -4,7 +4,7 @@ opened: 2026-10-27T03:45:49.281Z
 closed: 2026-10-27T04:30:16.000Z
 title: "Restore bundling: bundle the two entries separately, excluding dependencies"
 status: fixed       # open | accepted | fixed | rejected | wontfix
-fixed_in: []        # commit IDs, backfilled at version commit time
+fixed_in: [8bbf820]  # commit IDs, backfilled at version commit time
 labels: []
 remote:
 problem_title:
