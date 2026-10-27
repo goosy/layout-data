@@ -4,7 +4,7 @@ opened: 2026-10-27T06:08:40.924Z
 closed: 2026-10-27T09:43:54.782Z
 title: register_layout 只接受描述对象，YAML 文本与文件由导出的 yaml、yaml_file 解析
 status: fixed       # open | accepted | fixed | rejected | wontfix
-fixed_in: []        # commit IDs, backfilled at version commit time
+fixed_in: [672c77d]  # commit IDs, backfilled at version commit time
 labels: []
 remote:
 problem_title: 问题描述

@@ -4,7 +4,7 @@ opened: 2026-10-27T08:08:11.934Z
 closed: 2026-10-27T08:47:31.041Z
 title: 描述结构改为 item_tables 条目表加 layouts 名称列表，只处理从 layouts 遍历到的条目表
 status: fixed       # open | accepted | fixed | rejected | wontfix
-fixed_in: []        # commit IDs, backfilled at version commit time
+fixed_in: [6078048]  # commit IDs, backfilled at version commit time
 labels: []
 remote:
 problem_title: 问题描述

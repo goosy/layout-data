@@ -1,6 +1,6 @@
 {
 	"name": "layout-data",
-	"version": "0.4.1",
+	"version": "0.5.0",
 	"description": "Structured, reactive, buffer-based data blocks with named, typed tags",
 	"type": "module",
 	"exports": {
