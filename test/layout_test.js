@@ -66,7 +66,7 @@ describe("layout validation", () => {
 		assert_error([{ name: null, type: "UInt", offset: 0, length: 16, init_value: 0 }], "name is not an identifier");
 	});
 
-	test("a tag entry without a name is reported, not dropped", () => {
+	test("a tag item without a name is reported, not dropped", () => {
 		assert_error([{ type: "UInt", offset: 0, length: 16, init_value: 0 }], "name is not an identifier");
 	});
 
@@ -258,7 +258,7 @@ describe("layout validation", () => {
 	});
 });
 
-describe("the layout object (doc/spec-layout.md §7)", () => {
+describe("the layout object (doc/spec-layout.md §4)", () => {
 	const layout = register_items("PUBLIC_SHAPE", VALID_ITEMS);
 
 	test("it exposes only name, length, size and items", () => {

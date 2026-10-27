@@ -9,7 +9,7 @@
 
 | Name | Meaning |
 | --- | --- |
-| Layout | The fixed format of a data block: name, type, bit offset and initial value of every tag, given by a layout definition in a description ([spec-layout.md](spec-layout.md)) and immutable once registered |
+| Layout | The fixed format of a data block: name, type, bit offset and initial value of every tag, given by an item table listed in `layouts` of a description ([spec-description.md](spec-description.md)) and immutable once registered |
 | Ldata / ldata | Ldata is the class of data objects, an ldata is an instance: a block of data allocated for a layout, stored big-endian internally, with access by name and change events |
 | Ltag | The interface of one named tag of an ldata: read and write its value, subscribe to its changes |
 
@@ -29,7 +29,7 @@ Units: a `length` is in bits and a `size` is in bytes, everywhere in this interf
 const data = layout.create_ldata(name);
 ```
 
-- An ldata is made by its layout: `layout.create_ldata(name)` is the only way to create one. `layout` is a registered layout object, which `get_layout(name)` of a scope returns or a registration result holds ([spec-layout.md](spec-layout.md) §5, §7); looking up by name happens only when the layout is got, so the layout object is in hand when a data block is created. Only a registered layout has the method; a copy of one (such as `{ ...layout }`) has not;
+- An ldata is made by its layout: `layout.create_ldata(name)` is the only way to create one. `layout` is a registered layout object, which `get_layout(name)` of a scope returns or a registration result holds ([spec-layout.md](spec-layout.md) §3, §4); looking up by name happens only when the layout is got, so the layout object is in hand when a data block is created. Only a registered layout has the method; a copy of one (such as `{ ...layout }`) has not;
 - `name`: the name of the ldata, used in logs and error messages. It must be a string (any string, the empty one included), otherwise `TypeError`; it is given here and cannot be changed afterwards;
 - After creation every tag equals its initial value from the layout, a tag without one is `0` (`false` for a `Bool`), and no change event is emitted;
 - `Ldata` cannot be constructed with `new`: `new Ldata(...)` throws `TypeError`, whose message gives the right usage, `layout.create_ldata(name)`; in the declarations the constructor is private, so TypeScript and a file checked with `checkJs` report it at compile time. `Ldata` is still exported, for `instanceof`, type annotations and `Ldata.on_access` / `off_access` (§2.8);
@@ -65,7 +65,7 @@ const value = data.pressure;  // read
   | Integer types (`Byte`, `SInt`, `USInt`, `Int`, `UInt`, `Word`, `DInt`, `UDInt`, `DWord`) | an integer inside the range of the type | not a number (a string, `null`, `undefined`, a boolean, an object, a bigint): `TypeError`; `NaN`, `Infinity`, a non-integer such as `1.5`, or an integer outside the range: `RangeError`; nothing is truncated or converted |
   | `Real` | any number: `NaN` and `±Infinity` are kept; a finite value is rounded to float32 | not a number: `TypeError`; a finite number whose magnitude is above the float32 maximum (about 3.4028235e38), such as `1e40`: `RangeError` |
 
-  A given `init_value` of a layout is stricter ([spec-layout.md](spec-layout.md) §3): for a `Real` it must be a finite number inside the same range.
+  A given `init_value` of a layout is stricter ([spec-description.md](spec-description.md) §3): for a `Real` it must be a finite number inside the same range.
 
 ### 2.4 Getting an Ltag
 
@@ -162,7 +162,7 @@ Ldata.on_access((data, kind, tags) => { /* every access to every ldata */ });
 Ldata.off_access(listener);
 ```
 
-`Ldata.on_access(listener)` subscribes a function that is called for the accesses to all ldatas, whichever layout they have and whenever they were created; the listener gets the ldata first, then `kind` and `tags` as above. `Ldata.off_access(listener)` cancels it, and does nothing for a function that is not subscribed. Any number of parties can subscribe, each with its own function, and none overrides another. Subscribing a function twice is one subscription. The class-level listeners live apart from the events of the instances, so `data.removeAllListeners()` does not remove them. For one access, the listeners of the instance are called first, then those of the class, and the exception rule above covers both. While no listener of either kind exists, an access pays one extra check. A tool that observes with it should remove its listener when it is done. Two scopes may each have a layout of the same name, so to group the accesses by layout, use the layout object (`data.layout`), or the scope name with the layout name (`data.layout.scope.name` and `data.layout.name`): grouping by the layout name alone mixes them up ([spec-layout.md](spec-layout.md) §7).
+`Ldata.on_access(listener)` subscribes a function that is called for the accesses to all ldatas, whichever layout they have and whenever they were created; the listener gets the ldata first, then `kind` and `tags` as above. `Ldata.off_access(listener)` cancels it, and does nothing for a function that is not subscribed. Any number of parties can subscribe, each with its own function, and none overrides another. Subscribing a function twice is one subscription. The class-level listeners live apart from the events of the instances, so `data.removeAllListeners()` does not remove them. For one access, the listeners of the instance are called first, then those of the class, and the exception rule above covers both. While no listener of either kind exists, an access pays one extra check. A tool that observes with it should remove its listener when it is done. Two scopes may each have a layout of the same name, so to group the accesses by layout, use the layout object (`data.layout`), or the scope name with the layout name (`data.layout.scope.name` and `data.layout.name`): grouping by the layout name alone mixes them up ([spec-layout.md](spec-layout.md) §4).
 
 ### 2.9 Device byte order
 
@@ -186,7 +186,7 @@ An ldata is stored big-endian internally. To exchange data with a device, conver
 
   A Bool and a single-byte tag (Byte, SInt, USInt) go by the 16-bit register they lie in: for `LE` and `BEBS` they sit in the other byte of the register, for `BE` and `LEBS` in place; a Bool changes only its own bit;
 - `load_tag` is the same as a write by name: it takes effect at once, detects, emits `change` and then `write`; inside a transaction it is handled at the commit. Put a batch of loads into a transaction (§2.6): one detection and one `write` at the commit;
-- Exchanging a whole block at once: the layout method `layout.io_index_table(endian)` ([spec-layout.md](spec-layout.md) §7) returns the table of byte indexes; byte `i` of the data block is byte `table[i]` of the IO buffer. The user copies the bytes by it, then writes them with one `write_bytes` (§2.5);
+- Exchanging a whole block at once: the layout method `layout.io_index_table(endian)` ([spec-layout.md](spec-layout.md) §4) returns the table of byte indexes; byte `i` of the data block is byte `table[i]` of the IO buffer. The user copies the bytes by it, then writes them with one `write_bytes` (§2.5);
 - Errors are checked before anything is changed: the ldata is unchanged and `load_tag` emits no `write` (errors in §5).
 
 ### 2.10 Reserved names
@@ -199,7 +199,7 @@ An ldata is one object that holds both the tags (as properties) and its own meth
 | EventEmitter (Node.js 20.11) | `addListener`, `emit`, `eventNames`, `getMaxListeners`, `listenerCount`, `listeners`, `off`, `on`, `once`, `prependListener`, `prependOnceListener`, `rawListeners`, `removeAllListeners`, `removeListener`, `setMaxListeners`, `_events`, `_eventsCount`, `_maxListeners` |
 | Object | `constructor`, `hasOwnProperty`, `isPrototypeOf`, `propertyIsEnumerable`, `toLocaleString`, `toString`, `valueOf`, `__proto__`, `__defineGetter__`, `__defineSetter__`, `__lookupGetter__`, `__lookupSetter__` |
 
-- A tag with a reserved name is a violation of the layout ([spec-layout.md](spec-layout.md) §4): registering such a layout throws `Error` ([spec-layout.md](spec-layout.md) §5), so an ldata of it never exists;
+- A tag with a reserved name is a violation of the layout ([spec-description.md](spec-description.md) §5.2): registering such a layout throws `Error` ([spec-layout.md](spec-layout.md) §3), so an ldata of it never exists;
 - Ldata stays a subclass of EventEmitter. A later version of Node.js may add methods to EventEmitter; the list does not follow them, so a tag named like such a method would hide it. The test suite compares the list with the running Node.js;
 - From version 1.0 on, this package adds members to Ldata only as `Symbol`-keyed members or static methods, never as a new string-named member of an instance, so a tag name that is valid in 1.0 stays valid. Before 1.0 the list may still grow;
 - The reserved event names are in §2.7. Whether a name is reserved is not queryable: there is no public function for it;
@@ -286,7 +286,7 @@ The interface throws exceptions on errors. It does not log or exit the process; 
 | `load_tag` / `store_tag` with an unknown tag name | `Error`, the ldata is unchanged and no `write` is emitted |
 | A byte order other than `BE`, `LE`, `BEBS`, `LEBS`, or a tag whose range in `io_buffer` is out of bounds | `RangeError`, the ldata is unchanged and no `write` is emitted |
 
-The errors of registering a layout, getting a layout and rendering type declarations are in [spec-layout.md](spec-layout.md) §9.
+The errors of registering a layout, getting a layout and rendering type declarations are in [spec-layout.md](spec-layout.md) §6.
 
 ## 6. Outside this interface
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// The development entry layout-data/dev (doc/spec-layout.md §8): renders the
+// The development entry layout-data/dev (doc/spec-layout.md §5): renders the
 // TypeScript declarations of the layouts of descriptions, for editor completion.
 // Run as the entry it is the command line tool layout-types (§8.1), which
 // requires Node.js >= 24.2 for import.meta.main; the function itself works on
@@ -18,7 +18,7 @@ const CLI_NODE = "24.2";
 const USAGE = `Usage: layout-types <description files...> [--scope <scope name>] [-o|--out <output file>]
 
 Renders the TypeScript declarations of the layouts of the description files,
-for editor completion of the tags (layout-data, doc/spec-layout.md §8).
+for editor completion of the tags (layout-data, doc/spec-layout.md §5).
 
   <description files...>  YAML description files
   --scope <scope name>    the scope name used in the example of the header
@@ -32,7 +32,7 @@ given in code, call render_types of "layout-data/dev" in a script instead.`;
 
 /**
  * Renders a TypeScript declaration file for all the layouts of descriptions,
- * for editor completion of the tags (doc/spec-layout.md §8). The descriptions
+ * for editor completion of the tags (doc/spec-layout.md §5). The descriptions
  * are registered in a scope created here. The text imports `Ldata` from
  * "layout-data", which the project rendering the types depends on.
  *
@@ -53,7 +53,7 @@ export function render_types(descriptions, { scope: scope_name = "app", source }
 }
 
 /**
- * The command line (doc/spec-layout.md §8.1): parses the arguments and calls
+ * The command line (doc/spec-layout.md §5.1): parses the arguments and calls
  * render_types. Writes the text to the output file or the standard output,
  * and the errors to the standard error.
  *

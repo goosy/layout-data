@@ -32,15 +32,9 @@ function errors_of(yaml, scope = fresh_scope()) {
 }
 
 const Sample = `
-flags:
-  - { name: f0, type: Bool, offset: 8, init_value: true }
-  - { name: f8, type: Bool, offset: 0, init_value: false, comment: high byte bit }
+layouts: [T]
 
-pair:
-  - { name: a, type: Int, offset: 0, init_value: -2 }
-  - { name: b, type: Real, offset: 16, init_value: 1.5 }
-
-layouts:
+item_tables:
   T:
     - { name: id, type: UInt, offset: 0, init_value: 7 }
     - name: status
@@ -57,11 +51,19 @@ layouts:
         - { name: i8, type: Bool, offset: 0 }
     - { includes: pair, offset: 48 }
     - { includes: pair, offset: 112, name_prefix: p_ }
+
+  flags:
+    - { name: f0, type: Bool, offset: 8, init_value: true }
+    - { name: f8, type: Bool, offset: 0, init_value: false, comment: high byte bit }
+
+  pair:
+    - { name: a, type: Int, offset: 0, init_value: -2 }
+    - { name: b, type: Real, offset: 16, init_value: 1.5 }
 `;
 
 describe("YAML layout file", () => {
-	test("fragments are referenced by name from coupling and includes", () => {
-		const { layouts, fragments } = compile(Sample);
+	test("item tables are referenced by name from coupling and includes", () => {
+		const { layouts, tables } = compile(Sample);
 		const { T } = layouts;
 		const offset_of = (name) => T.items.find((it) => it.name === name).offset;
 		assert.equal(offset_of("f0"), 24);
@@ -72,7 +74,7 @@ describe("YAML layout file", () => {
 		assert.equal(offset_of("p_a"), 112);
 		assert.deepEqual(T.items.find((it) => it.name === "status").coupling, ["f0", "f8"]);
 		assert.equal(T.length, 160);
-		assert.deepEqual(fragments.pair.map((it) => it.name), ["a", "b"]);
+		assert.deepEqual(tables.pair.map((it) => it.name), ["a", "b"]);
 	});
 
 	test("an omitted length follows the type, comments are kept", () => {
@@ -108,27 +110,29 @@ describe("YAML layout file", () => {
 		assert.deepEqual(names(11), ["b"]);
 	});
 
-	test("an unknown fragment is reported", () => {
-		const errors = errors_of("layouts:\n  T:\n    - { includes: nope, offset: 0 }\n");
-		assert.deepEqual(errors, ["layout T: unknown fragment nope"]);
+	test("an unknown item table is reported", () => {
+		const errors = errors_of("layouts: [T]\nitem_tables:\n  T:\n    - { includes: nope, offset: 0 }\n");
+		assert.deepEqual(errors, ["item table T: unknown item table nope"]);
 	});
 
-	test("a circular fragment reference is reported", () => {
+	test("a circular item table reference is reported", () => {
 		const errors = errors_of(`
-first:
-  - { includes: second, offset: 0 }
-second:
-  - { includes: first, offset: 0 }
-layouts:
+layouts: [T]
+item_tables:
   T:
     - { includes: first, offset: 0 }
+  first:
+    - { includes: second, offset: 0 }
+  second:
+    - { includes: first, offset: 0 }
 `);
-		assert.ok(errors.some((e) => e.includes("circular fragment reference first -> second -> first")), errors.join("\n"));
+		assert.deepEqual(errors, ["item table second: circular item table reference T -> first -> second -> first"]);
 	});
 
 	test("layout rule violations are reported all at once", () => {
 		const errors = errors_of(`
-layouts:
+layouts: [T]
+item_tables:
   T:
     - { name: a, type: Int, offset: 8, init_value: 0 }
     - { name: b, type: UInt, offset: 16, length: 8, init_value: 0 }
@@ -138,13 +142,13 @@ layouts:
 	});
 
 	test("a file without the layouts key defines no layout", () => {
-		assert.deepEqual(errors_of("x: []\n"), ["no layout is defined in the descriptions"]);
+		assert.deepEqual(errors_of("x: []\n"), ["no layout is listed in the descriptions"]);
 	});
 
-	test("the layouts key must be a mapping", () => {
-		const errors = errors_of("layouts: []\n");
+	test("the layouts key must be a list of layout names", () => {
+		const errors = errors_of("layouts:\n  T:\n    - { name: a, type: UInt, offset: 0 }\n");
 		assert.equal(errors.length, 1);
-		assert.match(errors[0], /the root key `layouts` must map layout names to item lists/);
+		assert.match(errors[0], /the root key `layouts` must be a list of layout names/);
 	});
 
 	test("a missing file and a YAML syntax error are reported in errors", () => {
@@ -159,21 +163,21 @@ layouts:
 
 describe("parsed layout description", () => {
 	test("a description object registers the same structure as a file", () => {
-		const { layouts, fragments } = register({
-			layouts: { PARSED: [{ name: "a", type: "UInt", offset: 0, init_value: 3 }, { includes: "tail", offset: 16 }] },
-			tail: [{ name: "b", type: "UInt", offset: 0, init_value: 4 }],
+		const { layouts, tables } = register({
+			layouts: ["PARSED"],
+			item_tables: {
+				PARSED: [{ name: "a", type: "UInt", offset: 0, init_value: 3 }, { includes: "tail", offset: 16 }],
+				tail: [{ name: "b", type: "UInt", offset: 0, init_value: 4 }],
+			},
 		});
 		assert.equal(layouts.PARSED.create_ldata("t").b, 4);
-		assert.equal(fragments.tail.length, 1);
+		assert.equal(tables.tail.length, 1);
 	});
 
-	test("errors name the scope and the origin", () => {
-		const file = write("layouts:\n  Bad:\n    - { name: a, type: Byte, offset: 0, init_value: 0 }\n");
+	test("errors name the scope", () => {
+		const file = write("layouts: [Bad]\nitem_tables:\n  Bad:\n    - { name: a, type: Byte, offset: 0, init_value: 0 }\n");
 		const scope = fresh_scope();
-		assert.throws(() => scope.register_layout(file), (error) => {
-			assert.ok(error.message.startsWith(`invalid layout description of scope ${scope.name} from ${file}:`), error.message);
-			return true;
-		});
+		assert.throws(() => scope.register_layout(file), new RegExp(`invalid layout descriptions of scope ${scope.name}:`));
 		assert.throws(() => scope.register_layout({ x: [] }), new RegExp(`invalid layout descriptions of scope ${scope.name}:`));
 	});
 });
@@ -183,7 +187,7 @@ describe("layout registry", () => {
 		const scope = fresh_scope();
 		assert.throws(() => compile("x: []\n", scope));
 		assert.throws(() => compile("x: []\n", scope));
-		const { layouts } = compile("layouts:\n  Reg_Later:\n    - { name: a, type: UInt, offset: 0, init_value: 1 }\n", scope);
+		const { layouts } = compile("layouts: [Reg_Later]\nitem_tables:\n  Reg_Later:\n    - { name: a, type: UInt, offset: 0, init_value: 1 }\n", scope);
 		assert.equal(scope.get_layout("Reg_Later"), layouts.Reg_Later);
 		assert.equal(scope.get_layout("Reg_Later").create_ldata("t").a, 1);
 	});

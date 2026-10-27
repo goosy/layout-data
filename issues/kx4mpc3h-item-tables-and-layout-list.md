@@ -1,9 +1,9 @@
 ---
 id: kx4mpc3h
 opened: 2026-10-27T08:08:11.934Z
-closed:
+closed: 2026-10-27T08:47:31.041Z
 title: Structure descriptions as item tables under item_tables plus a list of layout names under layouts, handling only the item tables reached from layouts
-status: accepted    # open | accepted | fixed | rejected | wontfix
+status: fixed       # open | accepted | fixed | rejected | wontfix
 fixed_in: []        # commit IDs, backfilled at version commit time
 labels: []
 remote:

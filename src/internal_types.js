@@ -1,6 +1,6 @@
 // Type definitions of the internals. This file has no run-time content, and
 // index.js does not export it: the compiled data of a layout is not part of
-// the public interface (doc/spec-layout.md §7).
+// the public interface (doc/spec-layout.md §4).
 
 /**
  * Codec of one tag type on a big-endian buffer (doc/design.md §4).

@@ -1,5 +1,5 @@
 // Renders TypeScript declarations of registered layouts, for editor completion
-// of the tag accessors (doc/spec-layout.md §8, doc/design.md §4).
+// of the tag accessors (doc/spec-layout.md §5, doc/design.md §4).
 
 /**
  * Renders a text as a doc comment, one line or several, with the `*` and `/`

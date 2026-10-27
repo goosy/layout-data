@@ -22,7 +22,7 @@ const items = [
 	{ name: "flowmeter", type: "Real", offset: 96, length: 32, init_value: 0 },
 ];
 for (let i = 0; i < TAG_COUNT; i++) items.push({ name: `word_${i}`, type: "UInt", offset: 128 + i * 16, length: 16, init_value: 0 });
-const layout = create_scope("Bench").register_layout({ layouts: { Bench: items } }).layouts.Bench;
+const layout = create_scope("Bench").register_layout({ layouts: ["Bench"], item_tables: { Bench: items } }).layouts.Bench;
 const size = layout.size;
 
 function make_reader(endian, method) {

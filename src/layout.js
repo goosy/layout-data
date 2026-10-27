@@ -14,7 +14,7 @@ import { build_structure, validate_structure, IDENTIFIER, TYPE_BITS } from "./st
 const CREATE_KEY = Symbol("create layout");
 
 /**
- * A compiled layout (doc/spec-layout.md §7), read-only and deeply
+ * A compiled layout (doc/spec-layout.md §4), read-only and deeply
  * frozen: `name`; `scope`, the scope it is registered in; `length` in bits;
  * `size` in bytes; `items`, the tags in layout order (a combined word before
  * its bits). Only a registration makes one; the package exports the type and
@@ -171,7 +171,7 @@ function compile_structure(data_struct, scope) {
 	}
 
 	// the public layout holds the name, the sizes and frozen copies of the items;
-	// the entries and the lookup table stay out of reach (doc/spec-layout.md §7)
+	// the entries and the lookup table stay out of reach (doc/spec-layout.md §4)
 	return new Layout(CREATE_KEY, data_struct, { entries, tags_at_byte }, scope);
 }
 
@@ -193,30 +193,22 @@ function public_tag(item) {
 }
 
 /**
- * Resolves the fragment references of a list of items: `coupling` and
- * `includes` given as a fragment name are replaced by a copy of that
- * fragment, recursively. Omitted lengths are filled in from the type.
+ * Resolves the references of a list of items: `coupling` and `includes`
+ * given as an item table name are replaced by a copy of that item table,
+ * found by `resolve_table`. Omitted lengths are filled in from the type.
  */
-function resolve_items(list, fragments, stack, where, errors) {
+function resolve_items(list, resolve_table, where, errors) {
 	if (!Array.isArray(list)) {
 		errors.push(`${where}: expected a list of items`);
 		return [];
 	}
 	const resolve_ref = (ref, field) => {
-		if (Array.isArray(ref)) return resolve_items(ref, fragments, stack, where, errors);
+		if (Array.isArray(ref)) return resolve_items(ref, resolve_table, where, errors);
 		if (typeof ref !== "string") {
-			errors.push(`${where}: ${field} must be a fragment name or a list of items`);
+			errors.push(`${where}: ${field} must be an item table name or a list of items`);
 			return [];
 		}
-		if (stack.includes(ref)) {
-			errors.push(`${where}: circular fragment reference ${[...stack, ref].join(" -> ")}`);
-			return [];
-		}
-		if (!Object.hasOwn(fragments, ref)) {
-			errors.push(`${where}: unknown fragment ${ref}`);
-			return [];
-		}
-		return resolve_items(fragments[ref], fragments, [...stack, ref], `fragment ${ref}`, errors);
+		return structuredClone(resolve_table(ref, where));
 	};
 	return list.map((_item) => {
 		const item = { ..._item };
@@ -229,14 +221,12 @@ function resolve_items(list, fragments, stack, where, errors) {
 }
 
 /**
- * Reads the layout descriptions (doc/design.md §3), merges their layouts and
- * fragments into one description and registers it with register_layout_data.
- * Each description is the path of a YAML description file or a description
- * object; a list of descriptions is merged, so a layout may name a fragment
- * of any description whatever the order. The root key `layouts` of a
- * description maps layout names to item lists; every other root key is a
- * fragment referenced by name. Internal: the register_layout of a scope
- * calls it.
+ * Reads the layout descriptions (doc/design.md §3) and merges them: the
+ * `layouts` lists into one list, the `item_tables` mappings kept with their
+ * origins; then registers them with register_merged. Each description is the
+ * path of a YAML description file or a description object; a list of
+ * descriptions is merged, so a layout may name an item table of any
+ * description whatever the order. Internal: the register_layout of a scope calls it.
  *
  * @param {string | Layout_Description | Array<string | Layout_Description>} descriptions
  * @param {Layout_Scope} scope - A scope with no layouts yet.
@@ -247,34 +237,37 @@ export function register_descriptions(descriptions, scope) {
 	const errors = [];
 	const list = Array.isArray(descriptions) ? descriptions : [descriptions];
 	if (list.length === 0) errors.push("no description is given");
-	const origins = [];
-	const layout_defs = {};
-	const fragment_defs = {};
-	// the origin of each layout and fragment, to name both in a duplicate
-	const owners = { layout: new Map(), fragment: new Map() };
+	const merged = { layouts: [], item_tables: [] };
+	// the origin of each listed layout name, to name both in a duplicate
+	const listed_in = new Map();
 	const add = (origin, root) => {
-		origins.push(origin);
 		if (root === null || typeof root !== "object" || Array.isArray(root)) {
 			errors.push(`${origin}: the root must be a mapping`);
 			return;
 		}
-		const { layouts, ...fragments } = root;
-		if (layouts !== undefined && (layouts === null || typeof layouts !== "object" || Array.isArray(layouts))) {
-			errors.push(`${origin}: the root key \`layouts\` must map layout names to item lists`);
+		const item_tables = root.item_tables ?? {};
+		if (root.item_tables === null || typeof item_tables !== "object" || Array.isArray(item_tables)) {
+			errors.push(`${origin}: the root key \`item_tables\` must map item table names to item lists`);
+		} else {
+			merged.item_tables.push({ origin, item_tables });
+		}
+		const layouts = root.layouts;
+		if (layouts === undefined) return;
+		if (!Array.isArray(layouts) || !layouts.every((name) => typeof name === "string")) {
+			errors.push(`${origin}: the root key \`layouts\` must be a list of layout names`);
 			return;
 		}
-		const merge = (kind, defs, into) => {
-			for (const [name, value] of Object.entries(defs)) {
-				if (owners[kind].has(name)) {
-					errors.push(`${kind} ${name} is defined in ${owners[kind].get(name)} and ${origin}`);
-					continue;
-				}
-				owners[kind].set(name, origin);
-				into[name] = value;
+		for (const name of layouts) {
+			if (listed_in.has(name)) {
+				const first = listed_in.get(name);
+				errors.push(first === origin
+					? `layout ${name} is listed twice in ${origin}`
+					: `layout ${name} is listed in ${first} and ${origin}`);
+				continue;
 			}
-		};
-		merge("layout", layouts ?? {}, layout_defs);
-		merge("fragment", fragments, fragment_defs);
+			listed_in.set(name, origin);
+			merged.layouts.push(name);
+		}
 	};
 	list.forEach((description, index) => {
 		const label = Array.isArray(descriptions) ? `layout description #${index + 1}` : "layout description";
@@ -295,54 +288,68 @@ export function register_descriptions(descriptions, scope) {
 			add(label, description);
 		}
 	});
-	if (errors.length === 0 && Object.keys(layout_defs).length === 0) errors.push("no layout is defined in the descriptions");
-	if (errors.length > 0) throw layout_error(`layout descriptions of scope ${scope.name}`, errors);
-	return register_layout_data({ layouts: layout_defs, ...fragment_defs }, scope, origins.join(", "));
+	if (errors.length === 0 && merged.layouts.length === 0) errors.push("no layout is listed in the descriptions");
+	if (errors.length > 0) throw layout_error(scope, errors);
+	return register_merged(merged, scope);
 }
 
-function layout_error(subject, errors) {
-	const error = new Error(`invalid ${subject}:\n${errors.join("\n")}`);
+function layout_error(scope, errors) {
+	const error = new Error(`invalid layout descriptions of scope ${scope.name}:\n${errors.join("\n")}`);
 	error.errors = errors;
 	return error;
 }
 
 /**
- * Registers the layouts of one description that is parsed and complete: the
- * root key `layouts` and the fragments the layouts name. Internal.
+ * Registers the layouts of the merged descriptions (doc/spec-description.md
+ * §4): traverses the item tables of `item_tables` from the names of
+ * `layouts`, following the item table names of `includes` and `coupling`,
+ * and validates and registers the layouts. Only the item tables reached are
+ * read; each is resolved once and cached. Internal.
  *
- * @param {Record<string, any>} root - The parsed description: `layouts` and the fragments.
- * @param {Layout_Scope} scope - A scope with no layouts yet, so a layout of the description conflicts with none.
- * @param {string} [origin] - Names the descriptions in errors.
+ * @param {{ layouts: string[], item_tables: Array<{ origin: string, item_tables: Record<string, any> }> }} merged
+ * @param {Layout_Scope} scope - A scope with no layouts yet, so a layout of the descriptions conflicts with none.
  * @returns {Registered_Layouts}
- * @throws {Error} With `errors`, every violation found, when the description is not valid.
+ * @throws {Error} With `errors`, every violation found, when the descriptions are not valid.
  */
-export function register_layout_data(root, scope, origin = "the given object") {
-	const fail = (errors) => {
-		throw layout_error(`layout description of scope ${scope.name} from ${origin}`, errors);
-	};
-	if (root === null || typeof root !== "object" || Array.isArray(root)) fail(["the root must be a mapping"]);
-	const { layouts: layout_defs, ...fragment_defs } = root;
-	if (layout_defs === null || typeof layout_defs !== "object" || Array.isArray(layout_defs)) {
-		fail(["the root key `layouts` must map layout names to item lists"]);
-	}
-
+function register_merged(merged, scope) {
 	const errors = [];
-	const fragments = {};
-	for (const [name, list] of Object.entries(fragment_defs)) {
-		fragments[name] = resolve_items(list, fragment_defs, [name], `fragment ${name}`, errors);
-	}
-	const structs = {};
-	for (const [name, list] of Object.entries(layout_defs)) {
+	/** @type {Record<string, any[]>} the item tables reached, references resolved */
+	const tables = {};
+	// the item table names on the current chain of references, to find a cycle
+	const chain = [];
+
+	const resolve_table = (name, where) => {
+		if (Object.hasOwn(tables, name)) return tables[name];
+		if (chain.includes(name)) {
+			errors.push(`${where}: circular item table reference ${[...chain, name].join(" -> ")}`);
+			return [];
+		}
+		const owners = merged.item_tables.filter(({ item_tables }) => Object.hasOwn(item_tables, name));
+		if (owners.length === 0) {
+			errors.push(`${where}: unknown item table ${name}`);
+			return [];
+		}
+		if (owners.length > 1) {
+			errors.push(`item table ${name} is defined in ${owners.map(({ origin }) => origin).join(" and ")}`);
+		}
+		chain.push(name);
+		const items = resolve_items(owners[0].item_tables[name], resolve_table, `item table ${name}`, errors);
+		chain.pop();
+		tables[name] = items;
+		return items;
+	};
+
+	for (const name of merged.layouts) {
 		if (!IDENTIFIER.test(name)) errors.push(`layout ${JSON.stringify(name)}: the name is not an identifier`);
-		const items = resolve_items(list, fragment_defs, [], `layout ${name}`, errors);
-		structs[name] = build_structure({ name }, items);
+		resolve_table(name, `layout ${name}`);
 	}
-	if (errors.length === 0) {
-		for (const struct of Object.values(structs)) errors.push(...validate_structure(struct));
-	}
-	if (errors.length > 0) fail(errors);
+	if (errors.length > 0) throw layout_error(scope, errors);
+
+	const structs = merged.layouts.map((name) => build_structure({ name }, structuredClone(tables[name])));
+	for (const struct of structs) errors.push(...validate_structure(struct));
+	if (errors.length > 0) throw layout_error(scope, errors);
 
 	const layouts = {};
-	for (const [name, struct] of Object.entries(structs)) layouts[name] = register_structure(struct, scope);
-	return { layouts, fragments };
+	for (const struct of structs) layouts[struct.name] = register_structure(struct, scope);
+	return { layouts, tables };
 }
