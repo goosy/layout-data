@@ -12,5 +12,5 @@ export const index = DIST ? await import("layout-data") : await import("../../sr
 /** The development entry layout-data/dev. */
 export const dev = DIST ? await import("layout-data/dev") : await import("../../src/dev.js");
 
-export const { Ldata, Ltag, create_scope, get_scope } = index;
+export const { Ldata, Ltag, create_scope, get_scope, yaml, yaml_file } = index;
 export const { render_types } = dev;

@@ -9,9 +9,9 @@
 The flow is **create a scope, register once, get the layout, create from it**: the layouts are described ([spec-description.md](spec-description.md)), a scope is created, all the layouts are registered by one call of its `register_layout` (§3), and from then on `get_layout("Pump")` of the scope gets a layout by its name (§4) and its `create_ldata("pump_1")` creates data blocks ([spec-data-api.md](spec-data-api.md) §2.1). The user needs to know how to express a layout as a YAML structure, which name it has and in which scope it is registered; whether it is compiled, and into what, is not part of the flow.
 
 ```js
-import { create_scope, get_scope } from "layout-data";
+import { create_scope, get_scope, yaml_file } from "layout-data";
 const scope = create_scope("lib_a");                              // create a scope
-scope.register_layout(["common.yaml", "pump.yaml"]);              // register once per scope
+scope.register_layout([yaml_file`common.yaml`, yaml_file`pump.yaml`]); // register once per scope
 const pump = scope.get_layout("Pump").create_ldata("pump_1");     // from then on, get the layout and create
 get_scope("lib_a").get_layout("Pump");                            // elsewhere, get the scope by its name
 ```
@@ -32,9 +32,9 @@ A scope (`Layout_Scope`) is the unit that separates layout names. It lets a libr
 
 `scope.register_layout(descriptions)` registers the layouts of the descriptions in the scope. A layout can be used only after it is registered. How the descriptions are merged, traversed and validated is in [spec-description.md](spec-description.md) §4 and §5.
 
-- `descriptions`: one description or a list of descriptions, each either **a string, the path of a description file**, or **an object, a description object** ([spec-description.md](spec-description.md) §1). A list does not hold lists, and an empty list is an error. A string is always a path, never YAML text;
+- `descriptions`: one description object or a list of them ([spec-description.md](spec-description.md) §1). A list does not hold lists, and an empty list is an error. Registration reads no file and parses no YAML: a string is not a description, and a description file is read with `yaml_file`, YAML text parsed with `yaml` ([spec-description.md](spec-description.md) §1.1);
 - **Once per scope.** The layouts are registered by one call, so that the layouts and item tables of a scope are all known together and nothing depends on the order of calls. A second call throws `Error` (`register_layout can be called only once in scope X`), and the layouts of the first stay. A call that fails registers nothing and does not use up the call, so it can be retried in the same scope, for example with a fallback description when its own file is not valid;
-- Any violation throws an `Error` whose `errors` property lists all violations of all descriptions, and nothing is registered: the descriptions are registered all or none. An unreadable file and a YAML syntax error are violations too. The title of the error names the scope (for example `invalid layout descriptions of scope lib_a`); the layout and item table errors name the layout or item table, not the file;
+- Any violation throws an `Error` whose `errors` property lists all violations of all descriptions, and nothing is registered: the descriptions are registered all or none. The title of the error names the scope (for example `invalid layout descriptions of scope lib_a`); the layout and item table errors name the layout or item table, not the file;
 - The descriptions given are not changed;
 - Return value: `{ layouts, tables }`. `layouts` holds the registered layouts by name, as `scope.get_layout(name)` returns them; `tables` holds every item table reached ([spec-description.md](spec-description.md) §4). Neither is needed for the flow above;
 - A layout stays registered for the life of the process. `scope.get_layout(name)` returns the registered layout (§4) and throws `unknown layout X.Y` (X the scope name, Y the layout name) for a name that is not registered;
@@ -73,15 +73,16 @@ Type declarations let an editor complete the tags of a data block. Rendering the
 - Layout names and tag names are identifiers ([spec-description.md](spec-description.md) §5), so they are written as they are, as part of the type names and as the property names. A `*/` in a comment is escaped, so the text is always a valid declaration file;
 - The text always has `import type { Ldata } from "layout-data";`: `"layout-data"` is the name of this package, not a location, and the package does not decide for the caller how its modules are organized. The types are rendered at development time, in a project that depends on this package, and the declarations are read by the editor of that project, so it always resolves;
 - `options.scope` is a scope name, used only in the example of the header comment (`get_scope("<scope>")`), `app` by default; it should be the scope name the application uses. It is also the name of the scope created inside, and a name that is not valid throws the same exception as `create_scope` (§2);
-- `options.source` is the source named in the header comment. Without it, the description files are named (joined by `, `) when all the descriptions are paths; otherwise the header only says that the text is generated. The argument `options` itself may be omitted.
+- `options.source` is the source named in the header comment. Without it, the description files are named (joined by `, `) when all the descriptions were read by `yaml_file` ([spec-description.md](spec-description.md) §1.1); otherwise the header only says that the text is generated. The argument `options` itself may be omitted.
 
 The function entry in a development script:
 
 ```js
 import { writeFileSync } from "node:fs";
+import { yaml_file } from "layout-data";
 import { render_types } from "layout-data/dev";
 
-writeFileSync("layout_types.d.ts", render_types("pump.yaml", { scope: "app" }));
+writeFileSync("layout_types.d.ts", render_types(yaml_file`pump.yaml`, { scope: "app" }));
 ```
 
 ### 5.1 The command line tool `layout-types`
@@ -92,7 +93,7 @@ layout-types <description files...> [--scope <scope name>] [-o|--out <output fil
 
 The command line only parses the arguments and calls `render_types`:
 
-- The positional arguments are description files, at least one: the `descriptions`;
+- The positional arguments are description files, at least one. Each is read with `yaml_file`, and the description objects are the `descriptions`; when files cannot be read or parsed, the errors of all of them are reported together and nothing is rendered;
 - `--scope` is `options.scope`, `app` by default;
 - `-o`/`--out` is the output file; without it the text goes to the standard output;
 - `-h`/`--help` shows the usage, with the version requirement;
@@ -115,12 +116,14 @@ In TypeScript: `const pump = scope.get_layout("Pump").create_ldata("pump_1") as 
 
 ## 6. Errors
 
-Creating scopes, and registering, looking up and rendering the types of layouts, throw exceptions on errors:
+Reading YAML, creating scopes, and registering, looking up and rendering the types of layouts, throw exceptions on errors:
 
 | Case | Exception |
 | --- | --- |
 | `create_scope` with a scope name that is not a string | `TypeError` (§2) |
 | `create_scope` with a scope name that is not an identifier, or is used by another scope | `Error` (§2) |
+| `yaml` or `yaml_file` with text that is not valid YAML, or a file that cannot be read | `Error` with `errors` ([spec-description.md](spec-description.md) §1.1) |
+| `yaml` or `yaml_file` with an argument that is not text, a path or a `file:` URL | `TypeError` ([spec-description.md](spec-description.md) §1.1) |
 | `scope.get_layout` with a name not registered in the scope | `Error` (`unknown layout X.Y`, §3) |
 | Invalid descriptions ([spec-description.md](spec-description.md) §5), a reserved tag name among them | `Error` with `errors`, thrown by `scope.register_layout`; nothing is registered (§3) |
 | `scope.register_layout` called again after it registered layouts in the scope | `Error`, the layouts of the first call stay (§3) |

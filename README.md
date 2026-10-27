@@ -41,13 +41,13 @@ item_tables:
     - { name: fault, type: Bool, offset: 9, comment: Fault latch }
 ```
 
-Create a scope, register the layouts in it once, then get a layout by its name and create data blocks from it:
+Create a scope, register the layouts in it once, then get a layout by its name and create data blocks from it. Registration takes description objects; `yaml_file` reads a description file into one, and `yaml` parses YAML text written in code (both work as template tags or as plain calls). Several descriptions are given as a list, for example ``[yaml_file`common.yaml`, yaml_file`pump.yaml`]``. The text of a template is taken raw and read as YAML, not as JavaScript: write an escape such as `\t` in a double-quoted YAML string, since a single-quoted or unquoted one keeps the backslash.
 
 ```js
-import { create_scope } from "layout-data";
+import { create_scope, yaml_file } from "layout-data";
 
-const scope = create_scope("app");      // an identifier, unique in the process
-scope.register_layout("pump.yaml");     // once per scope
+const scope = create_scope("app");                 // an identifier, unique in the process
+scope.register_layout(yaml_file`pump.yaml`);       // once per scope
 const pump = scope.get_layout("Pump").create_ldata("pump_1");
 
 pump.on("change", (name, old_value, new_value) => {
@@ -78,8 +78,9 @@ pump.transaction(() => {
 | Export | Purpose |
 | --- | --- |
 | `Ldata`, `Ltag` | The data object and the tag handle; an ldata is created by `layout.create_ldata(name)`, never with `new Ldata` |
-| `create_scope(name)` | Create a scope of layout names. A scope has `register_layout(descriptions)`, which registers the layouts of descriptions, description files or description objects (a path, an object, or a list of them), once per scope; and `get_layout(name)`, which looks up a registered layout by name |
+| `create_scope(name)` | Create a scope of layout names. A scope has `register_layout(descriptions)`, which registers the layouts of description objects (an object or a list of them), once per scope; and `get_layout(name)`, which looks up a registered layout by name |
 | `get_scope(name)` | Get a created scope by its name, `undefined` when there is none |
+| `yaml`, `yaml_file` | Turn YAML text, or a description file given by a path or a `file:` URL, into a description object; template tags or plain calls |
 
 The development entry `layout-data/dev` exports `render_types(descriptions, options)`, which generates TypeScript interfaces for the layouts of descriptions, for editor completion (see below). It is not needed at run time.
 
@@ -89,10 +90,9 @@ A library built on layout-data creates a scope of its own and, to keep its layou
 
 ```js
 // lib_a/index.js
-import { fileURLToPath } from "node:url";
-import { create_scope } from "layout-data";
+import { create_scope, yaml_file } from "layout-data";
 export const scope = create_scope("lib_a");
-scope.register_layout(fileURLToPath(new URL("./pump.yaml", import.meta.url)));
+scope.register_layout(yaml_file(new URL("./pump.yaml", import.meta.url)));
 ```
 
 The application gets it with `get_scope("lib_a")` or from the export of the library.
@@ -111,10 +111,11 @@ Or in a development script, which also works with layouts given in code (Node.js
 
 ```js
 import { writeFileSync } from "node:fs";
+import { yaml_file } from "layout-data";
 import { render_types } from "layout-data/dev";
 
 // descriptions as for register_layout; scope is the name used in the header comment
-writeFileSync("layout_types.d.ts", render_types("pump.yaml", { scope: "app" }));
+writeFileSync("layout_types.d.ts", render_types(yaml_file`pump.yaml`, { scope: "app" }));
 ```
 
 The generated file imports `Ldata` from `"layout-data"`, which your project has as a (development) dependency; how you bundle the run-time code does not matter.

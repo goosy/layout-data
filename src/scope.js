@@ -45,7 +45,7 @@ export class Layout_Scope {
 	 * (doc/spec-layout.md §3). Nothing is registered when a description is not
 	 * valid, and such a call does not use up the single call.
 	 *
-	 * @param {string | Layout_Description | Array<string | Layout_Description>} descriptions - The path of a YAML description file, a description object, or a list of them.
+	 * @param {Layout_Description | Layout_Description[]} descriptions - A description object or a list of them; yaml and yaml_file make them from YAML.
 	 * @returns {Registered_Layouts}
 	 * @throws {Error} With `errors`, every violation found, when the descriptions are not valid.
 	 * @throws {Error} When the layouts were registered by an earlier call.

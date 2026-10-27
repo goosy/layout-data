@@ -15,7 +15,7 @@ layout-data 是一个结构化数据块库：提供基于 `Buffer`、面向数�
 
 | 术语 | 含义 |
 | --- | --- |
-| 描述 | 即布局描述：根键 `layouts` 列出布局名，根键 `item_tables` 是名字到条目表的映射，其余根键不读取（[spec-description.zh-cn.md](spec-description.zh-cn.md) §2）。它有结构相同的两种形式：描述文件（YAML 1.2，按路径给出）和代码中的描述对象 |
+| 描述 | 即布局描述：根键 `layouts` 列出布局名，根键 `item_tables` 是名字到条目表的映射，其余根键不读取（[spec-description.zh-cn.md](spec-description.zh-cn.md) §2）。注册接受的是描述对象；同一结构写成的 YAML 1.2 文本，无论在描述文件里还是在代码里，由 `yaml_file` 或 `yaml` 变成描述对象 |
 | 条目表 | 描述中位于 `item_tables` 下的具名条目列表。列在 `layouts` 里时注册为布局；被条目的 `includes` 或 `coupling` 引用时，它的条目被拼接进来；一个条目表可以两者都是 |
 | 布局 | 一块数据的固定格式：每个 tag 的名称、类型、位偏移、初值。由列在 `layouts` 里的条目表注册而来，注册后不可变，即公开的 `Layout` 对象 |
 | 登记域 | 布局名的分隔单位，即公开的 `Layout_Scope` 对象：每个登记域有自己的布局和条目表，各注册一次，布局名和条目表名只在登记域内唯一。布局只能注册到显式创建的登记域里（[spec-layout.zh-cn.md](spec-layout.zh-cn.md) §2） |
@@ -46,7 +46,7 @@ layout-data 是一个结构化数据块库：提供基于 `Buffer`、面向数�
 
 ## 4. 布局描述
 
-布局由描述给出：YAML 1.2 描述文件，或代码中的描述对象，结构见 [spec-description.zh-cn.md](spec-description.zh-cn.md)，注册见 [spec-layout.zh-cn.md](spec-layout.zh-cn.md)。
+布局由描述给出，即在代码中写出、或从 YAML 1.2 描述文件和文本读出的描述对象，结构见 [spec-description.zh-cn.md](spec-description.zh-cn.md)，注册见 [spec-layout.zh-cn.md](spec-layout.zh-cn.md)。
 
 ## 5. 发布形态
 
@@ -64,14 +64,15 @@ layout-data 是一个结构化数据块库：提供基于 `Buffer`、面向数�
 | 导出 | 说明 |
 | --- | --- |
 | `Ldata`、`Ltag` | 数据对象和 tag 句柄（[spec-data-api.zh-cn.md](spec-data-api.zh-cn.md) §2 和 §3）；ldata 由布局的 `create_ldata` 创建，`Ldata` 不能用 `new` 构造 |
-| `create_scope` | 创建登记域（[spec-layout.zh-cn.md](spec-layout.zh-cn.md) §2）。登记域的 `register_layout` 注册各描述中的布局：描述文件或描述对象（在代码里给条目也用它），每个登记域一次；`get_layout` 按名取得已登记的布局，由布局创建 ldata。`Layout_Scope` 只作为类型导出 |
+| `create_scope` | 创建登记域（[spec-layout.zh-cn.md](spec-layout.zh-cn.md) §2）。登记域的 `register_layout` 注册各描述对象中的布局，每个登记域一次；`get_layout` 按名取得已登记的布局，由布局创建 ldata。`Layout_Scope` 只作为类型导出 |
 | `get_scope` | 按登记域名取得已创建的登记域，没有时为 `undefined`（[spec-layout.zh-cn.md](spec-layout.zh-cn.md) §2） |
+| `yaml`、`yaml_file` | 把 YAML 1.2 文本或描述文件变成描述对象（[spec-description.zh-cn.md](spec-description.zh-cn.md) §1.1）；两者也是模板字面量的标签 |
 
 开发期入口 `layout-data/dev` 导出：
 
 | 导出 | 说明 |
 | --- | --- |
-| `render_types` | `render_types(descriptions, options)` 由描述（与 `register_layout` 接受的相同）为其中的全部布局生成 TypeScript 类型声明的文本，供编辑器补全（[spec-layout.zh-cn.md](spec-layout.zh-cn.md) §5）；命令行工具 `layout-types` 做同样的事（同文 §5.1） |
+| `render_types` | `render_types(descriptions, options)` 由描述对象（与 `register_layout` 接受的相同）为其中的全部布局生成 TypeScript 类型声明的文本，供编辑器补全（[spec-layout.zh-cn.md](spec-layout.zh-cn.md) §5）；命令行工具 `layout-types` 做同样的事（同文 §5.1） |
 
 布局带有方法 `create_ldata` 和 `io_index_table`（[spec-layout.zh-cn.md](spec-layout.zh-cn.md) §4），`Layout` 只作为类型导出。
 

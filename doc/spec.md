@@ -17,7 +17,7 @@ Out of scope: device communication, scheduling, business rules and logging. The 
 
 | Term | Meaning |
 | --- | --- |
-| Description | The layout description in full: the root key `layouts` lists layout names, and the root key `item_tables` maps names to item tables; other root keys are not read (§2 of [spec-description.md](spec-description.md)). It takes one of two forms with the same structure: a description file (YAML 1.2), given by its path, or a description object in code |
+| Description | The layout description in full: the root key `layouts` lists layout names, and the root key `item_tables` maps names to item tables; other root keys are not read (§2 of [spec-description.md](spec-description.md)). Registration takes it as a description object; the same structure written as YAML 1.2 text, in a description file or in code, is turned into a description object by `yaml_file` or `yaml` |
 | Item table | A named list of items of a description, under `item_tables`. Listed in `layouts`, it is registered as a layout; referenced by `includes` or `coupling` of items, its items are spliced in; one item table may be both |
 | Layout | The fixed format of a data block: name, type, bit offset and initial value of every tag. Registered from an item table listed in `layouts`, immutable once registered; the public `Layout` object |
 | Scope | The unit that separates layout names, the public `Layout_Scope` object: every scope has its own layouts and item tables and registers once, and layout and item table names are unique only within a scope. Layouts are registered only in a scope created explicitly (§2 of [spec-layout.md](spec-layout.md)) |
@@ -48,7 +48,7 @@ Out of scope: device communication, scheduling, business rules and logging. The 
 
 ## 4. Layout description
 
-Layouts are given by descriptions, as YAML 1.2 description files or as description objects in code; the structure is in [spec-description.md](spec-description.md), the registration in [spec-layout.md](spec-layout.md).
+Layouts are given by descriptions, description objects written in code or read from YAML 1.2 description files and text; the structure is in [spec-description.md](spec-description.md), the registration in [spec-layout.md](spec-layout.md).
 
 ## 5. Distribution
 
@@ -66,14 +66,15 @@ The entry `layout-data` exports:
 | Export | Description |
 | --- | --- |
 | `Ldata`, `Ltag` | The data object and the tag handle (§2 and §3 of [spec-data-api.md](spec-data-api.md)); an ldata is created by the `create_ldata` of its layout, and `Ldata` cannot be constructed with `new` |
-| `create_scope` | Create a scope (§2 of [spec-layout.md](spec-layout.md)). `register_layout` of the scope registers the layouts of descriptions, description files or description objects (also for items given in code), once per scope; its `get_layout` looks up a registered layout by name, and ldata is created from the layout. `Layout_Scope` is exported as a type only |
+| `create_scope` | Create a scope (§2 of [spec-layout.md](spec-layout.md)). `register_layout` of the scope registers the layouts of description objects, once per scope; its `get_layout` looks up a registered layout by name, and ldata is created from the layout. `Layout_Scope` is exported as a type only |
 | `get_scope` | Get a created scope by its name, `undefined` when there is none (§2 of [spec-layout.md](spec-layout.md)) |
+| `yaml`, `yaml_file` | Turn YAML 1.2 text, or a description file, into a description object (§1.1 of [spec-description.md](spec-description.md)); both are also tags of template literals |
 
 The development entry `layout-data/dev` exports:
 
 | Export | Description |
 | --- | --- |
-| `render_types` | `render_types(descriptions, options)` renders, from descriptions (what `register_layout` takes), the text of the TypeScript declarations of all their layouts, for editor completion (§5 of [spec-layout.md](spec-layout.md)); the command line tool `layout-types` does the same (§5.1 of the same) |
+| `render_types` | `render_types(descriptions, options)` renders, from description objects (what `register_layout` takes), the text of the TypeScript declarations of all their layouts, for editor completion (§5 of [spec-layout.md](spec-layout.md)); the command line tool `layout-types` does the same (§5.1 of the same) |
 
 A layout has the methods `create_ldata` and `io_index_table` (§4 of [spec-layout.md](spec-layout.md)), and `Layout` is exported as a type only.
 

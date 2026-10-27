@@ -8,7 +8,8 @@
 | --- | --- |
 | `src/index.js` | 包的公开接口 |
 | `src/Ldata.js` / `src/Ltag.js` | 数据对象与 tag 句柄；`Ldata.js` 还构建各布局的 Ldata 子类及其原型访问器 |
-| `src/layout.js` | 描述的读取、合并与遍历，布局的编译，`Layout` 类 |
+| `src/yaml.js` | `yaml` 和 `yaml_file`：把 YAML 文本和描述文件变成描述对象，用键 `ORIGIN` 记下文件 |
+| `src/layout.js` | 描述的合并与遍历，布局的编译，`Layout` 类 |
 | `src/scope.js` | 登记域：`Layout_Scope` 类、`create_scope` 和 `get_scope` |
 | `src/internal.js` | 包内部的 Symbol 键：一个文件定义、另一个文件使用的成员以它们为键，每个键注明定义者和使用者。`index.js` 不导出它们，`package.json` 的 `exports` 也不开放这个文件，所以使用方不会误用（内部使用，包不导出） |
 | `src/registry.js` | 登记表：按登记域名保存的登记域，以及每个登记域按布局名保存的布局（内部使用，包不导出） |
@@ -38,7 +39,7 @@
 
 - 包代码不依赖使用方的配置、业务和日志器；
 - 出错时抛出异常，不写日志、不调用 `process.exit`；
-- 描述对包是外部输入：使用方按路径给出描述文件，或直接给出描述对象。
+- 描述对包是外部输入：使用方给出描述对象，在代码里写出，或用 `yaml`、`yaml_file` 由 YAML 得到。读文件和解析 YAML 与注册分开，注册只接受对象。
 
 ### 2.2 开发期入口与命令行的边界
 
@@ -46,9 +47,9 @@
 
 - 输入只有描述，输出只有声明文本。它们不接收、不返回、也不读取应用运行时的任何对象（登记域、布局、ldata）；
 - 它们运行在开发者自己的进程里（开发脚本或命令行），内部创建的登记域只属于这个进程，与应用进程里的登记域无关；
-- 运行时入口 `layout-data`（`src/index.js`）不引用 `dev.js`，应用不加载类型生成的代码；`dev.js` 只经由公开的 `create_scope`、`register_layout` 和内部的 `layouts_of` 使用运行时的实现，注册与校验的规则因此和运行时完全相同；
+- 运行时入口 `layout-data`（`src/index.js`）不引用 `dev.js`，应用不加载类型生成的代码；`dev.js` 只经由公开的 `create_scope`、`register_layout`、`yaml_file` 和内部的 `layouts_of`、`ORIGIN` 使用运行时的实现，注册与校验的规则因此和运行时完全相同；
 - 生成的文本固定从 `"layout-data"` 导入 `Ldata`：读取它的是开发者项目的编辑器，这个项目依赖本包。应用怎样打包运行时代码，与类型生成无关；
-- 命令行是同一个函数的参数外壳：解析参数后调用 `render_types`，两者的输入和结果相同，只是命令行只接受描述文件。
+- 命令行是同一个函数的参数外壳：解析参数后调用 `render_types`，两者的输入和结果相同，只是命令行只接受描述文件，并用 `yaml_file` 读取它们。
 
 ## 3. 描述与注册
 
@@ -61,7 +62,8 @@
 | 结构 | 列在 `layouts` 里的条目表，引用已解析、展开为扁平条目 | `Data_Struct`，由 `build_structure` 生成 |
 | 编译数据 | `Ldata` 需要而公开的 Layout 不展示的部分：`entries` 和 `tags_at_byte` | `Compiled_Layout`，Layout 的私有字段 `#compiled` |
 
-- 描述是描述文件（YAML 1.2）或同样结构的描述对象（spec-description.zh-cn.md §2）：根键 `layouts` 是布局名的列表；根键 `item_tables` 是名字到条目表的映射，条目表供 `layouts` 列出、供条目按名称引用；其余根键不读取。
+- 描述是描述对象（spec-description.zh-cn.md §2）：根键 `layouts` 是布局名的列表；根键 `item_tables` 是名字到条目表的映射，条目表供 `layouts` 列出、供条目按名称引用；其余根键不读取。
+- `yaml.js` 把 YAML 变成描述对象（spec-description.zh-cn.md §1.1）。`yaml(...args)` 和 `yaml_file(...args)` 接受模板调用（第一个参数是带 `raw` 的数组）或一个普通参数。模板调用用 `String.raw` 连接成一个字符串。`yaml` 解析文本；`yaml_file` 接受字符串或 `URL`（URL 的路径是 `fileURLToPath(url)`，它也拒绝不是 `file:` 的 URL），用 `readFileSync(path, "utf8")` 读取后解析。其他参数抛出 `TypeError`。两者都用 `parseDocument(text, { version: "1.2" })` 解析；读取错误（它的 message）或各解析错误（各自的 `message`，文件时前面加上路径）作为一个带 `errors` 的 `Error` 抛出，标题是 `invalid YAML text` 或 `invalid description file <路径>`。否则返回 `doc.toJS()`。结果是对象时，`yaml_file` 在它上面定义以 `ORIGIN` 为键的属性，值是路径，不可枚举，所以展开和 `structuredClone` 都不带它。`ORIGIN` 在 `internal.js` 中；它是 `Symbol.for("layout-data.origin")`，而不是自己的 `Symbol()`，因为每个入口打包时各带一份 `yaml.js`（§7）：`layout-data` 的 `yaml_file` 得到的对象会交给 `layout-data/dev` 的 `render_types`，两份代码必须读同一个键。
 - 每个条目包含 `{ name, type, offset }`，可选 `length`、`init_value`、`comment`；`offset` 和 `length` 的单位都是位（bit），`length` 省略时由类型决定。
 - 组合字与组成位只由一方给出 `init_value`：`build_structure` 展开时，组合字未给出则由组成位合成（未给出的位为 false），组合字给出则组成位的值从整字拆出；双方都不给出时都保持没有初值；双方都给出时保留给出的值，由校验报告。
 - `type` 取值（大小写不敏感）：`Bool`、`Byte`、`SInt`、`USInt`、`Int`、`UInt`、`Word`、`DInt`、`UDInt`、`DWord`、`Real`。
@@ -69,7 +71,7 @@
 - `{ includes: <条目表名或内联列表>, offset }` 把一组公共条目整体偏移后拼接进来，可加 `name_prefix`。
 - 登记域（spec-layout.zh-cn.md §2）是 `scope.js` 的类 `Layout_Scope`。`create_scope(name)` 检查名字（不是字符串时 `TypeError`，不匹配 `IDENTIFIER` 时 `Error`），再以模块私有的键 `CREATE_KEY` 构造登记域；构造函数没有这个键时抛出 `TypeError`，类型声明中它是私有的，`typedefs.js` 的 `Layout_Scope` 引用这个类，包只导出该类型。构造时用 `registry.js` 的 `add_scope` 在登记表里占用这个名字（重名时抛出 `Error`），最后 `Object.freeze(this)`：登记域可以按名取得，冻结使取得它的模块不能替换它的方法或重新定义 `name`。私有字段不受冻结影响，所以 `#registered_once` 照常置位。`get_scope(name)` 从登记表取得登记域，没有时返回 `undefined`。
 - 登记域的 `register_layout(descriptions)` 由私有标志 `#registered_once` 守护：标志已置位时抛出 `Error`，只有 `register_descriptions` 成功返回之后才置位，所以失败的调用不会置位。实际工作由内部函数 `register_descriptions(descriptions, scope)` 完成。测试在一个进程里要注册很多次，每次用自己的登记域（`test/share.js` 的 `fresh_scope`），走公开的接口。
-- `register_descriptions(descriptions, scope)` 是第一阶段，把各描述整理成合并描述，交给同一登记域的第二阶段 `register_merged`。按列表顺序读取每份描述，描述文件（字符串）用 `readFileSync` 和 `parseDocument`（YAML 1.2）读取，描述对象原样使用；读取或解析错误、根不是映射、`layouts` 不是字符串列表、`item_tables` 不是映射，都带着出处（路径，或第 i 个对象的 `layout description #i`）进入 `errors`。各描述的 `layouts` 按顺序合并为一个列表，名字已在列表中时报错并写出两处出处（同一份描述中重复时写一处）；每份描述的 `item_tables`（没有时为空映射）连同出处原样保留，此时不比较条目表；其余根键始终不读取。空列表、列表里再放列表、合并后的 `layouts` 为空都是错误。
+- `register_descriptions(descriptions, scope)` 是第一阶段，把各描述整理成合并描述，交给同一登记域的第二阶段 `register_merged`。按列表顺序取每份描述；它的出处是它的 `ORIGIN`（`yaml_file` 读取的文件路径），否则是列表中第 i 份的 `layout description #i`（单独一份时为 `layout description`）。字符串、根不是映射、`layouts` 不是字符串列表、`item_tables` 不是映射，都带着出处进入 `errors`；字符串的错误提示改用 `yaml_file` 或 `yaml`。各描述的 `layouts` 按顺序合并为一个列表，名字已在列表中时报错并写出两处出处（同一份描述中重复时写一处）；每份描述的 `item_tables`（没有时为空映射）连同出处原样保留，此时不比较条目表；其余根键始终不读取。空列表、列表里再放列表、合并后的 `layouts` 为空都是错误。
 - `register_merged(merged, scope)` 是第二阶段，登记合并描述中的布局并返回 `{ layouts, tables }`。它报告每个不匹配 `IDENTIFIER`（`structure.js`）的布局名，再从 `layouts` 的每个名字出发，用 `resolve_table` 遍历条目表（spec-description.zh-cn.md §4）：按名字在各描述的 `item_tables` 中查找，找不到、在两份描述中都有（写出两处出处）、值不是列表时报错；名字在当前引用链上时报告循环引用。`resolve_items` 解析一个列表中 `includes`、`coupling` 的引用并补全省略的 `length`，它复制每个条目和嵌套列表，所以传入的描述从不被修改。每个条目表只解析一次，结果存入条目表缓存，所以同一条目表被引用多次时错误只报告一次；引用处得到缓存内容的深拷贝（`structuredClone`），展开时对它的修改不会影响缓存和别的引用处。没有遍历到的条目表既不读取也不比较。之后对每个布局取缓存中它的条目表的深拷贝，调用 `build_structure` 展开为扁平的 `items`（计算结构总长 `length`，把 coupling 规范为名称数组），校验每个结构，然后才用 `register_structure` 把它们全部登记到登记域，所以一份描述要么全部登记，要么都不登记。返回的 `tables` 就是条目表缓存。第一、第二阶段发现的问题都作为带 `errors` 的 `Error` 抛出，标题相同，写出登记域名（`invalid layout descriptions of scope X`）；第一阶段有错误时不进入第二阶段。登记域只登记一次，登记时它还是空的，所以不会与已登记的布局冲突。除了测试辅助函数 `one_tag` 为了随意补齐数据块而直接调用 `register_structure` 之外，没有任何路径会登记未经校验的布局。
 - 每个布局编译为一个 Layout（`register_structure`）。`Layout` 是 `layout.js` 里的类，实例深度冻结（构造函数最后 `Object.freeze(this)`），公开的属性只有 `name`、`length`、`size`、`items`，另有原型上只读的 `scope`（spec-layout.zh-cn.md §4），其中 `items` 是展开后条目的冻结副本，只含文档规定的字段；方法 `create_ldata` 和 `io_index_table` 在原型上，所以 `{ ...layout }` 只复制这四个属性。`scope` 是读取私有字段 `#scope` 的 getter，返回布局所属的登记域对象；登记域对象可变（它的注册标志会变），所以不作为冻结对象的属性，而放在私有字段里。编译结果，即按名称索引的条目表 `entries`（字节偏移、位掩码、编解码）和字节到 tag 的反查表 `tags_at_byte`，存放在私有字段 `#compiled`，从不作为属性出现，所以公开接口里不出现 entry。
 - 构造 Layout 时就调用 `Ldata` 以 Symbol 为键的静态方法 `Ldata[LDATA_FACTORY](layout, compiled)`（键在 `internal.js`），它构建该布局的 Ldata 子类（§4），返回创建其 ldata 的函数；布局把这个函数存放在私有字段 `#create_ldata`，`create_ldata(name)` 调用它（§5）。子类和键 `CREATE_KEY` 都不离开 `Ldata.js`，布局只知道这个创建函数。`io_index_table(endian)` 把 `size` 和 `#compiled` 交给 `endian.js` 的同名内部函数（§6）。tag 访问器要读写 `Ldata` 的私有缓冲区，所以子类在 `Ldata` 的类体内构建；这个静态方法就在类体里，能直接访问私有成员，不需要静态初始化块和模块变量做中转，Symbol 键也不会与 tag 名冲突（spec-data-api.zh-cn.md §2.10）；`layout.js` 依赖 `Ldata.js`，`Ldata.js` 不依赖 `layout.js`。
@@ -105,12 +107,12 @@
 - tag 名不得是保留名（spec-data-api.zh-cn.md §2.10），否则访问器会遮蔽成员。保留名是 `reserved.js` 里的静态集合：Ldata 的成员、Node.js 20.11 中 EventEmitter 的方法名与字段名、`Object.prototype` 的名字。运行时不做任何探测，所以集合不随 Node.js 版本而变。`reserved.js` 导出 `is_reserved_name(name)`，只供 `structure.js` 和 `Ldata.js` 使用；包不导出它，Ldata 也没有对应的静态方法。`validate_structure` 报告保留名，`Ldata` 构建子类时也会抛出错误。测试把该集合与运行中的 Node.js 里实例上能找到的名字比对，所以 EventEmitter 新增成员会使测试失败，那时再扩充集合。
 - 保留的事件名（`change`、`write`、`read`）是 `reserved.js` 里的常量 `RESERVED_EVENTS`，供测试和文档使用；这是对使用方的规则，运行时不强制。`Ldata` 和 `Ltag` 覆盖 `on`、`once`、`off`（各自只调用 `EventEmitter` 的同名方法），仅为携带带类型的重载：处理器类型由事件名通过 `typedefs.js` 里的条件类型 `Data_Listener<E>` 和 `Tag_Listener<E>` 决定，所以 `change`、`write` 的处理器写错是编译期错误，其他名字可以用任意处理器。从 1.0 起，以后给 Ldata 增加的成员只用 `Symbol` 为键或静态方法。
 - `access` 事件（spec-data-api.zh-cn.md §2.8）的监听器有两种。实例监听器是数据块的 `EventEmitter` 上的监听器；类监听器单独存放在 `Ldata.js` 模块私有的一个 `Set` 里（`Ldata.on_access` 和 `Ldata.off_access` 往里加、从里删），所以 `removeAllListeners()` 或任何对实例的调用都碰不到它们。在构造任何东西之前，`#has_access_listeners()` 判断 `class_access_listeners.size > 0 || this.listenerCount("access") > 0`，所以没有监听器的数据块，每次访问只多一次开销很小的检查。实例部分不缓存成由 `newListener`、`removeListener` 事件维护的标志，因为 `removeAllListeners()` 会把这两个内部监听器一起移除，标志就会出错；类部分由 `Set` 自己计数，而它只被两个静态方法改动。`#emit_access(kind, tags, errors)` 先通过 `emit_all` 调用实例监听器，再调用类监听器（各自在自己的 `try` 里，参数是 `(this, kind, tags)`），它们抛出的东西推入 `errors`。模块标志 `in_access` 在这两次调用期间置位，监听器自己在此期间对任何 ldata 的访问都不触发。读取在监听器都调用完之后抛出 `errors[0]`；写入把 `errors` 交给 `#written()`，它在 `touch()` 之后、检测之前发出 `access`，最后才抛出第一个错误，这样缓冲区、快照和事件始终一致。tags 是 `get(name)` 的句柄（用到时才创建）：按名访问是那一个 tag；字节范围则由 `#tags_in(start, end, mask)` 遍历 `tags_at_byte`，去重、去掉位不在 `mask` 内的 Bool，并按条目的序号排序。
-- `dev.js` 的 `render_types(descriptions, { scope = "app", source })`（spec-layout.zh-cn.md §5）用公开接口 `create_scope(scope)` 创建登记域，`register_layout(descriptions)` 注册描述，二者抛出的异常原样传出；再用 `registry.js` 的 `layouts_of` 取得这个登记域的全部布局。`source` 省略且描述全是字符串（文件路径）时，以 `, ` 连接这些路径作为 `source`。然后连同登记域名交给 `types.js` 的内部函数 `render_declarations(scope_name, layouts, options)`，它为每个布局生成一个接口 `<布局>_Tags`（每个 tag 一个属性）和类型 `<布局>_Ldata = Ldata & <布局>_Tags`。布局名原样使用，不做大小写折叠（大小写风格由调用者决定），所以类型名就是 `scope.get_layout("<布局>")` 里的名字，同一登记域里名字不同就不会冲突。注册时已经检查过布局名匹配 `IDENTIFIER`，tag 名也已经过校验，所以都原样写出，不再检查。`IDENTIFIER` 使用 Unicode 属性 `ID_Start` 和 `ID_Continue`（加上 `_`、`$`），任何文字的名字都能接受。`doc_comment` 把 `comment` 写成单行或多行文档注释，并转义 `*/`。导入 `Ldata` 的模块说明符固定为 `"layout-data"`；没有 `source` 时头部不写文件名，头部注释给出为值指定类型的 JSDoc 类型转换写法，其中用 `get_scope("<登记域>")` 取得登记域。`create_ldata` 的返回类型是 `Ldata`：同一个方法的声明不能随布局返回不同的类型。
+- `dev.js` 的 `render_types(descriptions, { scope = "app", source })`（spec-layout.zh-cn.md §5）用公开接口 `create_scope(scope)` 创建登记域，`register_layout(descriptions)` 注册描述，二者抛出的异常原样传出；再用 `registry.js` 的 `layouts_of` 取得这个登记域的全部布局。`source` 省略且每份描述都有 `ORIGIN`（由 `yaml_file` 读取）时，以 `, ` 连接这些路径作为 `source`。然后连同登记域名交给 `types.js` 的内部函数 `render_declarations(scope_name, layouts, options)`，它为每个布局生成一个接口 `<布局>_Tags`（每个 tag 一个属性）和类型 `<布局>_Ldata = Ldata & <布局>_Tags`。布局名原样使用，不做大小写折叠（大小写风格由调用者决定），所以类型名就是 `scope.get_layout("<布局>")` 里的名字，同一登记域里名字不同就不会冲突。注册时已经检查过布局名匹配 `IDENTIFIER`，tag 名也已经过校验，所以都原样写出，不再检查。`IDENTIFIER` 使用 Unicode 属性 `ID_Start` 和 `ID_Continue`（加上 `_`、`$`），任何文字的名字都能接受。`doc_comment` 把 `comment` 写成单行或多行文档注释，并转义 `*/`。导入 `Ldata` 的模块说明符固定为 `"layout-data"`；没有 `source` 时头部不写文件名，头部注释给出为值指定类型的 JSDoc 类型转换写法，其中用 `get_scope("<登记域>")` 取得登记域。`create_ldata` 的返回类型是 `Ldata`：同一个方法的声明不能随布局返回不同的类型。
 - 命令行（spec-layout.zh-cn.md §5.1）也在 `dev.js` 里，模块顶层按 `import.meta.main` 分三种情况：
   - 为 `true`（作为入口运行，Node.js >= 24.2）：调用 `run_cli(process.argv.slice(2))`，它返回退出码，赋给 `process.exitCode`；
   - 为 `undefined`（Node.js 早于 24.2）且本文件是入口：在标准错误输出写出所需版本、当前版本（`process.version`）和改用函数入口的提示，`process.exitCode = 1`。判断"本文件是入口"用 `realpathSync(process.argv[1])` 与 `import.meta.filename` 比较（pnpm 的 bin 可能经过符号链接或 `.cmd` 包装），只为这条提示使用；
   - 其余情况（被导入）：什么都不做。
-- `run_cli(args)` 用 `node:util` 的 `parseArgs`（`allowPositionals`，选项 `scope`、`out`/`o`、`help`/`h`）解析参数，未知选项和缺少描述文件是参数错误：写出原因和用法，返回 1。`--help` 写出用法（含版本要求）到标准输出，返回 0。之后调用 `render_types(files, { scope })`，把文本写到 `--out` 或标准输出，返回 0。`render_types` 抛出的错误写到标准错误输出（带 `errors` 时逐条列出），返回 1，不写输出文件。`run_cli` 不调用 `process.exit`，所以进程结束前输出都已写完。它不导出：测试像使用方一样用 `process.execPath` 以子进程运行 `dev.js`，在没有 `import.meta.main` 的 Node.js 上跳过。
+- `run_cli(args)` 用 `node:util` 的 `parseArgs`（`allowPositionals`，选项 `scope`、`out`/`o`、`help`/`h`）解析参数，未知选项和缺少描述文件是参数错误：写出原因和用法，返回 1。`--help` 写出用法（含版本要求）到标准输出，返回 0。之后用 `yaml_file` 读取每个文件，收集全部失败文件的 `errors`（没有 `errors` 的错误取它的 message）；有文件失败时，把它们写到标准错误输出的 `invalid description files` 之下，返回 1，什么都不生成。然后调用 `render_types(descriptions, { scope })`，把文本写到 `--out` 或标准输出，返回 0。`render_types` 抛出的错误写到标准错误输出（带 `errors` 时逐条列出），返回 1，不写输出文件。`run_cli` 不调用 `process.exit`，所以进程结束前输出都已写完。它不导出：测试像使用方一样用 `process.execPath` 以子进程运行 `dev.js`，在没有 `import.meta.main` 的 Node.js 上跳过。
 
 ## 5. Ldata
 

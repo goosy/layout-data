@@ -1,8 +1,6 @@
-import { readFileSync } from "node:fs";
-import { parseDocument } from "yaml";
 import { CODECS } from "./codecs.js";
 import { io_index_table } from "./endian.js";
-import { COMPILED, LDATA_FACTORY } from "./internal.js";
+import { COMPILED, LDATA_FACTORY, ORIGIN } from "./internal.js";
 import { Ldata } from "./Ldata.js";
 import { layouts_of, register } from "./registry.js";
 import { build_structure, validate_structure, IDENTIFIER, TYPE_BITS } from "./structure.js";
@@ -221,14 +219,14 @@ function resolve_items(list, resolve_table, where, errors) {
 }
 
 /**
- * Reads the layout descriptions (doc/design.md §3) and merges them: the
- * `layouts` lists into one list, the `item_tables` mappings kept with their
- * origins; then registers them with register_merged. Each description is the
- * path of a YAML description file or a description object; a list of
- * descriptions is merged, so a layout may name an item table of any
- * description whatever the order. Internal: the register_layout of a scope calls it.
+ * Merges the layout descriptions (doc/design.md §3): the `layouts` lists
+ * into one list, the `item_tables` mappings kept with their origins; then
+ * registers them with register_merged. Each description is a description
+ * object; a list of descriptions is merged, so a layout may name an item
+ * table of any description whatever the order. Internal: the register_layout
+ * of a scope calls it.
  *
- * @param {string | Layout_Description | Array<string | Layout_Description>} descriptions
+ * @param {Layout_Description | Layout_Description[]} descriptions
  * @param {Layout_Scope} scope - A scope with no layouts yet.
  * @returns {Registered_Layouts}
  * @throws {Error} With `errors`, every violation found, when the descriptions are not valid.
@@ -270,20 +268,12 @@ export function register_descriptions(descriptions, scope) {
 		}
 	};
 	list.forEach((description, index) => {
-		const label = Array.isArray(descriptions) ? `layout description #${index + 1}` : "layout description";
+		const label = description?.[ORIGIN]
+			?? (Array.isArray(descriptions) ? `layout description #${index + 1}` : "layout description");
 		if (Array.isArray(description)) {
 			errors.push(`${label}: a list of descriptions must not contain a list`);
 		} else if (typeof description === "string") {
-			let text;
-			try {
-				text = readFileSync(description, "utf8");
-			} catch (error) {
-				errors.push(error.message);
-				return;
-			}
-			const doc = parseDocument(text, { version: "1.2" });
-			if (doc.errors.length > 0) errors.push(...doc.errors.map((e) => `${description}: ${e.message}`));
-			else add(description, doc.toJS());
+			errors.push(`${label}: a description is an object, not a string; read a description file with yaml_file, parse YAML text with yaml`);
 		} else {
 			add(label, description);
 		}
