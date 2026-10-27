@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test, { describe } from "node:test";
-import * as api from "../src/index.js";
+import { index as api } from "./target.js";
 import { fresh_scope } from "./share.js";
 
 const ITEMS = () => [

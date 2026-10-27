@@ -1,9 +1,9 @@
 ---
 id: phnw9qw1
 opened: 2026-10-27T03:45:49.281Z
-closed:
+closed: 2026-10-27T04:30:16.000Z
 title: "Restore bundling: bundle the two entries separately, excluding dependencies"
-status: accepted    # open | accepted | fixed | rejected | wontfix
+status: fixed       # open | accepted | fixed | rejected | wontfix
 fixed_in: []        # commit IDs, backfilled at version commit time
 labels: []
 remote:

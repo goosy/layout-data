@@ -6,7 +6,7 @@ import { join } from "node:path";
 import test, { after, describe } from "node:test";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
-import { render_types } from "../src/dev.js";
+import { render_types } from "./target.js";
 import { fresh_scope } from "./share.js";
 
 /** The syntax errors of a text taken as TypeScript (a declaration file is parsed as the same syntax). */
@@ -165,7 +165,9 @@ export type Ty_Basic_Ldata = Ldata & Ty_Basic_Tags;
 });
 
 describe("8.1 the command line layout-types", { skip: typeof import.meta.main !== "boolean" && "needs Node.js >= 24.2 (import.meta.main)" }, () => {
-	const dev_file = fileURLToPath(new URL("../src/dev.js", import.meta.url));
+	// the bundle the bin of package.json points to, as installed for the user (built by pnpm test)
+	const package_url = new URL("../../package.json", import.meta.url);
+	const dev_file = fileURLToPath(new URL(JSON.parse(readFileSync(package_url, "utf8")).bin["layout-types"], package_url));
 	const dir = mkdtempSync(join(tmpdir(), "layout-types-"));
 	after(() => rmSync(dir, { recursive: true, force: true }));
 
@@ -235,7 +237,7 @@ describe("8.1 the command line layout-types", { skip: typeof import.meta.main !=
 	});
 
 	test("imported, the module runs no command line", async () => {
-		const dev = await import("../src/dev.js");
+		const { dev } = await import("./target.js");
 		assert.deepEqual(Object.keys(dev), ["render_types"]);
 	});
 });

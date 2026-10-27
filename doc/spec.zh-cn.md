@@ -53,7 +53,8 @@ layout-data 是一个结构化数据块库：提供基于 `Buffer`、面向数�
 
 - 以 ES 模块库发布，运行时入口 `layout-data`，`yaml` 为运行时依赖；
 - 开发期入口 `layout-data/dev` 提供类型声明的生成，同一文件也是命令行工具 `layout-types`（`package.json` 的 `bin`），见 [spec-layout.zh-cn.md](spec-layout.zh-cn.md) §8；
-- 类型声明由源码的 JSDoc 生成（`src/typedefs.js` 与各函数的注释是唯一来源），随构建输出到 `dist/types`，不手写 `.d.ts`；
+- 发布的是打包产物：两个入口各自打包为一个独立的文件（`dist/index.js`、`dist/dev.js`），互不依赖。依赖不打包：`yaml` 和 Node.js 内置模块在产物中保留为 `import`，由使用方的包管理器安装 `yaml`；
+- 类型声明由源码的 JSDoc 生成（`src/typedefs.js` 与各函数的注释是唯一来源），随构建输出到 `dist`，与两个入口的产物并排，不手写 `.d.ts`；
 - Node.js >= 20.11；命令行工具 `layout-types` 要求 Node.js >= 24.2，这只约束生成类型的开发环境；
 - 许可证：MPL-2.0（见 `LICENSE`）。本库可作为任意许可证产品的组成部分；对本库文件的修改须以 MPL-2.0 公开，并须保留版权声明。名称 "layout-data" 不在授权范围内（MPL-2.0 §2.3）。
 

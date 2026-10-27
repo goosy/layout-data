@@ -141,8 +141,8 @@ The specification and design documents are in [doc/](doc/spec.md) (English, `*.m
 
 ```bash
 pnpm install
-pnpm build      # generate dist/types
-pnpm test       # build, type tests, node --test
+pnpm build      # bundle the two entries into dist (yaml stays external), then generate the declarations beside them
+pnpm test       # build, type tests, node --test, then the public interface tests against dist
 pnpm lint
 ```
 

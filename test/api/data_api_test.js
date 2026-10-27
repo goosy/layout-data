@@ -4,8 +4,7 @@ import { register_items } from "./share.js";
 import assert from "node:assert/strict";
 import { Buffer } from "node:buffer";
 import test, { describe } from "node:test";
-import { Ldata } from "../src/Ldata.js";
-import { Ltag } from "../src/Ltag.js";
+import { Ldata, Ltag } from "./target.js";
 
 // the word gives no init value: it is composed from its bits
 const ITEMS = [

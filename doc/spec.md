@@ -55,7 +55,8 @@ Layouts are given by descriptions, as YAML 1.2 description files or as descripti
 
 - Published as an ES module library with the run-time entry `layout-data`. `yaml` is a run-time dependency installed with it;
 - The development entry `layout-data/dev` renders the type declarations, and the same file is the command line tool `layout-types` (the `bin` of `package.json`); see §8 of [spec-layout.md](spec-layout.md);
-- Type declarations are generated from the JSDoc of the source (`src/typedefs.js` and the comments of the functions are the only source). They are emitted to `dist/types` by the build; no hand-written `.d.ts`;
+- What is published is the bundles: each entry is bundled into a file of its own (`dist/index.js`, `dist/dev.js`), neither depending on the other. Dependencies are not bundled: `yaml` and the built-in modules of Node.js stay as `import`s in the bundles, and the user's package manager installs `yaml`;
+- Type declarations are generated from the JSDoc of the source (`src/typedefs.js` and the comments of the functions are the only source). They are emitted to `dist` by the build, beside the bundles of the two entries; no hand-written `.d.ts`;
 - Node.js >= 20.11; the command line tool `layout-types` requires Node.js >= 24.2, which binds only the development environment that renders the types;
 - License: MPL-2.0 (see `LICENSE`). The library may be used as a component of products under any license; modifications to its files must be published under MPL-2.0, and copyright notices must be kept. The name "layout-data" is not covered by the license (MPL-2.0 §2.3).
 

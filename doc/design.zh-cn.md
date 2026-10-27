@@ -21,8 +21,8 @@
 | `src/dev.js` | 开发期入口 `layout-data/dev`：导出 `render_types(descriptions, options)`；作为入口运行时（`import.meta.main`）是命令行工具 `layout-types`（`package.json` 的 `bin`） |
 | `src/types.js` | 由布局生成 TypeScript 类型声明的文本（`dev.js` 调用它；内部使用，包不导出） |
 | `src/typedefs.js` | 公开类型的 JSDoc 定义（类型的唯一来源，无运行时内容） |
-| `dist/types/` | 构建时由 `tsc` 从 JSDoc 生成的声明文件（`tsconfig.json`），不入库 |
-| `type_check/consumer.ts` | 类型测试：以包名导入生成的声明，用 `Equal` 断言和 `@ts-expect-error` 检查公开接口（`pnpm test:types`，已包含在 `pnpm test` 中） |
+| `dist/index.js` / `dist/dev.js` | 构建时由 rolldown 生成的两个入口的产物（`rolldown.config.js`，§7），即发布的文件，不入库 |
+| `dist/*.d.ts` | 构建时由 `tsc` 从 JSDoc 生成的声明文件（`tsconfig.json`），与产物同在 `dist`：`index.d.ts`、`dev.d.ts` 是两个入口的声明，其余是它们引用的模块声明；不入库 |
 
 ## 2. 组成
 
@@ -173,6 +173,10 @@
 
 ## 7. 构建与测试
 
-- `pnpm build`：`tsc` 从 JSDoc 生成 `dist/types` 中的声明文件（不使用打包工具：包直接发布 `src`，并依赖 `yaml`）；
+- `pnpm build`：先 `rolldown -c` 打包，再 `tsc -p tsconfig.json` 从 JSDoc 生成声明文件，同样输出到 `dist`。`rolldown.config.js` 加载时先清空 `dist`，再导出两份配置，两个入口各自打包、不拆分 chunk：`src/index.js` → `dist/index.js`，`src/dev.js` → `dist/dev.js`（`platform: "node"`，`format: "es"`）。`external` 由 `package.json` 的 `dependencies` 的名字（及其子路径）和 `node:` 前缀的内置模块组成，所以 `yaml` 在产物中保留为 `import`。`dist/dev.js` 保留源文件开头的 `#!/usr/bin/env node`，`import.meta` 原样保留，`import.meta.main`、`import.meta.filename` 指的就是这个产物；
+- 发布：`package.json` 的 `files` 是 `dist` 和 `CHANGELOG.md`；`exports` 的 `default` 和 `bin` 指向 `dist/index.js`、`dist/dev.js`，`types` 指向 `dist/index.d.ts`、`dist/dev.d.ts`；
 - `pnpm bench`：`bench/change_detection_bench.js` 测量读取一个 86 个 tag、146 字节的数据块（从设备字节序缓冲装载每个 tag，并检测、报告变化）的开销。开发机上，在一个事务中对每个 tag 调用 `load_tag`，每周期无变化约 3.1–3.2 µs，少量变化 3.1–4.5 µs，全部变化 8.5–8.6 µs（每次 `load_tag` 还要检查一次是否有 `access` 监听器，86 个 tag 合计约 0.6 µs）；用 `layout.io_index_table` 按字节复制再一次 `write_bytes` 时分别约 0.4 µs、0.6–1.7 µs、5.7–5.9 µs；
-- `pnpm test`：先构建，再运行类型测试和 `node --test`；`pnpm lint`：ESLint。
+- `pnpm test`：先构建，再运行类型测试、`node --test`（全部测试，针对 `src`）和 `pnpm test:dist`（产物测试）；`pnpm lint`：ESLint。测试分三类：
+  - 内部测试（`test/*_test.js`，打包测试除外）：用到内部模块（编译数据 `COMPILED`、`endian.js`、`reserved.js`、`register_structure` 等），只针对 `src`；辅助函数在 `test/share.js`；
+  - 公开接口测试（`test/api/*_test.js`）：只用公开接口，从 `test/api/target.js` 取得被测的入口，辅助函数在 `test/api/share.js`。`target.js` 默认取 `src` 的两个入口；`pnpm test:dist` 以 `node --test --import ./test/api/dist.js` 运行这些测试，`dist.js` 设置环境变量 `LAYOUT_DATA_TEST_TARGET=dist`，`target.js` 于是按包名导入 `layout-data`、`layout-data/dev`，即 `dist` 中的产物。所以同一组测试先后针对源码和产物各运行一次，即产物测试。命令行测试在两遍中都运行 `package.json` 的 `bin` 指向的产物；
+  - 打包测试（`test/bundle_test.js`）：检查打包本身，即 `exports` 和 `bin` 指向 `dist` 中的产物、导出与 `src` 的入口一致、产物中只有 `yaml` 和 `node:` 模块的外部 `import`、运行时产物不含开发期入口的代码、`dist/dev.js` 保留 hashbang。

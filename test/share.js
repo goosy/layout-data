@@ -1,25 +1,10 @@
-// Shared helpers for the tests.
+// Shared helpers of the tests of the internals, which run against src only.
+// The helpers of the public interface are those of test/api/share.js.
 import { register_structure } from "../src/layout.js";
 import { create_scope } from "../src/scope.js";
 import { build_structure } from "../src/structure.js";
 
-let scope_count = 0;
-
-/** A scope of its own, so that a test can register: a scope registers once. */
-export function fresh_scope() {
-	return create_scope(`Test_${scope_count++}`);
-}
-
-/** Registers descriptions in a scope of their own; the result holds the scope too. */
-export function register(descriptions) {
-	const scope = fresh_scope();
-	return { scope, ...scope.register_layout(descriptions) };
-}
-
-/** Registers the items of one layout by name, as a user does in code, and returns the layout. */
-export function register_items(name, items) {
-	return register({ layouts: { [name]: items } }).layouts[name];
-}
+export { fresh_scope, register, register_items } from "./api/share.js";
 
 /**
  * Builds a data structure from a fresh copy of items,
