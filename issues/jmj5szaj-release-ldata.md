@@ -1,9 +1,9 @@
 ---
 id: jmj5szaj
 opened: 2026-10-28T10:41:19.825Z
-closed:
+closed: 2026-10-28T11:47:16.000Z
 title: 布局解除 ldata 的名字绑定，交还它在布局中占用的名字
-status: accepted    # open | accepted | fixed | rejected | wontfix
+status: fixed       # open | accepted | fixed | rejected | wontfix
 fixed_in: []        # commit IDs, backfilled at version commit time
 labels: []
 remote:

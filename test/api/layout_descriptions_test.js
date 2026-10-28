@@ -486,4 +486,32 @@ describe("a layout manages its ldata", () => {
 		// the same name in another layout is another ldata
 		assert.notEqual(register(unit("Ms_Names")).layouts.Ms_Names.create_ldata("n"), data);
 	});
+
+	test("delete_ldata unbinds a name, which can be used again; the ldata itself is unaffected", () => {
+		const { scope, layouts } = register(unit("Ms_Delete", 3));
+		const layout = layouts.Ms_Delete;
+		const data = layout.create_ldata("gone");
+		const changes = [];
+		data.on("change", (name, old_value, new_value) => changes.push([name, old_value, new_value]));
+		assert.equal(layout.delete_ldata("gone"), true);
+		assert.throws(() => layout.get_ldata("gone"), new RegExp(`^Error: unknown ldata ${scope.name}.Ms_Delete.gone$`));
+		assert.equal(layout.delete_ldata("gone"), false);
+		assert.equal(layout.delete_ldata("never"), false);
+		data.a = 4;
+		assert.deepEqual([data.a, data.layout, changes], [4, layout, [["a", 3, 4]]]);
+		const again = layout.create_ldata("gone");
+		assert.notEqual(again, data);
+		assert.equal(layout.get_ldata("gone"), again);
+	});
+
+	test("the ldata of the blocks given back by delete_ldata let the same blocks register again", () => {
+		const scope = create_scope("Sc_Rebuild");
+		const description = unit("Ms_Rebuild", 0, "blocks:\n  - { name: r_1, layout: Sc_Rebuild.Ms_Rebuild }\n  - { name: r_2, layout: Sc_Rebuild.Ms_Rebuild }\n");
+		const first = scope.register_layout(description).ldata;
+		for (const data of Object.values(first)) data.layout.delete_ldata(data.name);
+		const second = scope.register_layout(description).ldata;
+		assert.deepEqual(Object.keys(second), ["r_1", "r_2"]);
+		assert.notEqual(second.r_1, first.r_1);
+		assert.equal(scope.get_layout("Ms_Rebuild").get_ldata("r_1"), second.r_1);
+	});
 });

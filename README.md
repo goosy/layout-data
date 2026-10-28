@@ -87,7 +87,7 @@ pump.transaction(() => {
 
 The development entry `layout-data/dev` exports `render_types(descriptions, options)`, which generates TypeScript interfaces for the layouts of descriptions, for editor completion (see below). It is not needed at run time.
 
-A layout has `create_ldata(name)` and `get_ldata(name)` (an ldata name is unique within its layout), `io_index_table(endian)`, the byte index table for exchanging a whole block with a device (per-tag conversion is `load_tag` / `store_tag` of `Ldata`), and `scope`, the scope it belongs to.
+A layout has `create_ldata(name)`, `get_ldata(name)` and `delete_ldata(name)` (an ldata name is unique within its layout until `delete_ldata` gives it back), `io_index_table(endian)`, the byte index table for exchanging a whole block with a device (per-tag conversion is `load_tag` / `store_tag` of `Ldata`), and `scope`, the scope it belongs to.
 
 A library built on layout-data creates a scope of its own and, to keep conflicting layouts out of it, registers its own right away, at the top level of its module:
 
