@@ -1,9 +1,9 @@
 ---
 id: 3aeg7vcd
 opened: 2026-10-28T10:41:19.825Z
-closed:
+closed: 2026-10-28T11:47:16.000Z
 title: A layout unbinds the name of an ldata, giving back the name it occupies in the layout
-status: accepted    # open | accepted | fixed | rejected | wontfix
+status: fixed       # open | accepted | fixed | rejected | wontfix
 fixed_in: []        # commit IDs, backfilled at version commit time
 labels: []
 remote:

@@ -125,6 +125,18 @@ export class Layout {
 	}
 
 	/**
+	 * Unbinds a name from its ldata (doc/spec-layout.md §4.1): get_ldata no
+	 * longer finds it, the name can be used again, and the layout no longer
+	 * holds the ldata. The ldata itself is unaffected.
+	 *
+	 * @param {string} name - The name of the ldata.
+	 * @returns {boolean} True when a binding was removed, false when the name was not bound.
+	 */
+	delete_ldata(name) {
+		return this.#ldata.delete(name);
+	}
+
+	/**
 	 * The index in a device-ordered IO buffer of every byte of a data block
 	 * of this layout: the byte `i` of the block is the byte `table[i]` of the
 	 * IO buffer (doc/spec-data-api.md §2.9).

@@ -60,6 +60,7 @@ assert_type<Equal<typeof layout.scope, Layout_Scope>>();
 assert_type<Equal<typeof layout.items, readonly Layout_Tag[]>>();
 assert_type<Equal<Layout_Tag["coupling"], readonly string[]>>();
 assert_type<Equal<ReturnType<Layout["get_ldata"]>, Ldata>>();
+assert_type<Equal<Layout["delete_ldata"], (name: string) => boolean>>();
 // @ts-expect-error the compiled entries are not part of a layout
 void layout.entries;
 // @ts-expect-error the lookup table is not part of a layout
