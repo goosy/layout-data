@@ -5,7 +5,7 @@ import { join } from "node:path";
 import test, { describe } from "node:test";
 import { pathToFileURL } from "node:url";
 import { register } from "./share.js";
-import { yaml, yaml_file } from "./target.js";
+import { desc_file, yaml } from "./target.js";
 
 const dir = mkdtempSync(join(tmpdir(), "yaml-"));
 
@@ -22,16 +22,21 @@ function errors_of(call) {
 	assert.fail("the call did not throw");
 }
 
+/** The layouts of a Description as plain data: name and items. */
+const shape = (description) => Object.values(description.layouts).map((layout) => [layout.name, layout.items]);
+
 describe("1.1 yaml", () => {
-	test("parses YAML text into a description object, as a tag or called with the text", () => {
+	test("compiles YAML text into a Description, as a tag or called with the text", () => {
 		const tagged = yaml`
 layouts: [Ym_Tag]
 item_tables:
   Ym_Tag:
     - { name: a, type: UInt, offset: 0, init_value: 1 }
 `;
-		assert.deepEqual(tagged, { layouts: ["Ym_Tag"], item_tables: { Ym_Tag: [{ name: "a", type: "UInt", offset: 0, init_value: 1 }] } });
-		assert.deepEqual(yaml(PUMP), { layouts: ["Ym_Pump"], item_tables: { Ym_Pump: [{ name: "id", type: "UInt", offset: 0, init_value: 5 }] } });
+		assert.deepEqual(Object.keys(tagged.layouts), ["Ym_Tag"]);
+		assert.deepEqual(tagged.layouts.Ym_Tag.items.map((item) => [item.name, item.init_value]), [["a", 1]]);
+		assert.deepEqual(tagged.blocks, []);
+		assert.deepEqual(shape(yaml(PUMP)), shape(yaml`${PUMP}`));
 		assert.equal(register(yaml(PUMP)).layouts.Ym_Pump.create_ldata("p").id, 5);
 	});
 
@@ -44,10 +49,10 @@ item_tables:
   ${name}:
     - { name: a, type: UInt, offset: 0, init_value: ${value}, comment: "tab\tdone" }
 `;
-		assert.deepEqual(description.layouts, ["Ym_Raw"]);
-		assert.equal(description.item_tables.Ym_Raw[0].init_value, 7);
+		const [item] = description.layouts.Ym_Raw.items;
+		assert.equal(item.init_value, 7);
 		// the escape \t reached the YAML parser, which made it a tab
-		assert.equal(description.item_tables.Ym_Raw[0].comment, "tab\tdone");
+		assert.equal(item.comment, "tab\tdone");
 	});
 
 	test("a parse error throws at the call with errors; another argument throws TypeError", () => {
@@ -58,59 +63,67 @@ item_tables:
 		assert.throws(() => yaml(), TypeError);
 	});
 
-	test("the structure is checked by registration, not by yaml", () => {
-		assert.equal(yaml("42"), 42);
-		assert.throws(() => register(yaml("42")), (error) => error.errors[0] === "layout description: the root must be a mapping");
+	test("the structure is checked when reading, all the errors together", () => {
+		assert.deepEqual(errors_of(() => yaml("42")).errors, ["the root must be a mapping"]);
+		const { message, errors } = errors_of(() => yaml`
+layouts: [Ym_Bad, Ym_Worse]
+item_tables:
+  Ym_Bad:
+    - { name: a, type: Byte, offset: 0 }
+  Ym_Worse:
+    - { name: get, type: UInt, offset: 0 }
+`);
+		assert.ok(message.startsWith("invalid YAML text:\n"), message);
+		assert.deepEqual(errors, [
+			"Ym_Bad: length 8 bits is not a whole number of registers",
+			"Ym_Worse.get: name is a reserved name",
+		]);
 	});
 });
 
-describe("1.1 yaml_file", () => {
+describe("1.1 desc_file", () => {
 	const file = join(dir, "pump.yaml");
 	writeFileSync(file, PUMP);
 
 	test("reads a description file, as a tag, with a path or with a file: URL", () => {
-		const expected = yaml(PUMP);
-		assert.deepEqual(yaml_file(file), expected);
-		assert.deepEqual(yaml_file`${file}`, expected);
-		assert.deepEqual(yaml_file(pathToFileURL(file)), expected);
+		const expected = shape(yaml(PUMP));
+		assert.deepEqual(shape(desc_file(file)), expected);
+		assert.deepEqual(shape(desc_file`${file}`), expected);
+		assert.deepEqual(shape(desc_file(pathToFileURL(file))), expected);
 	});
 
 	test("as a tag, the path is raw: a backslash is kept", () => {
-		const { message } = errors_of(() => yaml_file`no\such\dir\file.yaml`);
+		const { message } = errors_of(() => desc_file`no\such\dir\file.yaml`);
 		assert.ok(message.startsWith("invalid description file no\\such\\dir\\file.yaml:\n"), message);
 	});
 
-	test("an unreadable file or a parse error throws at the call, naming the file", () => {
+	test("an unreadable file, a parse error or an invalid description throws at the call, naming the file", () => {
 		const missing = join(dir, "missing.yaml");
-		const absent = errors_of(() => yaml_file(missing));
+		const absent = errors_of(() => desc_file(missing));
 		assert.equal(absent.message.split("\n")[0], `invalid description file ${missing}:`);
 		assert.match(absent.errors[0], /ENOENT/);
 		const bad = join(dir, "bad.yaml");
 		writeFileSync(bad, "layouts: [unclosed\n");
-		const parse = errors_of(() => yaml_file(bad));
+		const parse = errors_of(() => desc_file(bad));
 		assert.ok(parse.errors.length >= 1 && parse.errors.every((error) => error.startsWith(`${bad}: `)), parse.errors.join("\n"));
+		const scalar = join(dir, "scalar.yaml");
+		writeFileSync(scalar, "42\n");
+		assert.deepEqual(errors_of(() => desc_file(scalar)).errors, [`${scalar}: the root must be a mapping`]);
 	});
 
 	test("an argument that is not a path or a file: URL throws TypeError", () => {
-		assert.throws(() => yaml_file(42), TypeError);
-		assert.throws(() => yaml_file(new URL("https://example.com/pump.yaml")), TypeError);
+		assert.throws(() => desc_file(42), TypeError);
+		assert.throws(() => desc_file(new URL("https://example.com/pump.yaml")), TypeError);
 	});
 
-	test("the file is remembered by the object returned, not by its copies, and not as a key", () => {
-		const description = yaml_file(file);
-		assert.deepEqual(Object.keys(description), ["layouts", "item_tables"]);
-		assert.deepEqual(JSON.parse(JSON.stringify(description)), yaml(PUMP));
-		const other = join(dir, "pump_again.yaml");
-		writeFileSync(other, PUMP);
-		const twice = (first) => {
-			try {
-				register([first, yaml_file(other)]);
-			} catch (error) {
-				return error.errors;
-			}
-			assert.fail("the descriptions were accepted");
-		};
-		assert.deepEqual(twice(description), [`layout Ym_Pump is listed in ${file} and ${other}`]);
-		assert.deepEqual(twice({ ...description }), [`layout Ym_Pump is listed in layout description #1 and ${other}`]);
+	test("the file is remembered by the Description, not as a key, and named by the errors of registration", () => {
+		const description = desc_file(file);
+		assert.deepEqual(Object.keys(description), ["layouts", "item_tables", "blocks"]);
+		const other = join(dir, "pump_other.yaml");
+		writeFileSync(other, PUMP.replace("init_value: 5", "init_value: 6"));
+		assert.throws(() => register([description, desc_file(other)]), (error) => {
+			assert.deepEqual(error.errors, [`${other}: another layout of a different structure is already named ${error.message.match(/scope (\w+)/)[1]}.Ym_Pump`]);
+			return true;
+		});
 	});
 });

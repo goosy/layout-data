@@ -1,18 +1,18 @@
 #!/usr/bin/env node
 // The development entry layout-data/dev (doc/spec-layout.md §5): renders the
 // TypeScript declarations of the layouts of descriptions, for editor completion.
-// Run as the entry it is the command line tool layout-types (§8.1), which
+// Run as the entry it is the command line tool layout-types (§5.1), which
 // requires Node.js >= 24.2 for import.meta.main; the function itself works on
 // the Node.js of the run-time entry.
 import { realpathSync, writeFileSync } from "node:fs";
 import { parseArgs } from "node:util";
 import { ORIGIN } from "./internal.js";
-import { layouts_of } from "./registry.js";
-import { create_scope } from "./scope.js";
+import { check_descriptions, plan_layouts, registration_error } from "./layout.js";
+import { check_scope_name } from "./scope.js";
 import { render_declarations } from "./types.js";
-import { yaml_file } from "./yaml.js";
+import { desc_file } from "./yaml.js";
 
-/** @import { Layout_Description } from "./typedefs.js" */
+/** @import { Description } from "./typedefs.js" */
 
 /** The Node.js version the command line requires, for import.meta.main. */
 const CLI_NODE = "24.2";
@@ -34,26 +34,30 @@ given in code, call render_types of "layout-data/dev" in a script instead.`;
 
 /**
  * Renders a TypeScript declaration file for all the layouts of descriptions,
- * for editor completion of the tags (doc/spec-layout.md §5). The descriptions
- * are registered in a scope created here. The text imports `Ldata` from
+ * for editor completion of the tags (doc/spec-layout.md §5). The layouts are
+ * combined by the rules of registering them in one empty scope, but no scope
+ * is created and no ldata of blocks. The text imports `Ldata` from
  * "layout-data", which the project rendering the types depends on.
  *
- * @param {Layout_Description | Layout_Description[]} descriptions - As for register_layout: a description object or a list of them.
+ * @param {Description | Description[]} descriptions - As for register_layout: a Description or a list of them.
  * @param {object} [options]
- * @param {string} [options.scope] - The scope name used in the example of the header comment; "app" by default.
- * @param {string} [options.source] - The source named in the header; by default the description files, when yaml_file read all the descriptions.
+ * @param {string} [options.scope] - The scope name used in the example of the header comment and in errors; "app" by default.
+ * @param {string} [options.source] - The source named in the header; by default the description files, when desc_file read all the descriptions.
  * @returns {string}
- * @throws {Error} With `errors`, as register_layout, when the descriptions are not valid.
+ * @throws {Error} With `errors`, as register_layout, when the descriptions are not valid or their layouts conflict.
  * @throws {TypeError | Error} As create_scope, when the scope name is not valid.
  */
-export function render_types(descriptions, { scope: scope_name = "app", source } = {}) {
-	const scope = create_scope(scope_name);
-	scope.register_layout(descriptions);
-	const list = Array.isArray(descriptions) ? descriptions : [descriptions];
-	if (source === undefined && list.every((description) => typeof description?.[ORIGIN] === "string")) {
-		source = list.map((description) => description[ORIGIN]).join(", ");
+export function render_types(descriptions, { scope = "app", source } = {}) {
+	check_scope_name(scope);
+	const errors = [];
+	const checked = check_descriptions(descriptions, errors);
+	const empty = { by_name: new Map(), by_fingerprint: new Map() };
+	const { layouts } = plan_layouts(checked, empty, scope, (desc) => desc, errors);
+	if (errors.length > 0) throw registration_error(scope, errors);
+	if (source === undefined && checked.every(({ description }) => typeof description[ORIGIN] === "string")) {
+		source = checked.map(({ description }) => description[ORIGIN]).join(", ");
 	}
-	return render_declarations(scope.name, [...layouts_of(scope).values()], { source });
+	return render_declarations(scope, Object.values(layouts), { source });
 }
 
 /**
@@ -93,7 +97,7 @@ function run_cli(args) {
 	const read_errors = [];
 	for (const file of files) {
 		try {
-			descriptions.push(yaml_file(file));
+			descriptions.push(desc_file(file));
 		} catch (error) {
 			read_errors.push(...(Array.isArray(error.errors) ? error.errors : [error.message]));
 		}
@@ -138,9 +142,9 @@ if (is_main === true) {
 The command line needs it only to render the types, not to run the application.
 Run it with a newer Node.js, or call render_types of "layout-data/dev" in a script:
 
-  import { yaml_file } from "layout-data";
+  import { desc_file } from "layout-data";
   import { render_types } from "layout-data/dev";
-  process.stdout.write(render_types(yaml_file("pump.yaml"), { scope: "app" }));
+  process.stdout.write(render_types(desc_file("pump.yaml"), { scope: "app" }));
 `);
 	process.exitCode = 1;
 }

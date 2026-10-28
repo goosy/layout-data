@@ -1,9 +1,9 @@
 ---
 id: f0j027s2
 opened: 2026-10-28T04:48:53.930Z
-closed:
+closed: 2026-10-28T11:46:43.000Z
 title: Descriptions are YAML only, each self-contained with dependencies brought in by imports, yaml and desc_file compile them to a Description, and blocks describe ldata instances
-status: accepted    # open | accepted | fixed | rejected | wontfix
+status: fixed       # open | accepted | fixed | rejected | wontfix
 fixed_in: []        # commit IDs, backfilled at version commit time
 labels: []
 remote:

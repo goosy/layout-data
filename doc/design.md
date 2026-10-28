@@ -49,7 +49,7 @@ The development entry `layout-data/dev` (`src/dev.js`) and the command line `lay
 
 - Their input is descriptions only and their output is declaration text only. They take, return and read no run-time object of the application (scopes, layouts, ldata);
 - They run in the developer's own process (a development script or the command line), and create neither scopes nor ldata;
-- The run-time entry `layout-data` (`src/index.js`) does not import `dev.js`, so the application does not load the code that renders types; `dev.js` uses the run-time implementation only through `desc_file`, `check_scope_name` of `scope.js`, and `check_descriptions` and `plan_layouts` of `layout.js`, so the rules of reading, validation and layout conflicts are exactly those of the run time;
+- The run-time entry `layout-data` (`src/index.js`) does not import `dev.js`, so the application does not load the code that renders types; `dev.js` uses the run-time implementation only through `desc_file`, `check_scope_name` of `scope.js`, and `check_descriptions`, `plan_layouts` and `registration_error` of `layout.js`, so the rules of reading, validation and layout conflicts are exactly those of the run time;
 - The text always imports `Ldata` from `"layout-data"`: it is read by the editor of the developer's project, which depends on this package. How the application bundles its run-time code has nothing to do with rendering the types;
 - The command line is an argument shell around the same function: it parses the arguments and calls `render_types`, with the same input and result, except that it takes description files only and reads them with `desc_file`.
 

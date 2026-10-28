@@ -47,7 +47,7 @@
 
 - 输入只有描述，输出只有声明文本。它们不接收、不返回、也不读取应用运行时的任何对象（登记域、布局、ldata）；
 - 它们运行在开发者自己的进程里（开发脚本或命令行），不创建登记域，也不创建 ldata；
-- 运行时入口 `layout-data`（`src/index.js`）不引用 `dev.js`，应用不加载类型生成的代码；`dev.js` 只经由 `desc_file`、`scope.js` 的 `check_scope_name` 和 `layout.js` 的 `check_descriptions`、`plan_layouts` 使用运行时的实现，读入、校验和布局冲突的规则因此和运行时完全相同；
+- 运行时入口 `layout-data`（`src/index.js`）不引用 `dev.js`，应用不加载类型生成的代码；`dev.js` 只经由 `desc_file`、`scope.js` 的 `check_scope_name` 和 `layout.js` 的 `check_descriptions`、`plan_layouts`、`registration_error` 使用运行时的实现，读入、校验和布局冲突的规则因此和运行时完全相同；
 - 生成的文本固定从 `"layout-data"` 导入 `Ldata`：读取它的是开发者项目的编辑器，这个项目依赖本包。应用怎样打包运行时代码，与类型生成无关；
 - 命令行是同一个函数的参数外壳：解析参数后调用 `render_types`，两者的输入和结果相同，只是命令行只接受描述文件，并用 `desc_file` 读取它们。
 

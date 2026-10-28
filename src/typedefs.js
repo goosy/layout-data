@@ -3,48 +3,6 @@
 // The types of the internals are in internal_types.js and are not exported.
 
 /**
- * An item of an item table that defines a tag (doc/spec-description.md §3).
- *
- * @typedef {object} Tag_Item
- * @property {string} name - Tag name.
- * @property {string} type - Tag type, case-insensitive (see Tag_Type).
- * @property {number} offset - Bit offset, relative to the parent item until expanded.
- * @property {number} [length] - Length in bits, filled in from the type when omitted.
- * @property {number | boolean} [init_value] - Initial value.
- * @property {string} [comment] - Description, rendered into the generated types.
- * @property {boolean} [is_combined] - Descriptive mark of a combined word; the linkage is decided by `coupling`.
- * @property {Tag_Item[] | string} [coupling] - The bits of a combined word, as an inline list or the name of an item table.
- * @property {never} [includes] - A tag item does not include items.
- */
-
-/**
- * An item of an item table that splices in other items (doc/spec-description.md §3).
- *
- * @typedef {object} Include_Item
- * @property {Layout_Item[] | string} includes - The items to include, as an inline list or the name of an item table.
- * @property {number} offset - Bit offset by which the included items are shifted as a whole.
- * @property {string} [name_prefix] - Prefix of the names of the included items.
- * @property {never} [name] - An inclusion defines no tag.
- * @property {never} [type] - An inclusion defines no tag.
- */
-
-/**
- * One item of an item table, as written by the user in a description file
- * or a description object (doc/spec-description.md §3).
- *
- * @typedef {Tag_Item | Include_Item} Layout_Item
- */
-
-/**
- * A description object, the form of a layout description in code (a
- * description file is the YAML form): `layouts` lists layout names, and
- * `item_tables` maps item table names to lists of items; other root keys may
- * hold anything and are not read (doc/spec-description.md §2).
- *
- * @typedef {{ layouts?: string[], item_tables?: Record<string, Layout_Item[]> } & Record<string, unknown>} Layout_Description
- */
-
-/**
  * One tag of a compiled layout (doc/spec-layout.md §4), read-only:
  * `name`; `type`, as written in the description; `offset`, the absolute bit
  * offset; `length` in bits; `init_value` and `comment`, if given; `coupling`,
@@ -66,15 +24,41 @@
  * A compiled layout (doc/spec-layout.md §4), read-only and deeply frozen:
  * `name`; `scope`, the scope it is registered in; `length` in bits; `size`
  * in bytes; `items`, the tags in layout order (a combined word before its
- * bits); the methods `create_ldata(name)` and `io_index_table(endian)`. A type only: the class is not exported, and
- * only a registration makes a layout.
+ * bits); the methods `create_ldata(name)`, `get_ldata(name)`,
+ * `delete_ldata(name)` and `io_index_table(endian)`. A type only: the class is
+ * not exported, and only a registration makes a layout.
  *
  * @typedef {import("./layout.js").Layout} Layout
  */
 
 /**
- * A scope of layout names (doc/spec-layout.md §2): read-only `name`; the
- * methods `register_layout(descriptions)` and `get_layout(name)`. Frozen. A
+ * A compiled layout of a Description, not bound to a scope
+ * (doc/spec-description.md §1.2): a Layout without `scope`, which creates no
+ * ldata.
+ *
+ * @typedef {Omit<Layout, "scope">} Layout_Desc
+ */
+
+/**
+ * A checked entry of the root key `blocks` of a description
+ * (doc/spec-description.md §2): the ldata instance `name` and its `layout`,
+ * written `<scope>.<layout>`; the other keys belong to the application.
+ *
+ * @typedef {{ name: string, layout: string } & Record<string, unknown>} Block_Desc
+ */
+
+/**
+ * A description compiled by yaml or desc_file (doc/spec-description.md §1.2),
+ * deeply frozen: the root parsed from the YAML, where `layouts` maps the layout
+ * names of the description to its unbound layouts and `blocks` lists its block
+ * entries; the other root keys are kept as they are.
+ *
+ * @typedef {{ readonly layouts: Readonly<Record<string, Layout_Desc>>, readonly blocks: readonly Readonly<Block_Desc>[] } & Readonly<Record<string, unknown>>} Description
+ */
+
+/**
+ * A scope managing a group of layouts (doc/spec-layout.md §2): read-only
+ * `name`; the methods `register_layout(descriptions)` and `get_layout(name)`. Frozen. A
  * type only: the class is not exported, and only create_scope makes a scope.
  *
  * @typedef {import("./scope.js").Layout_Scope} Layout_Scope
@@ -87,11 +71,11 @@
  */
 
 /**
- * The result of registering a layout description.
+ * The result of a call of register_layout (doc/spec-layout.md §3).
  *
- * @typedef {object} Registered_Layouts
- * @property {Record<string, Layout>} layouts
- * @property {Record<string, Layout_Item[]>} tables - Every item table reached from `layouts`, references expanded.
+ * @typedef {object} Registration
+ * @property {Record<string, Layout>} layouts - The layouts of the call by name, bound to the scope.
+ * @property {Record<string, import("./Ldata.js").Ldata>} ldata - The ldata created by the blocks of the call, by block name.
  */
 
 /**
