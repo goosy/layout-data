@@ -1,54 +1,81 @@
 # 描述规范
 
-> 本文规定描述，即布局在注册、编译之前的形式：描述文件与描述对象、条目表与 `item_tables`、`layouts`、条目、遍历与合并，以及描述必须满足的规则，是 [spec.zh-cn.md](spec.zh-cn.md) 的细化。注册和注册得到的布局对象见 [spec-layout.zh-cn.md](spec-layout.zh-cn.md)，实现见 [design.zh-cn.md](design.zh-cn.md) §3。
+> 本文规定描述，即布局和 ldata 实例在注册之前的形式：描述文件与 YAML 文本，`yaml` 与 `desc_file` 编译出的 `Description`，`imports`、`layouts`、`item_tables`、`blocks` 四个根键，条目，引入与遍历，以及描述必须满足的规则，是 [spec.zh-cn.md](spec.zh-cn.md) 的细化。注册和注册得到的布局对象见 [spec-layout.zh-cn.md](spec-layout.zh-cn.md)，实现见 [design.zh-cn.md](design.zh-cn.md) §3。
 
-## 1. 形式
+## 1. 形式与编译
 
-描述是**描述对象**，即代码中的 §2 结构（§6）。同一结构也可以写成 YAML 1.2 文本，放在**描述文件**里或写在代码里；运行时入口 `layout-data` 把这样的文本变成描述对象（§1.1）。
+描述只有一种形式：**YAML 1.2 文本**，写在**描述文件**里，或写在代码里。JSON 是合法的 YAML 1.2，所以 JSON 文本和 `.json` 文件也是合法的描述。
 
-描述对象交给登记域的 `register_layout` 注册（[spec-layout.zh-cn.md](spec-layout.zh-cn.md) §3）。一次注册可以给出多份描述，它们合并后一起处理（§4）。
+一份描述连同它引入的描述（§4）是完整的：编译它只需要它自己和它的 `imports`，结果只由这些内容决定，与它和谁一起注册无关。运行时入口 `layout-data` 的 `yaml` 和 `desc_file` 读取一份描述并编译，返回 `Description`（§1.2），交给登记域的 `register_layout` 注册（[spec-layout.zh-cn.md](spec-layout.zh-cn.md) §3）。
 
-### 1.1 读取 YAML
+### 1.1 yaml 与 desc_file
 
 ```js
-import { create_scope, yaml, yaml_file } from "layout-data";
+import { create_scope, desc_file, yaml } from "layout-data";
 
-create_scope("app").register_layout([
-  yaml_file`common.yaml`,
+const scope = create_scope("app");
+scope.register_layout([
+  desc_file`pump.yaml`,
   yaml`
-layouts: [Pump]
+imports:
+  - ${new URL("common.yaml", import.meta.url)}
+layouts: [Valve]
 item_tables:
-  Pump:
+  Valve:
     - { includes: common_head, offset: 0 }
-    - { name: id, type: UInt, offset: 16 }
+    - { name: opening, type: Real, offset: 32 }
 `,
 ]);
 ```
 
-- `yaml` 把 YAML 1.2 文本解析成描述对象。它是模板字面量的标签，``yaml`...` ``，也可以用文本普通调用，`yaml(text)`；
-- `yaml_file` 读取一个描述文件并解析成描述对象。它也是标签，``yaml_file`pump.yaml` ``，也可以用路径字符串或 `file:` URL 普通调用，`yaml_file(new URL("./pump.yaml", import.meta.url))`。相对路径按当前工作目录解析。一次调用读一个文件：多个文件就是多次调用，由调用方放进一个列表；
+- `yaml` 读取一份写在代码里的描述，即 YAML 1.2 文本。它是模板字面量的标签，``yaml`...` ``，也可以用文本普通调用，`yaml(text)`；
+- `desc_file` 读取一个描述文件。它也是标签，``desc_file`pump.yaml` ``，也可以用路径字符串或 `file:` URL 普通调用，`desc_file(new URL("./pump.yaml", import.meta.url))`。相对路径按当前工作目录解析。一次调用读一个文件：多个文件就是多次调用，由调用方放进一个列表；
 - 作为标签时，两者取模板的原始文本，与 `String.raw` 相同：反斜杠按原样保留，所以 Windows 路径和 YAML 双引号字符串的转义原样到达文件系统和 YAML 解析器。插值按字符串放进文本；
 - 所以模板里的文本按 YAML 解释，不按 JavaScript 解释：`\t`、`\n` 这样的转义只在 YAML 的双引号字符串里表示制表符、换行。单引号字符串和不加引号的标量按原样保留反斜杠，也不报错，所以在 JavaScript 字符串里看起来一样的写法，在这里得到的是另一个值：
 
-  ```js
-  yaml`comment: "tab\tdone"`  // { comment: "tab<TAB>done" }，制表符
-  yaml`comment: 'tab\tdone'`  // { comment: "tab\\tdone" }，反斜杠和 t
-  yaml`comment: tab\tdone`    // { comment: "tab\\tdone" }，反斜杠和 t
+  ```yaml
+  comment: "tab\tdone"  # "tab<TAB>done"，制表符
+  comment: 'tab\tdone'  # "tab\\tdone"，反斜杠和 t
+  comment: tab\tdone    # "tab\\tdone"，反斜杠和 t
   ```
 
   用字符串普通调用时，`yaml(text)` 拿到的是 JavaScript 已经处理过转义的文本，与任何字符串相同；
-- 读取或解析错误在调用时抛出，是 `errors` 属性列出各项错误的 `Error`，与注册的错误相同：`yaml` 的标题是 `invalid YAML text`，`yaml_file` 的是 `invalid description file <路径>`。其他类型的参数抛出 `TypeError`；
-- 读取时不检查结构：根不是映射以及 §5 的其他违规由注册报告；
-- `yaml_file` 返回的描述对象记得它的文件，所以注册的错误（§5.1）和生成的类型的头部（[spec-layout.zh-cn.md](spec-layout.zh-cn.md) §5）用路径称呼它。只有返回的那个对象带着它：副本，例如 `{ ...description }`，不带。
+- 两者都在调用时完成全部与登记域无关的工作：读取文件、解析 YAML、读取引入的描述（§4）、遍历和校验条目表、编译布局、检查 `blocks`（§5.3）。有任何错误时抛出 `Error`，其 `errors` 属性列出全部错误，不在第一个错误处中断。`yaml` 的标题是 `invalid YAML text`，`desc_file` 的是 `invalid description file <路径>`。其他类型的参数抛出 `TypeError`；
+- 来自文件的错误以该文件的路径开头，被引入的文件也用它自己的路径；布局和条目表方面的错误写出布局或条目表的名字。错误文本在路径之后的格式不是稳定接口，程序只应依赖 `errors` 是否存在及其条数。
+
+### 1.2 Description
+
+`yaml` 和 `desc_file` 返回一份描述编译后的结果 `Description`。它是 YAML 解析出的根对象，其中只有 `layouts` 换成了编译的结果，其余根键原样保留（`blocks` 缺省时补为 `[]`）：
+
+```js
+/**
+ * @typedef {Omit<Layout, "scope">} Layout_Desc     // one compiled layout, not bound to a scope
+ * @typedef {{ name: string, layout: string } & Record<string, unknown>} Block_Desc
+ * @typedef {{ layouts: Record<string, Layout_Desc>, blocks: Block_Desc[] } & Record<string, unknown>} Description
+ */
+```
+
+- `layouts` 是这份描述的布局名到尚未绑定登记域的布局的映射，键就是根键 `layouts` 列出的名字，顺序也相同。这些布局已经遍历、校验、编译，只差登记域：它们有布局对象的 `name`、`length`、`size`、`items` 和 `io_index_table`（[spec-layout.zh-cn.md](spec-layout.zh-cn.md) §4），但不属于任何登记域，所以不能创建 ldata，`create_ldata` 抛出 `Error`。使用的布局只从登记域取得（注册的结果或 `get_layout`）；
+- `blocks` 是解析出的根键 `blocks` 本身，经过检查（§2、§5.3），不复制也不改动，保留应用自己的键。原文没有 `blocks` 时它是 `[]`，这是 `layouts` 之外唯一的改变。应用读取自己的键时，用这里的值还是自己解析描述，由应用决定；
+- 其余根键原样保留：`imports`、`item_tables` 和应用自己的根键都是 YAML 解析出的值，`imports` 是原文中的路径，`item_tables` 是未展开的条目。应用读取自己的根键不必再解析一次 YAML。只保留被读入的描述自己的根键，被引入描述的根键不并入。本包只读 `layouts` 和 `blocks`，不读其他根键；
+- `Description` 及其中的一切都是深度冻结的，原样保留的根键也是如此。注册从不改动它（[spec-layout.zh-cn.md](spec-layout.zh-cn.md) §3），所以同一个 `Description` 可以缓存，并注册进任意多个登记域；
+- 编译出的布局与描述的内容在内存上无关，一份描述编译出的布局不受其他描述影响；
+- `desc_file` 返回的 `Description` 记得它的文件，所以注册的错误和生成的类型的头部（[spec-layout.zh-cn.md](spec-layout.zh-cn.md) §5）用路径称呼它；
+- `Description` 只由 `yaml` 和 `desc_file` 产生：手写的同样形状的对象不是 `Description`，注册时是违规。
 
 ## 2. 结构
 
-描述的根是映射，本包只使用其中两个根键：
+描述的根是映射，本包只读取其中四个根键：
 
-- **`layouts`**：布局名的列表。列出的每个名字都是一个条目表的名字，这个条目表注册为同名的布局；
-- **`item_tables`**：条目表名到条目表的映射。**条目表**是条目的列表（§3），供 `layouts` 列为布局，或供条目的 `includes`、`coupling` 按名引用。
+- **`imports`**：被引入的描述文件的路径列表（§4）。被引入的描述只提供条目表；
+- **`layouts`**：布局名的列表。列出的每个名字都是一个条目表的名字，这个条目表编译为同名的布局；
+- **`item_tables`**：条目表名到条目表的映射。**条目表**是条目的列表（§3），供 `layouts` 列为布局，或供条目的 `includes`、`coupling` 按名引用；
+- **`blocks`**：这份描述的 ldata 实例的列表。每个块是一个映射，本包只读其中的 `name`（实例名）和 `layout`（`<登记域名>.<布局名>`）；块的 ldata 在注册时创建（[spec-layout.zh-cn.md](spec-layout.zh-cn.md) §3）。
 
 ```yaml
+imports:
+  - common.yaml
+
 layouts: [NODE]
 
 item_tables:
@@ -66,12 +93,16 @@ item_tables:
 
   node_parameters:
     - { name: max_pressure, type: Real, offset: 0, init_value: 10 }
+
+blocks:
+  - { name: node_1, layout: app.NODE, unit_id: 1 }   # unit_id is read by the application
 ```
 
 - 布局和被引用的条目表是同一种东西，差别只在用法：一个条目表可以既列在 `layouts` 里，又被别的条目表引用；
-- `layouts` 和 `item_tables` 之外的根键都归调用方：本包不读取、不校验，条目表名也不会与它们冲突。所以描述可以带别的内容，例如一份更大的配置，其中一部分是描述，它可以直接作为描述传入，不必先剪出条目部分；
-- `item_tables` 中，本包只读取从 `layouts` 出发遍历到的条目表（§4）。因此多份描述可以共用一份较大的 `item_tables`，各自列出不同的布局；
-- 根键的顺序不影响含义。**建议把 `layouts` 写在 `item_tables` 前面**：读者先看到有哪些布局，再按名字找到各条目表。本文的示例都按这个顺序写。
+- 四个根键都可以省略。没有 `layouts` 的描述没有布局，例如只放公共条目表、供别的描述引入的文件，或只有 `blocks`、引用别的描述的布局的描述；
+- 其余根键都归调用方：本包不读取、不校验，原样留在 `Description` 中（§1.2），条目表名也不会与它们冲突。块条目中 `name`、`layout` 以外的键同样归调用方，例如设备模拟器的 Modbus 地址；
+- `item_tables` 中，本包只读取从 `layouts` 出发遍历到的条目表（§4）；
+- 根键的顺序不影响含义。**建议按 `imports`、`layouts`、`item_tables`、`blocks` 的顺序写**：读者先看到依赖和有哪些布局，再按名字找到各条目表，最后是实例。本文的示例都按这个顺序写。
 
 ## 3. 条目
 
@@ -91,39 +122,49 @@ item_tables:
 
 被引用的条目表中的条目也可以引用其他条目表。
 
-条目有两种，类型声明里各有名字（`Layout_Item` 是两者之一）：
+条目有两种：
 
-| 条目 | 字段 | 声明 |
-| --- | --- | --- |
-| tag | `name`、`type`、`offset` 必填；`length`、`init_value`、`comment`、`is_combined`、`coupling` 可选；没有 `includes` | `Tag_Item` |
-| 包含 | `includes` 和 `offset` 必填；`name_prefix` 可选；没有 `name` 和 `type` | `Include_Item` |
+| 条目 | 字段 |
+| --- | --- |
+| tag | `name`、`type`、`offset` 必填；`length`、`init_value`、`comment`、`is_combined`、`coupling` 可选；没有 `includes` |
+| 包含 | `includes` 和 `offset` 必填；`name_prefix` 可选；没有 `name` 和 `type` |
 
-- `coupling` 是条目表名或内联的 tag 条目列表，不能是名称列表：各位的名称是注册的结果（出现在布局的 `items` 里，[spec-layout.zh-cn.md](spec-layout.zh-cn.md) §4），不是输入；
-- 描述对象的声明是 `Layout_Description`：`layouts` 是字符串列表，`item_tables` 是名字到 `Layout_Item` 列表的映射，其余根键可以是任何值。类型声明里登记域的 `register_layout` 的参数用它标注，所以在代码里写条目时，编辑器能补全条目的字段，拼错字段名时会提示。
+`coupling` 是条目表名或内联的 tag 条目列表，不能是名称列表：各位的名称是编译的结果（出现在布局的 `items` 里，[spec-layout.zh-cn.md](spec-layout.zh-cn.md) §4），不是输入。
 
-## 4. 遍历与合并
+## 4. 引入与遍历
 
-注册时，先把各描述合并，再从 `layouts` 出发遍历：
+一份描述用 `imports` 引入别的描述文件，以使用其中的条目表：
 
-- **合并 `layouts`。** 每份描述都可以有 `layouts`，各份的列表合并成一个列表。描述不必有 `layouts`（只放公共条目表的文件就没有），但合并后的列表至少有一个名字；
-- **遍历。** 从合并后的 `layouts` 列出的名字出发，顺着条目中 `includes` 和 `coupling` 给出的条目表名，找到所有被引用的条目表。只有遍历到的条目表被读取、校验，并出现在注册的结果里；内联列表中的条目也照此遍历；
-- **按名查找跨描述。** 一个名字在全部描述的 `item_tables` 中查找，与描述在列表中的顺序无关：布局可以引用任何一份描述中的条目表。其他根键无论叫什么名字，都不参与查找；
-- **只比较遍历到的名字。** 遍历到的条目表必须恰好在一份描述中定义；没有遍历到的条目表不比较，所以两份描述可以各有一个同名、但没有布局遍历到的条目表。
+```yaml
+imports:
+  - common.yaml
+layouts: [Pump]
+item_tables:
+  Pump:
+    - { includes: Motor_Status, offset: 0 }   # from common.yaml
+```
 
-遍历到的条目表随注册的结果返回（`register_layout` 的返回值 `tables`，[spec-layout.zh-cn.md](spec-layout.zh-cn.md) §3），按条目表名索引，内容是引用展开后的条目：`includes` 和 `coupling` 都是条目列表，不会是名称，每个 `length` 都存在，偏移相对于条目表起点。它们仍是描述的形式，声明是 `Layout_Item`；例如可以用它取得参数块的全部 tag 名。
+- **路径。** `imports` 的每一项是一个路径字符串：绝对路径、`file:` URL，或相对路径。描述文件里的相对路径相对于该文件所在的目录。``yaml`...` `` 写的文本没有所在的文件，其中的相对路径是违规；需要相对位置的调用方自己插值，如 `${new URL("common.yaml", import.meta.url)}`；
+- **只提供条目表。** 被引入描述的 `layouts` 和 `blocks` 一律忽略：布局只来自引入方的 `layouts`，实例只来自引入方的 `blocks`；
+- **传递引入。** 被引入的描述可以再有 `imports`。一份描述连同它直接和间接引入的全部描述构成一个名字空间；同一个文件（按解析后的路径）无论被引入几次，都只算一份，所以两份被引入的描述引入同一个文件不是冲突。循环引入是违规；
+- **遍历。** 从引入方 `layouts` 列出的名字出发，顺着条目中 `includes` 和 `coupling` 给出的条目表名，找到所有被引用的条目表。只有遍历到的条目表被读取、校验；内联列表中的条目也照此遍历。所以引入一份大的公共描述，不会把其中与本描述无关的条目带进布局，公共描述可以放心做大；
+- **按名查找。** 一个名字在这个名字空间内全部描述的 `item_tables` 中查找，与引入的顺序无关。其他根键无论叫什么名字，都不参与查找；
+- **只比较遍历到的名字。** 遍历到的条目表必须恰好在名字空间内的一份描述中定义：在本地和被引入的描述中都有定义，或在两份被引入的描述中都有定义，都是违规，不引入限定名。没有遍历到的条目表不比较；
+- 条目表名只需在一份描述及其引入范围内唯一，不同描述各自的名字空间互不相干。
 
 ## 5. 合法性
 
-违反下列任何一条都是违规。注册时报告全部违规项，什么都不登记（[spec-layout.zh-cn.md](spec-layout.zh-cn.md) §3）。
+违反下列任何一条都是违规。§5.1 至 §5.3 的违规由 `yaml` 和 `desc_file` 在读入时报告（§1.1）；注册时只检查与登记域状态有关的规则（[spec-layout.zh-cn.md](spec-layout.zh-cn.md) §3）。
 
 ### 5.1 描述
 
-- `layouts` 给出时必须是字符串列表；
-- `item_tables` 给出时必须是映射；
-- 合并后的 `layouts` 至少有一个名字，且名字互不重复：同一份描述中重复，或不同描述中重复，都是违规，不做去重；
+- 描述的根是映射；
+- `imports` 给出时必须是字符串列表；每个路径都能读取并解析；``yaml`...` `` 文本中不能有相对路径；引入不得循环；
+- `layouts` 给出时必须是字符串列表，名字互不重复；
 - `layouts` 列出的名字必须是 JavaScript 的标识符（任何文字的字母、数字、`_` 和 `$`，不以数字开头），因为布局名是类型名的一部分（[spec-layout.zh-cn.md](spec-layout.zh-cn.md) §5）；
-- `layouts` 列出的名字和条目引用的条目表名都必须在 `item_tables` 中有对应的条目表，且它是条目列表，不是列表时是违规；
-- 遍历到的条目表在两份描述中都有定义时是违规，错误写出这两份描述（由 `yaml_file` 读取的描述用它的文件路径，其他描述用它在列表中的位置，如 `layout description #2`）；不做覆盖；
+- `item_tables` 给出时必须是映射，引入的描述也是如此；
+- `layouts` 列出的名字和条目引用的条目表名都必须在名字空间内有对应的条目表，且它是条目列表，不是列表时是违规；
+- 遍历到的条目表在名字空间内的两份描述中都有定义时是违规，错误写出这两份描述（文件用它的路径，``yaml`...` `` 文本是 `YAML text`）；不做覆盖；
 - 条目表之间不得循环引用；
 - 每个条目是 §3 的 tag 条目或包含条目之一，字段符合 §3 的规定。
 
@@ -139,25 +180,9 @@ item_tables:
 
 只被引用、不在 `layouts` 里的条目表不单独按布局校验：它的条目展开到引用它的布局里，随那个布局一起校验。
 
-## 6. 在代码中给出描述
+### 5.3 块
 
-描述不一定要有文件。把一个描述对象，即 §2 的结构，交给登记域的 `register_layout`，写成对象，或用 `yaml` 写成 YAML 文本（§1.1）：
-
-```js
-const scope = create_scope("app");
-scope.register_layout({
-  layouts: ["Pump"],
-  item_tables: {
-    Pump: [
-      { name: "id", type: "UInt", offset: 0, init_value: 0 },
-      { name: "pressure", type: "Real", offset: 32, init_value: 0 },
-    ],
-  },
-});
-const data = scope.get_layout("Pump").create_ldata("pump_1");
-```
-
-- 条目就是 §3 的条目；`length` 可以省略；`coupling` 和 `includes` 接受内联列表，或同一次注册的任一描述中某个条目表的名字；
-- 应用的配置对象里带有 `layouts` 和 `item_tables` 时，可以把整个配置对象作为描述传入，其余根键和没有从 `layouts` 遍历到的条目表都不被读取；
-- 传入的描述对象和其中的条目不会被修改；
-- 没有单独登记一个条目列表的函数，也没有单独展开或校验结构的函数：注册是唯一做校验的步骤。
+- `blocks` 缺省时视为 `[]`；给出时必须是列表，每个块是映射；
+- 块的 `name` 必须给出且是字符串，在一份描述内唯一；
+- 块的 `layout` 必须是形如 `<登记域名>.<布局名>` 的字符串，两部分都是 JavaScript 的标识符。它是配置，只能是字符串：域名与布局名都不含 `.`，所以写法没有歧义，与 `get_layout` 的错误信息 `unknown layout X.Y` 的写法一致。它必须写出登记域名：本包不设默认登记域（[spec-layout.zh-cn.md](spec-layout.zh-cn.md) §2），引用本描述的布局时，写出它将注册进的登记域名；
+- 布局要注册后才能按登记域名找到，所以登记域和布局是否存在在注册时检查，不在读入时检查（[spec-layout.zh-cn.md](spec-layout.zh-cn.md) §3）。

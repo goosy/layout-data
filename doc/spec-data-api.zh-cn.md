@@ -27,8 +27,9 @@ tag 的类型：`Bool`、`Byte`、`SInt`、`USInt`、`Int`、`UInt`、`Word`、`
 const data = layout.create_ldata(name);
 ```
 
-- ldata 由布局产生：`layout.create_ldata(name)` 是创建 ldata 的唯一方式。`layout` 是已登记的布局对象，由登记域的 `get_layout(name)` 返回，或来自注册的返回值（[spec-layout.zh-cn.md](spec-layout.zh-cn.md) §3、§4）；按名查找只发生在取得布局的那一步，所以创建时手里已经有布局对象。只有已登记的布局带有这个方法，复制出来的对象（如 `{ ...layout }`）没有；
-- `name`：ldata 的名称，用于日志和错误信息。必须是字符串（任何字符串，空字符串也可以），否则抛出 `TypeError`；名称在这里给定，以后不能修改；
+- ldata 由布局产生：`layout.create_ldata(name)` 是创建 ldata 的唯一方式，注册时由描述的 `blocks` 创建 ldata 也是经由它（[spec-layout.zh-cn.md](spec-layout.zh-cn.md) §3）。`layout` 是已登记的布局对象，由登记域的 `get_layout(name)` 返回，或来自注册的返回值（[spec-layout.zh-cn.md](spec-layout.zh-cn.md) §3、§4）；按名查找只发生在取得布局的那一步，所以创建时手里已经有布局对象。只有已登记的布局能创建 ldata，复制出来的对象（如 `{ ...layout }`）没有这个方法；
+- `name`：ldata 的名称，用于日志和错误信息，也是布局按名找到它的键。必须是字符串（任何字符串，空字符串也可以），否则抛出 `TypeError`；在它的布局内唯一，已被该布局使用时抛出 `Error`（`ldata X.Y.Z already exists`）；名称在这里给定，以后不能修改；
+- 布局按名管理它创建的 ldata：`layout.get_ldata(name)` 找到它，`layout.delete_ldata(name)` 解除绑定、交还这个名字（[spec-layout.zh-cn.md](spec-layout.zh-cn.md) §4.1）；
 - 创建后每个 tag 的值等于布局中的初值，没有初值的 tag 为 `0`（`Bool` 为 `false`），此时不发出变化事件；
 - `Ldata` 不能用 `new` 构造：`new Ldata(...)` 抛出 `TypeError`，错误信息写出正确的用法 `layout.create_ldata(name)`；类型声明中构造函数是私有的，所以 TypeScript 和开启 `checkJs` 的文件在编译期即报错。`Ldata` 仍然导出，供 `instanceof`、类型标注和 `Ldata.on_access` / `off_access`（§2.8）使用；
 - 同一布局的数据块共用一个类，它是 `Ldata` 的子类，同样不能用 `new` 构造。
@@ -197,7 +198,7 @@ ldata 是一个对象，既用属性存放 tag，又有自己的方法，所以�
 | EventEmitter（Node.js 20.11） | `addListener`、`emit`、`eventNames`、`getMaxListeners`、`listenerCount`、`listeners`、`off`、`on`、`once`、`prependListener`、`prependOnceListener`、`rawListeners`、`removeAllListeners`、`removeListener`、`setMaxListeners`、`_events`、`_eventsCount`、`_maxListeners` |
 | Object | `constructor`、`hasOwnProperty`、`isPrototypeOf`、`propertyIsEnumerable`、`toLocaleString`、`toString`、`valueOf`、`__proto__`、`__defineGetter__`、`__defineSetter__`、`__lookupGetter__`、`__lookupSetter__` |
 
-- tag 使用保留名属于布局违规（[spec-description.zh-cn.md](spec-description.zh-cn.md) §5.2）：注册这样的布局时抛出 `Error`（[spec-layout.zh-cn.md](spec-layout.zh-cn.md) §3），所以不会有这种布局的 ldata；
+- tag 使用保留名属于布局违规（[spec-description.zh-cn.md](spec-description.zh-cn.md) §5.2）：读入这样的描述时 `yaml` 或 `desc_file` 抛出 `Error`（[spec-description.zh-cn.md](spec-description.zh-cn.md) §1.1），所以不会有这种布局的 ldata；
 - Ldata 仍然是 EventEmitter 的子类。以后的 Node.js 可能给 EventEmitter 增加方法，清单不会跟着变，所以与这类方法同名的 tag 会遮蔽该方法。测试会把清单与运行中的 Node.js 比对；
 - 从 1.0 版起，本包给 Ldata 增加成员只用以 `Symbol` 为键的成员或静态方法，不会再给实例增加字符串名的成员，所以在 1.0 合法的 tag 名以后仍然合法。1.0 之前这个清单还可能增加；
 - 保留的事件名见 §2.7。名字是否保留不提供查询：没有公开函数；
@@ -275,6 +276,7 @@ Ltag 不保存值，读写都直接作用于所属 ldata。
 | 向整型 tag 写入 `NaN`、`Infinity`、非整数或超出范围的整数，或向 `Real` tag 写入超出 float32 的有限数 | `RangeError`，原值不变，不发出事件和 `write` |
 | 处理器抛出异常 | 全部事件派发完之后，写入语句抛出第一个异常；值保留，`write` 照常发出（§4.4） |
 | 创建 ldata 时 `name` 不是字符串 | `TypeError` |
+| 创建 ldata 时 `name` 已被该布局使用 | `Error`（`ldata X.Y.Z already exists`，§2.1） |
 | 用 `new` 构造 `Ldata` 或某个布局的 Ldata 子类 | `TypeError`，错误信息写出 `layout.create_ldata(name)`（§2.1） |
 | 处理器互相触发的写入不能平息 | `Error`，全部事件派发完之后由写入语句抛出（§4.4） |
 | 事务中开始另一个事务 | `Error` |
@@ -283,7 +285,7 @@ Ltag 不保存值，读写都直接作用于所属 ldata。
 | `load_tag` / `store_tag` 的 tag 名不存在 | `Error`，ldata 不变，不发出 `write` |
 | 字节序不是 `BE`、`LE`、`BEBS`、`LEBS`，或 tag 在 `io_buffer` 中的范围越界 | `RangeError`，ldata 不变，不发出 `write` |
 
-注册布局、取得布局和生成类型声明的错误见 [spec-layout.zh-cn.md](spec-layout.zh-cn.md) §6。
+读入描述、注册布局、取得布局和 ldata、生成类型声明的错误见 [spec-layout.zh-cn.md](spec-layout.zh-cn.md) §6。
 
 ## 6. 不在本接口内
 

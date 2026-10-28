@@ -15,11 +15,12 @@ layout-data 是一个结构化数据块库：提供基于 `Buffer`、面向数�
 
 | 术语 | 含义 |
 | --- | --- |
-| 描述 | 即布局描述：根键 `layouts` 列出布局名，根键 `item_tables` 是名字到条目表的映射，其余根键不读取（[spec-description.zh-cn.md](spec-description.zh-cn.md) §2）。注册接受的是描述对象；同一结构写成的 YAML 1.2 文本，无论在描述文件里还是在代码里，由 `yaml_file` 或 `yaml` 变成描述对象 |
-| 条目表 | 描述中位于 `item_tables` 下的具名条目列表。列在 `layouts` 里时注册为布局；被条目的 `includes` 或 `coupling` 引用时，它的条目被拼接进来；一个条目表可以两者都是 |
-| 布局 | 一块数据的固定格式：每个 tag 的名称、类型、位偏移、初值。由列在 `layouts` 里的条目表注册而来，注册后不可变，即公开的 `Layout` 对象 |
-| 登记域 | 布局名的分隔单位，即公开的 `Layout_Scope` 对象：每个登记域有自己的布局和条目表，各注册一次，布局名和条目表名只在登记域内唯一。布局只能注册到显式创建的登记域里（[spec-layout.zh-cn.md](spec-layout.zh-cn.md) §2） |
-| Ldata / ldata | Ldata 是数据对象的类，ldata 是它的实例：按某个布局分配的一块数据，内部按大端存放 |
+| 描述 | 布局和 ldata 实例的 YAML 1.2 描述，写在描述文件里或代码里：根键 `imports` 引入别的描述文件，`layouts` 列出布局名，`item_tables` 是名字到条目表的映射，`blocks` 列出 ldata 实例，其余根键不读取（[spec-description.zh-cn.md](spec-description.zh-cn.md) §2）。一份描述连同它的引入是完整的，由 `yaml` 或 `desc_file` 编译成 `Description`，交给注册；`Description` 中 `layouts` 是编译的结果，其余根键原样保留 |
+| 条目表 | 描述中位于 `item_tables` 下的具名条目列表。列在 `layouts` 里时编译为布局；被条目的 `includes` 或 `coupling` 引用时，它的条目被拼接进来；一个条目表可以两者都是 |
+| 布局 | 一块数据的固定格式：每个 tag 的名称、类型、位偏移、初值。由列在 `layouts` 里的条目表编译而来，注册到登记域后才能使用，不可变，即公开的 `Layout` 对象；它按名管理自己创建的 ldata |
+| 登记域 | 管理一组布局的单位，即公开的 `Layout_Scope` 对象：布局名只在登记域内唯一，一个布局只属于一个登记域，可以多次注册。布局只能注册到显式创建的登记域里（[spec-layout.zh-cn.md](spec-layout.zh-cn.md) §2） |
+| Ldata / ldata | Ldata 是数据对象的类，ldata 是它的实例：按某个布局分配的一块数据，内部按大端存放；ldata 名在它的布局内唯一 |
+| 块 | 描述中位于 `blocks` 下的 ldata 实例条目：实例名和 `<登记域名>.<布局名>`，注册时由本包创建 ldata（[spec-layout.zh-cn.md](spec-layout.zh-cn.md) §3） |
 | Ltag | ldata 中一个具名 tag 的操作接口 |
 | 组合字 | 由若干 Bool 组成的 Word，与各组成位共用同一块数据 |
 
@@ -46,7 +47,7 @@ layout-data 是一个结构化数据块库：提供基于 `Buffer`、面向数�
 
 ## 4. 布局描述
 
-布局由描述给出，即在代码中写出、或从 YAML 1.2 描述文件和文本读出的描述对象，结构见 [spec-description.zh-cn.md](spec-description.zh-cn.md)，注册见 [spec-layout.zh-cn.md](spec-layout.zh-cn.md)。
+布局和 ldata 实例由描述给出，即 YAML 1.2 描述文件或写在代码里的 YAML 文本，由 `yaml` 或 `desc_file` 编译，结构见 [spec-description.zh-cn.md](spec-description.zh-cn.md)，注册见 [spec-layout.zh-cn.md](spec-layout.zh-cn.md)。
 
 ## 5. 发布形态
 
@@ -64,20 +65,20 @@ layout-data 是一个结构化数据块库：提供基于 `Buffer`、面向数�
 | 导出 | 说明 |
 | --- | --- |
 | `Ldata`、`Ltag` | 数据对象和 tag 句柄（[spec-data-api.zh-cn.md](spec-data-api.zh-cn.md) §2 和 §3）；ldata 由布局的 `create_ldata` 创建，`Ldata` 不能用 `new` 构造 |
-| `create_scope` | 创建登记域（[spec-layout.zh-cn.md](spec-layout.zh-cn.md) §2）。登记域的 `register_layout` 注册各描述对象中的布局，每个登记域一次；`get_layout` 按名取得已登记的布局，由布局创建 ldata。`Layout_Scope` 只作为类型导出 |
+| `create_scope` | 创建登记域（[spec-layout.zh-cn.md](spec-layout.zh-cn.md) §2）。登记域的 `register_layout` 注册各 `Description` 中的布局并创建其中块的 ldata，可以多次调用；`get_layout` 按名取得已登记的布局，由布局创建、查找 ldata。`Layout_Scope` 只作为类型导出 |
 | `get_scope` | 按登记域名取得已创建的登记域，没有时为 `undefined`（[spec-layout.zh-cn.md](spec-layout.zh-cn.md) §2） |
-| `yaml`、`yaml_file` | 把 YAML 1.2 文本或描述文件变成描述对象（[spec-description.zh-cn.md](spec-description.zh-cn.md) §1.1）；两者也是模板字面量的标签 |
+| `yaml`、`desc_file` | 读取并编译写在代码里的 YAML 1.2 文本或描述文件，返回 `Description`（[spec-description.zh-cn.md](spec-description.zh-cn.md) §1）；两者也是模板字面量的标签。`Description`、`Layout_Desc`、`Block_Desc` 只作为类型导出 |
 
 开发期入口 `layout-data/dev` 导出：
 
 | 导出 | 说明 |
 | --- | --- |
-| `render_types` | `render_types(descriptions, options)` 由描述对象（与 `register_layout` 接受的相同）为其中的全部布局生成 TypeScript 类型声明的文本，供编辑器补全（[spec-layout.zh-cn.md](spec-layout.zh-cn.md) §5）；命令行工具 `layout-types` 做同样的事（同文 §5.1） |
+| `render_types` | `render_types(descriptions, options)` 由 `Description`（与 `register_layout` 接受的相同）为其中的全部布局生成 TypeScript 类型声明的文本，供编辑器补全（[spec-layout.zh-cn.md](spec-layout.zh-cn.md) §5）；命令行工具 `layout-types` 做同样的事（同文 §5.1） |
 
-布局带有方法 `create_ldata` 和 `io_index_table`（[spec-layout.zh-cn.md](spec-layout.zh-cn.md) §4），`Layout` 只作为类型导出。
+布局带有方法 `create_ldata`、`get_ldata`、`delete_ldata` 和 `io_index_table`（[spec-layout.zh-cn.md](spec-layout.zh-cn.md) §4），`Layout` 只作为类型导出。
 
 ## 7. 文档
 
-- 中文文档带 `.zh-cn` 后缀，英文文档无后缀；以中文为主：本文、[spec-description.zh-cn.md](spec-description.zh-cn.md)（描述：条目表、`layouts`、条目、遍历）、[spec-layout.zh-cn.md](spec-layout.zh-cn.md)（布局：登记域、注册、布局对象、类型声明）、[spec-data-api.zh-cn.md](spec-data-api.zh-cn.md)（数据对象：Ldata、Ltag、事件）、[design.zh-cn.md](design.zh-cn.md)；
+- 中文文档带 `.zh-cn` 后缀，英文文档无后缀；以中文为主：本文、[spec-description.zh-cn.md](spec-description.zh-cn.md)（描述：`yaml` 与 `desc_file`、条目表、`layouts`、`blocks`、条目、引入与遍历）、[spec-layout.zh-cn.md](spec-layout.zh-cn.md)（布局：登记域、注册、布局对象与 ldata 管理、类型声明）、[spec-data-api.zh-cn.md](spec-data-api.zh-cn.md)（数据对象：Ldata、Ltag、事件）、[design.zh-cn.md](design.zh-cn.md)；
 - 英文版为同名无后缀文件（[spec.md](spec.md)），内容与中文版对应，修改规范时两种语言同步更新；
 - 使用入门见项目根目录的 [README.md](../README.md)。
