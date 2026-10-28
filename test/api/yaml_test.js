@@ -116,7 +116,7 @@ describe("1.1 desc_file", () => {
 		assert.throws(() => desc_file(new URL("https://example.com/pump.yaml")), TypeError);
 	});
 
-	test("the file is remembered by the Description, not as a key, and named by the errors of registration", () => {
+	test("the file is remembered by the Description, not as a key, and named by the errors of loading", () => {
 		const description = desc_file(file);
 		assert.deepEqual(Object.keys(description), ["layouts", "item_tables", "blocks"]);
 		const other = join(dir, "pump_other.yaml");

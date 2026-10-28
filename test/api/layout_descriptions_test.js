@@ -1,4 +1,4 @@
-// Descriptions, imports and registration (doc/spec-description.md §4, §5;
+// Descriptions, imports and loading (doc/spec-description.md §4, §5;
 // doc/spec-layout.md §3, §4.1).
 import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
@@ -36,7 +36,7 @@ const ITEMS = [{ name: "a", type: "UInt", offset: 0, init_value: 0 }];
 /**
  * A description listing the names, each an item table of one UInt `a` of
  * another initial value: layouts of one structure under two names do not
- * register in one scope.
+ * load into one scope.
  */
 const listing = (names) => ({
 	layouts: names,
@@ -168,7 +168,7 @@ item_tables:
   Ms_Imported:
     - { name: a, type: UInt, offset: 0 }
 blocks:
-  - { name: never, layout: nowhere.Ms_Imported }
+  - { name: never, layout: Ms_Imported }
 `);
 		const description = yaml`
 imports: [${imported}]
@@ -242,11 +242,11 @@ item_tables:
 	});
 });
 
-describe("registration", () => {
-	test("a scope registers any number of times", () => {
+describe("loading", () => {
+	test("a scope loads any number of times", () => {
 		const scope = fresh_scope();
-		const first = scope.register_layout(unit("Ms_First")).layouts.Ms_First;
-		const second = scope.register_layout(unit("Ms_Second", 1)).layouts.Ms_Second;
+		const first = scope.load(unit("Ms_First")).layouts.Ms_First;
+		const second = scope.load(unit("Ms_Second", 1)).layouts.Ms_Second;
 		assert.equal(scope.get_layout("Ms_First"), first);
 		assert.equal(scope.get_layout("Ms_Second"), second);
 	});
@@ -254,9 +254,9 @@ describe("registration", () => {
 	test("a layout of the same name and structure is reused, in later calls and in the same call", () => {
 		const scope = fresh_scope();
 		const description = unit("Ms_Reused", 0, "comment: this root key is the caller's");
-		const { layouts } = scope.register_layout(description);
-		assert.equal(scope.register_layout(unit("Ms_Reused")).layouts.Ms_Reused, layouts.Ms_Reused);
-		const both = scope.register_layout([unit("Ms_Pair", 7), unit("Ms_Pair", 7)]);
+		const { layouts } = scope.load(description);
+		assert.equal(scope.load(unit("Ms_Reused")).layouts.Ms_Reused, layouts.Ms_Reused);
+		const both = scope.load([unit("Ms_Pair", 7), unit("Ms_Pair", 7)]);
 		assert.equal(both.layouts.Ms_Pair, scope.get_layout("Ms_Pair"));
 		// the comments are not part of the structure
 		const commented = yaml`
@@ -265,27 +265,27 @@ item_tables:
   Ms_Pair:
     - { name: a, type: uint, offset: 0, init_value: 7, comment: another type case and a comment }
 `;
-		assert.equal(scope.register_layout(commented).layouts.Ms_Pair, both.layouts.Ms_Pair);
+		assert.equal(scope.load(commented).layouts.Ms_Pair, both.layouts.Ms_Pair);
 	});
 
 	test("the same structure under another name, or the same name with another structure, is an error", () => {
 		const scope = fresh_scope();
-		scope.register_layout(unit("Ms_Kept"));
+		scope.load(unit("Ms_Kept"));
 		const name = scope.name;
-		assert.deepEqual(errors_of(() => scope.register_layout(unit("Ms_Alias"))), [
+		assert.deepEqual(errors_of(() => scope.load(unit("Ms_Alias"))), [
 			`description: layout ${name}.Ms_Alias has the structure of layout ${name}.Ms_Kept`,
 		]);
-		assert.deepEqual(errors_of(() => scope.register_layout([unit("Ms_Other", 1), unit("Ms_Kept", 2)])), [
+		assert.deepEqual(errors_of(() => scope.load([unit("Ms_Other", 1), unit("Ms_Kept", 2)])), [
 			`description #2: another layout of a different structure is already named ${name}.Ms_Kept`,
 		]);
-		assert.deepEqual(errors_of(() => scope.register_layout([unit("Ms_Twice", 3), unit("Ms_Twice", 4)])), [
+		assert.deepEqual(errors_of(() => scope.load([unit("Ms_Twice", 3), unit("Ms_Twice", 4)])), [
 			`description #2: another layout of a different structure is already named ${name}.Ms_Twice`,
 		]);
 		assert.throws(() => scope.get_layout("Ms_Other"), /unknown layout/);
 		assert.throws(() => scope.get_layout("Ms_Twice"), /unknown layout/);
 	});
 
-	test("a Description registered in two scopes gives two layouts", () => {
+	test("a Description loaded into two scopes gives two layouts", () => {
 		const description = unit("Ms_Shared", 5);
 		const one = register(description).layouts.Ms_Shared;
 		const two = register(description).layouts.Ms_Shared;
@@ -297,31 +297,31 @@ item_tables:
 
 	test("errors name the scope; a failed call changes nothing", () => {
 		const scope = fresh_scope();
-		scope.register_layout(unit("Ms_Old"));
-		assert.throws(() => scope.register_layout([unit("Ms_New", 1), unit("Ms_Old", 9)]), new RegExp(`^Error: invalid layout descriptions of scope ${scope.name}:`));
+		scope.load(unit("Ms_Old"));
+		assert.throws(() => scope.load([unit("Ms_New", 1), unit("Ms_Old", 9)]), new RegExp(`^Error: invalid descriptions of scope ${scope.name}:`));
 		assert.throws(() => scope.get_layout("Ms_New"), /unknown layout/);
-		assert.equal(scope.register_layout(unit("Ms_New", 1)).layouts.Ms_New, scope.get_layout("Ms_New"));
+		assert.equal(scope.load(unit("Ms_New", 1)).layouts.Ms_New, scope.get_layout("Ms_New"));
 	});
 
-	test("only Descriptions are registered: strings, objects, nested and empty lists are errors", () => {
-		assert.deepEqual(errors_of(() => fresh_scope().register_layout(["pump.yaml", listing(["Ms_Obj"]), [unit("Ms_Nested")], 42, null, unit("Ms_Valid", 7)])), [
+	test("only Descriptions are loaded: strings, objects, nested and empty lists are errors", () => {
+		assert.deepEqual(errors_of(() => fresh_scope().load(["pump.yaml", listing(["Ms_Obj"]), [unit("Ms_Nested")], 42, null, unit("Ms_Valid", 7)])), [
 			"description #1: not a Description; read a description file with desc_file, YAML text with yaml",
 			"description #2: not a Description; read a description file with desc_file, YAML text with yaml",
 			"description #3: a list of descriptions must not contain a list",
 			"description #4: not a Description; read a description file with desc_file, YAML text with yaml",
 			"description #5: not a Description; read a description file with desc_file, YAML text with yaml",
 		]);
-		assert.deepEqual(errors_of(() => fresh_scope().register_layout([])), ["no description is given"]);
+		assert.deepEqual(errors_of(() => fresh_scope().load([])), ["no description is given"]);
 	});
 
-	test("a Description is deeply frozen and not changed by registration", () => {
-		const description = unit("Ms_Frozen", 0, "blocks:\n  - { name: f, layout: Sc_Frozen_Desc.Ms_Frozen, extra: { x: [1] } }\n");
+	test("a Description is deeply frozen and not changed by loading", () => {
+		const description = unit("Ms_Frozen", 0, "blocks:\n  - { name: f, layout: Ms_Frozen, extra: { x: [1] } }\n");
 		assert.ok(Object.isFrozen(description));
 		assert.ok(Object.isFrozen(description.layouts));
 		assert.ok(Object.isFrozen(description.layouts.Ms_Frozen));
 		assert.ok(Object.isFrozen(description.blocks[0].extra.x));
 		assert.ok(Object.isFrozen(description.item_tables.Ms_Frozen[0]));
-		create_scope("Sc_Frozen_Desc").register_layout(description);
+		fresh_scope().load(description);
 		assert.deepEqual(Object.keys(description.layouts), ["Ms_Frozen"]);
 	});
 
@@ -345,7 +345,7 @@ version: 3
 		assert.equal(register(description).layouts.Ms_Kept_Keys.items[0].name, "p");
 	});
 
-	test("the other root keys read by desc_file equal a parse of the same text, before and after registration", () => {
+	test("the other root keys read by desc_file equal a parse of the same text, before and after loading", () => {
 		const common = write("item_tables:\n  part:\n    - { name: p, type: UInt, offset: 0, init_value: 1 }\n");
 		const text = `
 imports: [${common}]
@@ -362,15 +362,15 @@ item_tables:
 settings: { port: 502, hosts: [a, b], nested: { list: [1, { deep: x }] } }
 version: 3
 blocks:
-  - { name: kept_1, layout: Sc_Same_Keys.Ms_Same_Keys, unit_id: 1 }
+  - { name: kept_1, layout: Ms_Same_Keys, unit_id: 1 }
 `;
 		const other_keys = (root) => Object.fromEntries(Object.entries(root).filter(([key]) => key !== "layouts" && key !== "blocks"));
 		const expected = other_keys(parse_yaml(text, { version: "1.2" }));
 		const description = desc_file(write(text));
 		assert.deepEqual(other_keys(description), expected);
-		create_scope("Sc_Same_Keys").register_layout(description);
+		fresh_scope().load(description);
 		assert.deepEqual(other_keys(description), expected);
-		assert.deepEqual(description.blocks, [{ name: "kept_1", layout: "Sc_Same_Keys.Ms_Same_Keys", unit_id: 1 }]);
+		assert.deepEqual(description.blocks, [{ name: "kept_1", layout: "Ms_Same_Keys", unit_id: 1 }]);
 	});
 
 	test("a layout of a Description is not bound to a scope and creates no ldata", () => {
@@ -383,94 +383,113 @@ blocks:
 });
 
 describe("blocks", () => {
-	test("registration creates the ldata of the blocks, managed by their layouts", () => {
-		const scope = create_scope("Sc_Blocks");
+	test("loading creates the ldata of the blocks, managed by their layouts", () => {
+		const scope = fresh_scope();
 		const description = unit("Ms_Block", 4, `
 blocks:
-  - { name: b_1, layout: Sc_Blocks.Ms_Block, unit_id: 1 }
-  - { name: b_2, layout: Sc_Blocks.Ms_Block, unit_id: 2 }
+  - { name: b_1, layout: Ms_Block, unit_id: 1 }
+  - { name: b_2, layout: Ms_Block, unit_id: 2 }
 `);
 		assert.deepEqual(description.blocks, [
-			{ name: "b_1", layout: "Sc_Blocks.Ms_Block", unit_id: 1 },
-			{ name: "b_2", layout: "Sc_Blocks.Ms_Block", unit_id: 2 },
+			{ name: "b_1", layout: "Ms_Block", unit_id: 1 },
+			{ name: "b_2", layout: "Ms_Block", unit_id: 2 },
 		]);
-		const { layouts, ldata } = scope.register_layout(description);
+		const { layouts, ldata } = scope.load(description);
 		assert.deepEqual(Object.keys(ldata), ["b_1", "b_2"]);
 		assert.equal(ldata.b_1.layout, layouts.Ms_Block);
 		assert.equal(ldata.b_1.a, 4);
 		assert.equal(layouts.Ms_Block.get_ldata("b_2"), ldata.b_2);
 	});
 
-	test("a block may reference a layout of another description of the call, or of another scope", () => {
-		const lib = create_scope("Sc_Block_Lib");
-		lib.register_layout(unit("Ms_Lib_Layout", 1));
-		const app = create_scope("Sc_Block_App");
-		const blocks = yaml`
-blocks:
-  - { name: own, layout: Sc_Block_App.Ms_App_Layout }
-  - { name: lent, layout: Sc_Block_Lib.Ms_Lib_Layout }
-`;
-		const { ldata } = app.register_layout([blocks, unit("Ms_App_Layout", 2)]);
-		assert.deepEqual([ldata.own.a, ldata.lent.a], [2, 1]);
-		assert.equal(lib.get_layout("Ms_Lib_Layout").get_ldata("lent"), ldata.lent);
+	test("the blocks are created in the scope loading the description, so one description loads into several scopes", () => {
+		const description = unit("Ms_Group", 6, "blocks:\n  - { name: g, layout: Ms_Group }\n");
+		const one = fresh_scope();
+		const two = fresh_scope();
+		const first = one.load(description).ldata.g;
+		const second = two.load(description).ldata.g;
+		assert.notEqual(first, second);
+		assert.equal(one.get_layout("Ms_Group").get_ldata("g"), first);
+		assert.equal(two.get_layout("Ms_Group").get_ldata("g"), second);
 	});
 
-	test("an unknown scope or layout, a used ldata name and a block name repeated in the call are errors; nothing is created", () => {
-		const scope = create_scope("Sc_Block_Errors");
-		scope.register_layout(unit("Ms_Used", 0, "blocks:\n  - { name: taken, layout: Sc_Block_Errors.Ms_Used }\n"));
-		const first = yaml`
+	test("blocks of an application on a layout of a library: import its item tables, list the layout, load into its scope", () => {
+		const lib_file = write("layouts: [Ms_Lib_Layout]\nitem_tables:\n  Ms_Lib_Layout:\n    - { name: a, type: UInt, offset: 0, init_value: 1 }\n");
+		const lib = fresh_scope();
+		lib.load(desc_file(lib_file));
+		const app = yaml`
+imports: [${lib_file}]
+layouts: [Ms_Lib_Layout]
 blocks:
-  - { name: nowhere, layout: Sc_None.Ms_Used }
-  - { name: nothing, layout: Sc_Block_Errors.Ms_None }
-  - { name: taken, layout: Sc_Block_Errors.Ms_Used }
-  - { name: twice, layout: Sc_Block_Errors.Ms_Used }
+  - { name: lent, layout: Ms_Lib_Layout }
 `;
-		const second = yaml`
-blocks:
-  - { name: twice, layout: Sc_Block_Errors.Ms_Fresh }
-`;
-		assert.deepEqual(errors_of(() => scope.register_layout([first, second, unit("Ms_Fresh", 1)])), [
-			"description #1: block nowhere: unknown scope Sc_None",
-			"description #1: block nothing: unknown layout Sc_Block_Errors.Ms_None",
-			"description #1: block taken: ldata Sc_Block_Errors.Ms_Used.taken already exists",
+		const { layouts, ldata } = lib.load(app);
+		assert.equal(layouts.Ms_Lib_Layout, lib.get_layout("Ms_Lib_Layout"));
+		assert.equal(lib.get_layout("Ms_Lib_Layout").get_ldata("lent"), ldata.lent);
+		assert.equal(ldata.lent.a, 1);
+	});
+
+	test("a used ldata name and a block name repeated in the call are errors; nothing is created", () => {
+		const scope = fresh_scope();
+		scope.load(unit("Ms_Used", 0, "blocks:\n  - { name: taken, layout: Ms_Used }\n"));
+		const first = unit("Ms_Used", 0, "blocks:\n  - { name: taken, layout: Ms_Used }\n  - { name: twice, layout: Ms_Used }\n");
+		const second = unit("Ms_Fresh", 1, "blocks:\n  - { name: twice, layout: Ms_Fresh }\n");
+		assert.deepEqual(errors_of(() => scope.load([first, second])), [
+			`description #1: block taken: ldata ${scope.name}.Ms_Used.taken already exists`,
 			"block twice is listed in description #1 and description #2",
 		]);
 		assert.throws(() => scope.get_layout("Ms_Fresh"), /unknown layout/);
-		assert.throws(() => scope.get_layout("Ms_Used").get_ldata("twice"), /unknown ldata Sc_Block_Errors.Ms_Used.twice/);
+		assert.throws(() => scope.get_layout("Ms_Used").get_ldata("twice"), new RegExp(`unknown ldata ${scope.name}.Ms_Used.twice`));
+		// a block of a layout in conflict adds no error of its own
+		assert.deepEqual(errors_of(() => scope.load(unit("Ms_Used", 5, "blocks:\n  - { name: other, layout: Ms_Used }\n"))), [
+			`description: another layout of a different structure is already named ${scope.name}.Ms_Used`,
+		]);
 	});
 
-	test("registering the same blocks again in the scope is an error", () => {
+	test("loading the same blocks again into the scope is an error", () => {
 		const scope = create_scope("Sc_Block_Again");
-		const description = unit("Ms_Again", 0, "blocks:\n  - { name: again, layout: Sc_Block_Again.Ms_Again }\n");
-		scope.register_layout(description);
-		assert.deepEqual(errors_of(() => scope.register_layout(description)), [
+		const description = unit("Ms_Again", 0, "blocks:\n  - { name: again, layout: Ms_Again }\n");
+		scope.load(description);
+		assert.deepEqual(errors_of(() => scope.load(description)), [
 			"description: block again: ldata Sc_Block_Again.Ms_Again.again already exists",
 		]);
 	});
 
 	test("blocks are checked when reading, all the errors together", () => {
 		const file = write(`
+layouts: [Pump]
+item_tables:
+  Pump:
+    - { name: a, type: UInt, offset: 0 }
 blocks:
-  - { name: ok, layout: app.Pump }
+  - { name: ok, layout: Pump }
   - just a string
-  - { layout: app.Pump }
-  - { name: ok, layout: app.Pump }
-  - { name: no_scope, layout: Pump }
-  - { name: dotted, layout: a.b.c }
+  - { layout: Pump }
+  - { name: ok, layout: Pump }
+  - { name: other, layout: Valve }
+  - { name: scoped, layout: app.Pump }
   - { name: not_text, layout: [app, Pump] }
 `);
 		assert.deepEqual(errors_of(() => desc_file(file)), [
 			`${file}: block #2 is not a mapping`,
 			`${file}: block #3: \`name\` must be a string`,
 			`${file}: block ok is listed twice`,
-			`${file}: block no_scope: \`layout\` must be written <scope>.<layout>`,
-			`${file}: block dotted: \`layout\` must be written <scope>.<layout>`,
-			`${file}: block not_text: \`layout\` must be written <scope>.<layout>`,
+			`${file}: block other: unknown layout Valve`,
+			`${file}: block scoped: unknown layout app.Pump`,
+			`${file}: block not_text: \`layout\` must be a layout name`,
 		]);
 		assert.deepEqual(errors_of(() => yaml`blocks: { name: x }`), ["the root key `blocks` must be a list of blocks"]);
 		// only an absent blocks is made [], an empty value is not
 		assert.deepEqual(errors_of(() => yaml`blocks:`), ["the root key `blocks` must be a list of blocks"]);
 		assert.deepEqual(yaml`layouts: []`.blocks, []);
+	});
+
+	test("a block references a layout of its own description only, not one of an imported description", () => {
+		const imported = write("layouts: [Ms_Lent]\nitem_tables:\n  Ms_Lent:\n    - { name: a, type: UInt, offset: 0 }\n");
+		assert.deepEqual(errors_of(() => yaml`
+imports: [${imported}]
+blocks:
+  - { name: x, layout: Ms_Lent }
+`), ["block x: unknown layout Ms_Lent"]);
 	});
 });
 
@@ -504,12 +523,12 @@ describe("a layout manages its ldata", () => {
 		assert.equal(layout.get_ldata("gone"), again);
 	});
 
-	test("the ldata of the blocks given back by delete_ldata let the same blocks register again", () => {
+	test("the ldata of the blocks given back by delete_ldata let the same blocks load again", () => {
 		const scope = create_scope("Sc_Rebuild");
-		const description = unit("Ms_Rebuild", 0, "blocks:\n  - { name: r_1, layout: Sc_Rebuild.Ms_Rebuild }\n  - { name: r_2, layout: Sc_Rebuild.Ms_Rebuild }\n");
-		const first = scope.register_layout(description).ldata;
+		const description = unit("Ms_Rebuild", 0, "blocks:\n  - { name: r_1, layout: Ms_Rebuild }\n  - { name: r_2, layout: Ms_Rebuild }\n");
+		const first = scope.load(description).ldata;
 		for (const data of Object.values(first)) data.layout.delete_ldata(data.name);
-		const second = scope.register_layout(description).ldata;
+		const second = scope.load(description).ldata;
 		assert.deepEqual(Object.keys(second), ["r_1", "r_2"]);
 		assert.notEqual(second.r_1, first.r_1);
 		assert.equal(scope.get_layout("Ms_Rebuild").get_ldata("r_1"), second.r_1);

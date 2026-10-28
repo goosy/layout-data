@@ -2,7 +2,7 @@
 // the scopes by scope name, and the layouts of each scope by layout name and
 // by fingerprint. The layout tables are found by the scope object itself,
 // never by its name, so no scope reaches the layouts of another one. Written
-// by create_scope (scope.js) and the registration (layout.js), read by the
+// by create_scope (scope.js) and the loading (layout.js), read by the
 // scopes.
 
 /** @import { Layout, Layout_Scope } from "./typedefs.js" */

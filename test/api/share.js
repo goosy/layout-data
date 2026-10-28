@@ -17,7 +17,7 @@ export function json_desc(object) {
 /** Registers Descriptions in a scope of their own; the result holds the scope too. */
 export function register(descriptions) {
 	const scope = fresh_scope();
-	return { scope, ...scope.register_layout(descriptions) };
+	return { scope, ...scope.load(descriptions) };
 }
 
 /** Registers the items of one layout by name and returns the layout. */

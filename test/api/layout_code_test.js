@@ -16,7 +16,7 @@ const ITEMS = () => [
 ];
 
 /** Registers one layout, written in code as JSON text, in a scope of its own. */
-const register = (name, items, scope = fresh_scope()) => ({ scope, ...scope.register_layout(json_desc({ layouts: [name], item_tables: { [name]: items } })) });
+const register = (name, items, scope = fresh_scope()) => ({ scope, ...scope.load(json_desc({ layouts: [name], item_tables: { [name]: items } })) });
 
 describe("layouts written in code", () => {
 	test("registered by name, the layout is used by its name", () => {
@@ -73,7 +73,7 @@ describe("layouts written in code", () => {
 
 	test("all or none: a bad layout keeps the good ones of the same description unregistered", () => {
 		const scope = fresh_scope();
-		assert.throws(() => scope.register_layout(json_desc({
+		assert.throws(() => scope.load(json_desc({
 			layouts: ["Lc_Good", "Lc_Broken"],
 			item_tables: {
 				Lc_Good: [{ name: "a", type: "UInt", offset: 0, init_value: 0 }],
@@ -97,7 +97,7 @@ describe("layouts written in code", () => {
 	});
 
 	test("item tables may be named in the description given in code", () => {
-		const { layouts } = fresh_scope().register_layout(json_desc({
+		const { layouts } = fresh_scope().load(json_desc({
 			layouts: ["Lc_Fragment"],
 			item_tables: {
 				Lc_Fragment: [{ type: "Word", offset: 32, includes: "common", name_prefix: "p_" }],
@@ -107,10 +107,10 @@ describe("layouts written in code", () => {
 		assert.deepEqual(layouts.Lc_Fragment.items.map((item) => [item.name, item.offset]), [["p_x", 32], ["p_y", 48]]);
 	});
 
-	test("the package exports create_scope and get_scope; the steps behind registration are not exported", () => {
+	test("the package exports create_scope and get_scope; the steps behind loading are not exported", () => {
 		assert.equal(api.create_scope.length, 1);
 		assert.equal(api.get_scope.length, 1);
-		for (const name of ["register_layout", "get_layout", "compile_layout", "compile_layout_data", "register_layout_file", "register_layout_data", "register_descriptions", "build_structure", "validate_structure", "register_structure", "compile_description", "yaml_file"]) {
+		for (const name of ["register_layout", "load", "load_descriptions", "get_layout", "compile_layout", "compile_layout_data", "register_layout_file", "register_layout_data", "register_descriptions", "build_structure", "validate_structure", "register_structure", "compile_description", "yaml_file"]) {
 			assert.equal(name in api, false, name);
 		}
 	});

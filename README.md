@@ -41,15 +41,15 @@ item_tables:
     - { name: fault, type: Bool, offset: 9, comment: Fault latch }
 ```
 
-A description may import the item tables of other description files with `imports: [common.yaml]` (relative to the file), and may list data blocks to create under `blocks`, each with a `name` and a `layout` written `<scope>.<layout>`; their other keys are left to the application.
+A description may import the item tables of other description files with `imports: [common.yaml]` (relative to the file), and may list data blocks to create under `blocks`, each with a `name` and a `layout`, a layout name of the same description; they are created in the scope the description is loaded into, and their other keys are left to the application.
 
-`desc_file` reads a description file and `yaml` reads YAML text written in code (both work as template tags or as plain calls); both compile it at once, throwing every error they find, and return a `Description`: the parsed root, with `layouts` and `blocks` compiled and the other root keys kept as they are, deeply frozen. Create a scope, register Descriptions in it (any number of times), then get a layout by its name and create data blocks from it. Several descriptions are given as a list, for example ``[desc_file`pump.yaml`, desc_file`valve.yaml`]``. The text of a template is taken raw and read as YAML, not as JavaScript: write an escape such as `\t` in a double-quoted YAML string, since a single-quoted or unquoted one keeps the backslash.
+`desc_file` reads a description file and `yaml` reads YAML text written in code (both work as template tags or as plain calls); both compile it at once, throwing every error they find, and return a `Description`: the parsed root, with `layouts` and `blocks` compiled and the other root keys kept as they are, deeply frozen. Create a scope, load Descriptions into it (any number of times), then get a layout by its name and create data blocks from it. Several descriptions are given as a list, for example ``[desc_file`pump.yaml`, desc_file`valve.yaml`]``. The text of a template is taken raw and read as YAML, not as JavaScript: write an escape such as `\t` in a double-quoted YAML string, since a single-quoted or unquoted one keeps the backslash.
 
 ```js
 import { create_scope, desc_file } from "layout-data";
 
 const scope = create_scope("app");                 // an identifier, unique in the process
-scope.register_layout(desc_file`pump.yaml`);       // the layouts, and the ldata of the blocks
+scope.load(desc_file`pump.yaml`);                  // the layouts, and the ldata of the blocks
 const pump = scope.get_layout("Pump").create_ldata("pump_1");
 scope.get_layout("Pump").get_ldata("pump_1");      // the layout finds its ldata by name
 
@@ -81,7 +81,7 @@ pump.transaction(() => {
 | Export | Purpose |
 | --- | --- |
 | `Ldata`, `Ltag` | The data object and the tag handle; an ldata is created by `layout.create_ldata(name)`, never with `new Ldata` |
-| `create_scope(name)` | Create a scope, which manages a group of layouts. A scope has `register_layout(descriptions)`, which registers the layouts of Descriptions (one or a list of them) and creates the ldata of their blocks, all or nothing; a layout of the same name and structure as one of the scope is reused. It has `get_layout(name)`, which looks up a registered layout by name |
+| `create_scope(name)` | Create a scope, which manages a group of layouts. A scope has `load(descriptions)`, which loads Descriptions (one or a list of them): it registers their layouts and creates the ldata of their blocks, all or nothing; a layout of the same name and structure as one of the scope is reused. It has `get_layout(name)`, which looks up a registered layout by name |
 | `get_scope(name)` | Get a created scope by its name, `undefined` when there is none |
 | `yaml`, `desc_file` | Read and compile YAML text, or a description file given by a path or a `file:` URL, into a `Description`; template tags or plain calls |
 
@@ -89,13 +89,13 @@ The development entry `layout-data/dev` exports `render_types(descriptions, opti
 
 A layout has `create_ldata(name)`, `get_ldata(name)` and `delete_ldata(name)` (an ldata name is unique within its layout until `delete_ldata` gives it back), `io_index_table(endian)`, the byte index table for exchanging a whole block with a device (per-tag conversion is `load_tag` / `store_tag` of `Ldata`), and `scope`, the scope it belongs to.
 
-A library built on layout-data creates a scope of its own and, to keep conflicting layouts out of it, registers its own right away, at the top level of its module:
+A library built on layout-data creates a scope of its own and, to keep conflicting layouts out of it, loads its own descriptions right away, at the top level of its module:
 
 ```js
 // lib_a/index.js
 import { create_scope, desc_file } from "layout-data";
 export const scope = create_scope("lib_a");
-scope.register_layout(desc_file(new URL("./pump.yaml", import.meta.url)));
+scope.load(desc_file(new URL("./pump.yaml", import.meta.url)));
 ```
 
 The application gets it with `get_scope("lib_a")` or from the export of the library.
@@ -117,7 +117,7 @@ import { writeFileSync } from "node:fs";
 import { desc_file } from "layout-data";
 import { render_types } from "layout-data/dev";
 
-// descriptions as for register_layout; scope is the name used in the header comment
+// descriptions as for the load of a scope; scope is the name used in the header comment
 writeFileSync("layout_types.d.ts", render_types(desc_file`pump.yaml`, { scope: "app" }));
 ```
 

@@ -26,7 +26,7 @@
  * in bytes; `items`, the tags in layout order (a combined word before its
  * bits); the methods `create_ldata(name)`, `get_ldata(name)`,
  * `delete_ldata(name)` and `io_index_table(endian)`. A type only: the class is
- * not exported, and only a registration makes a layout.
+ * not exported, and only loading makes a layout.
  *
  * @typedef {import("./layout.js").Layout} Layout
  */
@@ -42,7 +42,7 @@
 /**
  * A checked entry of the root key `blocks` of a description
  * (doc/spec-description.md §2): the ldata instance `name` and its `layout`,
- * written `<scope>.<layout>`; the other keys belong to the application.
+ * a layout name of the description; the other keys belong to the application.
  *
  * @typedef {{ name: string, layout: string } & Record<string, unknown>} Block_Desc
  */
@@ -58,7 +58,7 @@
 
 /**
  * A scope managing a group of layouts (doc/spec-layout.md §2): read-only
- * `name`; the methods `register_layout(descriptions)` and `get_layout(name)`. Frozen. A
+ * `name`; the methods `load(descriptions)` and `get_layout(name)`. Frozen. A
  * type only: the class is not exported, and only create_scope makes a scope.
  *
  * @typedef {import("./scope.js").Layout_Scope} Layout_Scope
@@ -71,7 +71,7 @@
  */
 
 /**
- * The result of a call of register_layout (doc/spec-layout.md §3).
+ * The result of a call of the load of a scope (doc/spec-layout.md §3).
  *
  * @typedef {object} Registration
  * @property {Record<string, Layout>} layouts - The layouts of the call by name, bound to the scope.

@@ -22,7 +22,7 @@ test("the entry exposes the public interface", () => {
 
 test("Layout and Layout_Scope are types only, and nothing global registers or gets a layout", async () => {
 	const { index: api } = await import("./target.js");
-	for (const name of ["Layout", "Layout_Scope", "io_index_table", "register_layout", "get_layout", "render_types"]) {
+	for (const name of ["Layout", "Layout_Scope", "io_index_table", "register_layout", "load", "get_layout", "render_types"]) {
 		assert.equal(name in api, false, name);
 	}
 });

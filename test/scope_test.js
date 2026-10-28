@@ -29,11 +29,12 @@ describe("6 scopes", () => {
 
 	test("a scope is frozen: no module can replace its methods or its name", () => {
 		const scope = create_scope("Sc_Frozen");
-		scope.register_layout(pump(7));
+		scope.load(pump(7));
 		assert.ok(Object.isFrozen(scope));
 		assert.throws(() => { get_scope("Sc_Frozen").get_layout = () => null; }, TypeError);
 		assert.throws(() => Object.defineProperty(scope, "name", { value: "Sc_Other" }), TypeError);
 		assert.equal(scope.get_layout("Pump").create_ldata("t").a, 7);
+		assert.equal("register_layout" in scope, false);
 	});
 
 	test("the layout table of a scope is found by the scope object, not by its name", () => {
@@ -43,7 +44,7 @@ describe("6 scopes", () => {
 		const spoofed = Object.create(other, { name: { value: "Sc_Victim" } });
 		assert.equal(layouts_of(spoofed), undefined);
 		assert.notEqual(layouts_of(other), layouts_of(victim));
-		other.register_layout(pump(2));
+		other.load(pump(2));
 		assert.throws(() => victim.get_layout("Pump"), /unknown layout Sc_Victim.Pump/);
 	});
 
@@ -54,28 +55,28 @@ describe("6 scopes", () => {
 		assert.equal(get_scope(undefined), undefined);
 	});
 
-	test("a scope registers any number of times; a failed call changes nothing", () => {
+	test("a scope loads descriptions any number of times; a failed call changes nothing", () => {
 		const scope = fresh_scope();
-		scope.register_layout(pump(1));
-		assert.throws(() => scope.register_layout(pump(2)), (error) => Array.isArray(error.errors));
+		scope.load(pump(1));
+		assert.throws(() => scope.load(pump(2)), (error) => Array.isArray(error.errors));
 		assert.equal(scope.get_layout("Pump").items[0].init_value, 1);
-		assert.throws(() => scope.register_layout("no_such_layout_file.yaml"), (error) => Array.isArray(error.errors));
-		scope.register_layout(json_desc({ layouts: ["Valve"], item_tables: { Valve: [{ name: "v", type: "UInt", offset: 0 }] } }));
+		assert.throws(() => scope.load("no_such_layout_file.yaml"), (error) => Array.isArray(error.errors));
+		scope.load(json_desc({ layouts: ["Valve"], item_tables: { Valve: [{ name: "v", type: "UInt", offset: 0 }] } }));
 		assert.equal(scope.get_layout("Valve").create_ldata("t").v, 0);
 	});
 
-	test("any holder of a scope may register in it", () => {
+	test("any holder of a scope may load into it", () => {
 		create_scope("Sc_Open");
-		get_scope("Sc_Open").register_layout(pump(4));
+		get_scope("Sc_Open").load(pump(4));
 		assert.equal(get_scope("Sc_Open").get_layout("Pump").create_ldata("t").a, 4);
-		assert.equal(get_scope("Sc_Open").register_layout(pump(4)).layouts.Pump, get_scope("Sc_Open").get_layout("Pump"));
+		assert.equal(get_scope("Sc_Open").load(pump(4)).layouts.Pump, get_scope("Sc_Open").get_layout("Pump"));
 	});
 
 	test("the same layout name in two scopes is two layouts, each with its own class", () => {
 		const one = create_scope("Sc_One");
 		const two = create_scope("Sc_Two");
-		const first = one.register_layout(pump(1)).layouts.Pump;
-		const second = two.register_layout(pump(2)).layouts.Pump;
+		const first = one.load(pump(1)).layouts.Pump;
+		const second = two.load(pump(2)).layouts.Pump;
 		assert.notEqual(first, second);
 		assert.deepEqual([first.name, first.scope, second.name, second.scope], ["Pump", one, "Pump", two]);
 		const a = first.create_ldata("a");
@@ -87,7 +88,7 @@ describe("6 scopes", () => {
 
 	test("a layout name is unknown outside its scope, and the error names the scope", () => {
 		const scope = fresh_scope();
-		scope.register_layout(pump(3));
+		scope.load(pump(3));
 		assert.throws(() => fresh_scope().get_layout("Pump"), /^Error: unknown layout Test_\d+\.Pump$/);
 		assert.throws(() => scope.get_layout("Valve"), new RegExp(`^Error: unknown layout ${scope.name}.Valve$`));
 		assert.throws(() => scope.get_layout(`${scope.name}.Pump`), /unknown layout/);
@@ -95,7 +96,7 @@ describe("6 scopes", () => {
 
 	test("the errors of the data blocks name the scope of the layout", () => {
 		const scope = fresh_scope();
-		const { layouts } = scope.register_layout(json_desc({ layouts: ["Osc"], item_tables: { Osc: [{ name: "a", type: "UInt", offset: 0, init_value: 0 }] } }));
+		const { layouts } = scope.load(json_desc({ layouts: ["Osc"], item_tables: { Osc: [{ name: "a", type: "UInt", offset: 0, init_value: 0 }] } }));
 		const data = layouts.Osc.create_ldata("d");
 		data.on("change", () => { data.a = data.a + 1; });
 		assert.throws(() => { data.a = 1; }, new RegExp(`^Error: ${scope.name}.Osc: changes do not settle`));

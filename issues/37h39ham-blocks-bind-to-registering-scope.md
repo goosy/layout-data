@@ -1,9 +1,9 @@
 ---
 id: 37h39ham
 opened: 2026-10-28T14:40:53.409Z
-closed:
+closed: 2026-10-28T15:34:47.336Z
 title: The layout of a block gives only the layout name, and the scope a block belongs to is decided by code
-status: accepted    # open | accepted | fixed | rejected | wontfix
+status: fixed       # open | accepted | fixed | rejected | wontfix
 fixed_in: []        # commit IDs, backfilled at version commit time
 labels: []
 remote:
