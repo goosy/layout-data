@@ -29,7 +29,7 @@ Units: a `length` is in bits and a `size` is in bytes, everywhere in this interf
 const data = layout.create_ldata(name);
 ```
 
-- An ldata is made by its layout: `layout.create_ldata(name)` is the only way to create one, and registration creates the ldata of the `blocks` of a description through it too ([spec-layout.md](spec-layout.md) §3). `layout` is a registered layout object, which `get_layout(name)` of a scope returns or a registration result holds ([spec-layout.md](spec-layout.md) §3, §4); looking up by name happens only when the layout is got, so the layout object is in hand when a data block is created. Only a registered layout creates ldata; a copy of one (such as `{ ...layout }`) has not the method;
+- An ldata is made by its layout: `layout.create_ldata(name)` is the only way to create one, and loading a description creates the ldata of its `blocks` through it too ([spec-layout.md](spec-layout.md) §3). `layout` is a registered layout object, which `get_layout(name)` of a scope returns or the result of loading holds ([spec-layout.md](spec-layout.md) §3, §4); looking up by name happens only when the layout is got, so the layout object is in hand when a data block is created. Only a registered layout creates ldata; a copy of one (such as `{ ...layout }`) has not the method;
 - `name`: the name of the ldata, used in logs and error messages, and the key by which its layout finds it. It must be a string (any string, the empty one included), otherwise `TypeError`; it is unique within its layout, and one used by the layout throws `Error` (`ldata X.Y.Z already exists`); it is given here and cannot be changed afterwards;
 - A layout manages the ldata it creates by name: `layout.get_ldata(name)` finds one, and `layout.delete_ldata(name)` unbinds it, giving the name back ([spec-layout.md](spec-layout.md) §4.1);
 - After creation every tag equals its initial value from the layout, a tag without one is `0` (`false` for a `Bool`), and no change event is emitted;
@@ -288,7 +288,7 @@ The interface throws exceptions on errors. It does not log or exit the process; 
 | `load_tag` / `store_tag` with an unknown tag name | `Error`, the ldata is unchanged and no `write` is emitted |
 | A byte order other than `BE`, `LE`, `BEBS`, `LEBS`, or a tag whose range in `io_buffer` is out of bounds | `RangeError`, the ldata is unchanged and no `write` is emitted |
 
-The errors of reading descriptions, registering layouts, getting layouts and ldata, and rendering type declarations are in [spec-layout.md](spec-layout.md) §6.
+The errors of reading descriptions, loading descriptions, getting layouts and ldata, and rendering type declarations are in [spec-layout.md](spec-layout.md) §6.
 
 ## 6. Outside this interface
 

@@ -17,12 +17,12 @@ Out of scope: device communication, scheduling, business rules and logging. The 
 
 | Term | Meaning |
 | --- | --- |
-| Description | The YAML 1.2 description of layouts and ldata instances, in a description file or in code: the root key `imports` imports other description files, `layouts` lists layout names, `item_tables` maps names to item tables, and `blocks` lists ldata instances; other root keys are not read (§2 of [spec-description.md](spec-description.md)). A description with its imports is complete; `yaml` or `desc_file` compiles it into a `Description`, which registration takes; in a `Description` `layouts` is the result of the compilation, and the other root keys are kept as they are |
+| Description | The YAML 1.2 description of layouts and ldata instances, in a description file or in code: the root key `imports` imports other description files, `layouts` lists layout names, `item_tables` maps names to item tables, and `blocks` lists ldata instances; other root keys are not read (§2 of [spec-description.md](spec-description.md)). A description with its imports is complete; `yaml` or `desc_file` compiles it into a `Description`, which a scope loads; in a `Description` `layouts` is the result of the compilation, and the other root keys are kept as they are |
 | Item table | A named list of items of a description, under `item_tables`. Listed in `layouts`, it is compiled into a layout; referenced by `includes` or `coupling` of items, its items are spliced in; one item table may be both |
 | Layout | The fixed format of a data block: name, type, bit offset and initial value of every tag. Compiled from an item table listed in `layouts`, usable once registered in a scope, immutable; the public `Layout` object. It manages the ldata it creates by name |
-| Scope | The unit that manages a group of layouts, the public `Layout_Scope` object: layout names are unique only within a scope, a layout belongs to one scope only, and a scope may register many times. Layouts are registered only in a scope created explicitly (§2 of [spec-layout.md](spec-layout.md)) |
+| Scope | The unit that manages a group of layouts, the public `Layout_Scope` object: layout names are unique only within a scope, a layout belongs to one scope only, and a scope may load descriptions many times. Layouts are registered only in a scope created explicitly (§2 of [spec-layout.md](spec-layout.md)) |
 | Ldata / ldata | Ldata is the class of data objects, an ldata is an instance: a block of data allocated for a layout, stored big-endian internally; an ldata name is unique within its layout |
-| Block | An ldata instance listed under `blocks` of a description: the instance name and `<scope>.<layout>`; the package creates its ldata at registration (§3 of [spec-layout.md](spec-layout.md)) |
+| Block | An ldata instance listed under `blocks` of a description: the instance name and a layout name of the description; at loading, the package creates its ldata in the scope the description is loaded into (§3 of [spec-layout.md](spec-layout.md)) |
 | Ltag | The interface of one named tag of an ldata |
 | Combined word | A Word made of several Bools, sharing its data with its bits |
 
@@ -49,7 +49,7 @@ Out of scope: device communication, scheduling, business rules and logging. The 
 
 ## 4. Layout description
 
-Layouts and ldata instances are given by descriptions, YAML 1.2 description files or YAML text written in code, compiled by `yaml` or `desc_file`; the structure is in [spec-description.md](spec-description.md), the registration in [spec-layout.md](spec-layout.md).
+Layouts and ldata instances are given by descriptions, YAML 1.2 description files or YAML text written in code, compiled by `yaml` or `desc_file`; the structure is in [spec-description.md](spec-description.md), the loading in [spec-layout.md](spec-layout.md).
 
 ## 5. Distribution
 
@@ -67,7 +67,7 @@ The entry `layout-data` exports:
 | Export | Description |
 | --- | --- |
 | `Ldata`, `Ltag` | The data object and the tag handle (§2 and §3 of [spec-data-api.md](spec-data-api.md)); an ldata is created by the `create_ldata` of its layout, and `Ldata` cannot be constructed with `new` |
-| `create_scope` | Create a scope (§2 of [spec-layout.md](spec-layout.md)). `register_layout` of the scope registers the layouts of `Description`s and creates the ldata of their blocks, any number of times; its `get_layout` looks up a registered layout by name, and ldata is created and found through the layout. `Layout_Scope` is exported as a type only |
+| `create_scope` | Create a scope (§2 of [spec-layout.md](spec-layout.md)). `load` of the scope loads `Description`s, registering their layouts and creating the ldata of their blocks, any number of times; its `get_layout` looks up a registered layout by name, and ldata is created and found through the layout. `Layout_Scope` is exported as a type only |
 | `get_scope` | Get a created scope by its name, `undefined` when there is none (§2 of [spec-layout.md](spec-layout.md)) |
 | `yaml`, `desc_file` | Read and compile YAML 1.2 text written in code, or a description file, into a `Description` (§1 of [spec-description.md](spec-description.md)); both are also tags of template literals. `Description`, `Layout_Desc` and `Block_Desc` are exported as types only |
 
@@ -75,12 +75,12 @@ The development entry `layout-data/dev` exports:
 
 | Export | Description |
 | --- | --- |
-| `render_types` | `render_types(descriptions, options)` renders, from `Description`s (what `register_layout` takes), the text of the TypeScript declarations of all their layouts, for editor completion (§5 of [spec-layout.md](spec-layout.md)); the command line tool `layout-types` does the same (§5.1 of the same) |
+| `render_types` | `render_types(descriptions, options)` renders, from `Description`s (what `load` takes), the text of the TypeScript declarations of all their layouts, for editor completion (§5 of [spec-layout.md](spec-layout.md)); the command line tool `layout-types` does the same (§5.1 of the same) |
 
 A layout has the methods `create_ldata`, `get_ldata`, `delete_ldata` and `io_index_table` (§4 of [spec-layout.md](spec-layout.md)), and `Layout` is exported as a type only.
 
 ## 7. Documents
 
-- The Chinese documents are the primary ones: [spec.zh-cn.md](spec.zh-cn.md), [spec-description.zh-cn.md](spec-description.zh-cn.md) (descriptions: `yaml` and `desc_file`, item tables, `layouts`, `blocks`, items, imports and traversal), [spec-layout.zh-cn.md](spec-layout.zh-cn.md) (layouts: scopes, registration, the layout object and its ldata, type declarations), [spec-data-api.zh-cn.md](spec-data-api.zh-cn.md) (data objects: Ldata, Ltag, events), [design.zh-cn.md](design.zh-cn.md);
+- The Chinese documents are the primary ones: [spec.zh-cn.md](spec.zh-cn.md), [spec-description.zh-cn.md](spec-description.zh-cn.md) (descriptions: `yaml` and `desc_file`, item tables, `layouts`, `blocks`, items, imports and traversal), [spec-layout.zh-cn.md](spec-layout.zh-cn.md) (layouts: scopes, loading, the layout object and its ldata, type declarations), [spec-data-api.zh-cn.md](spec-data-api.zh-cn.md) (data objects: Ldata, Ltag, events), [design.zh-cn.md](design.zh-cn.md);
 - This directory holds the English versions, which correspond to them; update both when the specification changes;
 - For a quick start see [../README.md](../README.md).
