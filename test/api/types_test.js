@@ -114,9 +114,9 @@ export type Ty_Basic_Ldata = Ldata & Ty_Basic_Tags;
 		assert.ok(!text.includes("../src/index.js"), text);
 	});
 
-	test("descriptions that are not Descriptions, and scope names, throw as register_layout and create_scope do", () => {
+	test("descriptions that are not Descriptions, and scope names, throw as load and create_scope do", () => {
 		assert.throws(() => render_types({ layouts: [] }, { scope: "Ty_Object" }), (error) => {
-			assert.equal(error.message.split("\n")[0], "invalid layout descriptions of scope Ty_Object:");
+			assert.equal(error.message.split("\n")[0], "invalid descriptions of scope Ty_Object:");
 			assert.deepEqual(error.errors, ["description: not a Description; read a description file with desc_file, YAML text with yaml"]);
 			return true;
 		});
@@ -149,7 +149,7 @@ item_tables:
   Ty_Blocks:
     - { name: a, type: UInt, offset: 0 }
 blocks:
-  - { name: never, layout: Ty_No_Scope.Ty_Blocks }
+  - { name: never, layout: Ty_Blocks }
 `;
 		// no scope is created: the same scope name serves twice
 		assert.ok(render_types(description, { scope: "Ty_Twice" }).includes("export interface Ty_Blocks_Tags {"));

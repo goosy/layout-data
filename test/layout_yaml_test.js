@@ -20,7 +20,7 @@ function write(yaml) {
 
 /** Writes a YAML layout file, reads it and registers it in a scope of its own. */
 function compile(yaml, scope = fresh_scope()) {
-	return scope.register_layout(desc_file(write(yaml)));
+	return scope.load(desc_file(write(yaml)));
 }
 
 /** The errors of reading a YAML layout file. */

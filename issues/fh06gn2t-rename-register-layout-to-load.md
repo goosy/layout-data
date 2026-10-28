@@ -1,9 +1,9 @@
 ---
 id: fh06gn2t
 opened: 2026-10-28T14:56:11.517Z
-closed:
+closed: 2026-10-28T15:34:47.336Z
 title: scope.register_layout 改名为 scope.load
-status: accepted    # open | accepted | fixed | rejected | wontfix
+status: fixed       # open | accepted | fixed | rejected | wontfix
 fixed_in: []        # commit IDs, backfilled at version commit time
 labels: []
 remote:

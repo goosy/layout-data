@@ -1,9 +1,9 @@
 ---
 id: qpupna3c
 opened: 2026-10-28T14:40:53.409Z
-closed:
+closed: 2026-10-28T15:34:47.336Z
 title: 块的 layout 只写布局名，块所属注册域由代码决定
-status: accepted    # open | accepted | fixed | rejected | wontfix
+status: fixed       # open | accepted | fixed | rejected | wontfix
 fixed_in: []        # commit IDs, backfilled at version commit time
 labels: []
 remote:

@@ -7,7 +7,7 @@
 import { realpathSync, writeFileSync } from "node:fs";
 import { parseArgs } from "node:util";
 import { ORIGIN } from "./internal.js";
-import { check_descriptions, plan_layouts, registration_error } from "./layout.js";
+import { check_descriptions, plan_layouts, load_error } from "./layout.js";
 import { check_scope_name } from "./scope.js";
 import { render_declarations } from "./types.js";
 import { desc_file } from "./yaml.js";
@@ -35,16 +35,16 @@ given in code, call render_types of "layout-data/dev" in a script instead.`;
 /**
  * Renders a TypeScript declaration file for all the layouts of descriptions,
  * for editor completion of the tags (doc/spec-layout.md §5). The layouts are
- * combined by the rules of registering them in one empty scope, but no scope
+ * combined by the rules of loading them into one empty scope, but no scope
  * is created and no ldata of blocks. The text imports `Ldata` from
  * "layout-data", which the project rendering the types depends on.
  *
- * @param {Description | Description[]} descriptions - As for register_layout: a Description or a list of them.
+ * @param {Description | Description[]} descriptions - As for the load of a scope: a Description or a list of them.
  * @param {object} [options]
  * @param {string} [options.scope] - The scope name used in the example of the header comment and in errors; "app" by default.
  * @param {string} [options.source] - The source named in the header; by default the description files, when desc_file read all the descriptions.
  * @returns {string}
- * @throws {Error} With `errors`, as register_layout, when the descriptions are not valid or their layouts conflict.
+ * @throws {Error} With `errors`, as the load of a scope, when the descriptions are not valid or their layouts conflict.
  * @throws {TypeError | Error} As create_scope, when the scope name is not valid.
  */
 export function render_types(descriptions, { scope = "app", source } = {}) {
@@ -53,7 +53,7 @@ export function render_types(descriptions, { scope = "app", source } = {}) {
 	const checked = check_descriptions(descriptions, errors);
 	const empty = { by_name: new Map(), by_fingerprint: new Map() };
 	const { layouts } = plan_layouts(checked, empty, scope, (desc) => desc, errors);
-	if (errors.length > 0) throw registration_error(scope, errors);
+	if (errors.length > 0) throw load_error(scope, errors);
 	if (source === undefined && checked.every(({ description }) => typeof description[ORIGIN] === "string")) {
 		source = checked.map(({ description }) => description[ORIGIN]).join(", ");
 	}

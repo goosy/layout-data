@@ -30,20 +30,22 @@ void (await import("layout-data")).register_layout;
 // @ts-expect-error a layout is got from its scope
 void (await import("layout-data")).get_layout;
 
-// registering layouts: a Description or a list of them, compiled from YAML by yaml and desc_file
-const compiled: Registration = scope.register_layout(yaml`layouts: []`);
-const from_file: Registration = scope.register_layout(desc_file`layout.yaml`);
-const from_list: Registration = scope.register_layout([desc_file("common.yaml"), desc_file(new URL("file:///pump.yaml")), yaml`layouts: []`]);
+// loading descriptions: a Description or a list of them, compiled from YAML by yaml and desc_file
+const compiled: Registration = scope.load(yaml`layouts: []`);
+const from_file: Registration = scope.load(desc_file`layout.yaml`);
+const from_list: Registration = scope.load([desc_file("common.yaml"), desc_file(new URL("file:///pump.yaml")), yaml`layouts: []`]);
 const descriptions: Description[] = [yaml("layouts: []"), desc_file("pump.yaml")];
-scope.register_layout(descriptions);
+scope.load(descriptions);
 assert_type<Equal<ReturnType<typeof desc_file>, Description>>();
 assert_type<Equal<ReturnType<typeof yaml>, Description>>();
-// @ts-expect-error a path is read by desc_file, not by register_layout
-scope.register_layout("layout.yaml");
+// @ts-expect-error a path is read by desc_file, not by load
+scope.load("layout.yaml");
+// @ts-expect-error register_layout is renamed load
+void scope.register_layout;
 // @ts-expect-error a description object is not a Description
-scope.register_layout({ layouts: ["Pump"], item_tables: {} });
+scope.load({ layouts: ["Pump"], item_tables: {} });
 // @ts-expect-error a list of descriptions holds no path
-scope.register_layout(["common.yaml", yaml`layouts: []`]);
+scope.load(["common.yaml", yaml`layouts: []`]);
 // @ts-expect-error yaml takes text
 yaml(1);
 // @ts-expect-error desc_file takes a path or a URL
@@ -72,9 +74,9 @@ layout.items.push({ name: "a", type: "Int", offset: 0, length: 16, init_value: 0
 // @ts-expect-error the item tables reached are not returned
 void from_file.tables;
 // @ts-expect-error a description is a Description, not a number
-scope.register_layout(1);
+scope.load(1);
 // @ts-expect-error the descriptions are required
-scope.register_layout();
+scope.load();
 
 // a Description: its layouts, not bound to a scope, and its blocks
 const description: Description = desc_file("pump.yaml");
@@ -95,7 +97,7 @@ description.blocks.push(block);
 type _Item = import("layout-data").Layout_Item;
 
 // a layout of a Description is used through a scope
-const same_layout: Layout = scope.register_layout(yaml`layouts: [s]`).layouts.s;
+const same_layout: Layout = scope.load(yaml`layouts: [s]`).layouts.s;
 assert_type<Equal<typeof same_layout, Layout>>();
 // @ts-expect-error the old compile names are gone
 void (await import("layout-data")).compile_layout;

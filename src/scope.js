@@ -1,6 +1,6 @@
 // Scopes (doc/spec-layout.md §2): every scope manages its own layouts, which
-// any number of calls of register_layout register in it.
-import { register_descriptions } from "./layout.js";
+// any number of calls of load register in it.
+import { load_descriptions } from "./layout.js";
 import { add_scope, find_scope, layouts_of } from "./registry.js";
 import { IDENTIFIER } from "./structure.js";
 
@@ -39,17 +39,18 @@ export class Layout_Scope {
 	}
 
 	/**
-	 * Registers the layouts of the descriptions in this scope, then creates the
-	 * ldata of their blocks (doc/spec-layout.md §3). A layout of the same
-	 * fingerprint and name as one of the scope is reused. Nothing changes when
-	 * any of it is not valid.
+	 * Loads the descriptions into this scope: registers their layouts in it,
+	 * then creates the ldata of their blocks (doc/spec-layout.md §3). A layout
+	 * of the same fingerprint and name as one of the scope is reused. Nothing
+	 * changes when any of it is not valid. Reads no file: yaml and desc_file
+	 * read and compile the descriptions.
 	 *
 	 * @param {Description | Description[]} descriptions - A Description or a list of them, made by yaml or desc_file.
 	 * @returns {Registration}
-	 * @throws {Error} With `errors`, every violation found: a layout conflicting with one of the scope, a block naming an unknown layout or a used ldata name.
+	 * @throws {Error} With `errors`, every violation found: a layout conflicting with one of the scope, a block name used by an ldata of its layout or twice in the call.
 	 */
-	register_layout(descriptions) {
-		return register_descriptions(descriptions, this);
+	load(descriptions) {
+		return load_descriptions(descriptions, this);
 	}
 
 	/**

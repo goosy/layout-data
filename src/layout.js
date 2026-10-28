@@ -1,10 +1,10 @@
 // Compilation of descriptions into layouts, the Layout class, and the
-// registration of descriptions in scopes (doc/design.md §3).
+// loading of descriptions into scopes (doc/design.md §3).
 import { CODECS } from "./codecs.js";
 import { io_index_table } from "./endian.js";
 import { COMPILED, DESCRIPTION, LDATA_FACTORY, ORIGIN } from "./internal.js";
 import { Ldata } from "./Ldata.js";
-import { find_scope, layouts_of, register } from "./registry.js";
+import { layouts_of, register } from "./registry.js";
 import { build_structure, validate_structure, IDENTIFIER, TYPE_BITS } from "./structure.js";
 
 /** @import { Block_Desc, Description, Endian, Layout_Desc, Layout_Scope, Layout_Tag, Registration } from "./typedefs.js" */
@@ -19,7 +19,7 @@ const CREATE_KEY = Symbol("create layout");
  * frozen: `name`; `scope`, the scope it is registered in; `length` in bits;
  * `size` in bytes; `items`, the tags in layout order (a combined word before
  * its bits). It manages the ldata it creates by name. yaml and desc_file
- * compile layouts not bound to a scope, and a registration binds them; the
+ * compile layouts not bound to a scope, and loading binds them; the
  * package exports the type and not the class.
  */
 export class Layout {
@@ -76,7 +76,7 @@ export class Layout {
 	 * @param {Layout_Scope | undefined} scope - The scope the layout is bound to, undefined for a layout of a Description.
 	 */
 	constructor(key, name, length, items, compiled, scope) {
-		if (key !== CREATE_KEY) throw new TypeError("a layout is made by yaml or desc_file and bound by the register_layout of a scope");
+		if (key !== CREATE_KEY) throw new TypeError("a layout is made by yaml or desc_file and bound by the load of a scope");
 		this.name = name;
 		this.length = length;
 		this.size = length >> 3;
@@ -343,7 +343,7 @@ export function compile_description(sources, errors) {
 	const layouts = compile_layouts(names, item_tables, errors);
 	// an absent `blocks` is the only root key made up, before it is checked
 	const blocks = entry.root.blocks === undefined ? [] : entry.root.blocks;
-	check_blocks(blocks, prefix, errors);
+	check_blocks(blocks, names, prefix, errors);
 	return { ...entry.root, layouts, blocks };
 }
 
@@ -413,21 +413,17 @@ function compile_layouts(names, item_tables, errors) {
 	return Object.fromEntries(structs.map((struct) => [struct.name, compile_structure(struct)]));
 }
 
-/** Whether a string is written `<scope>.<layout>`, both identifiers. */
-function is_layout_ref(text) {
-	const parts = text.split(".");
-	return parts.length === 2 && parts.every((part) => IDENTIFIER.test(part));
-}
-
 /**
  * Checks the root key `blocks` (doc/spec-description.md §5.3), changing and
- * copying nothing.
+ * copying nothing: the `layout` of a block is a layout name listed by the
+ * description.
  *
  * @param {unknown} listed - The value of the root key `blocks`, `[]` when it is absent.
+ * @param {string[]} layout_names - The layout names listed by the description.
  * @param {string} prefix - The origin of the description, before every error.
  * @param {string[]} errors
  */
-function check_blocks(listed, prefix, errors) {
+function check_blocks(listed, layout_names, prefix, errors) {
 	if (!Array.isArray(listed)) {
 		errors.push(`${prefix}the root key \`blocks\` must be a list of blocks`);
 		return;
@@ -445,8 +441,10 @@ function check_blocks(listed, prefix, errors) {
 		}
 		if (names.has(name)) errors.push(`${prefix}block ${name} is listed twice`);
 		names.add(name);
-		if (typeof layout !== "string" || !is_layout_ref(layout)) {
-			errors.push(`${prefix}block ${name}: \`layout\` must be written <scope>.<layout>`);
+		if (typeof layout !== "string") {
+			errors.push(`${prefix}block ${name}: \`layout\` must be a layout name`);
+		} else if (!layout_names.includes(layout)) {
+			errors.push(`${prefix}block ${name}: unknown layout ${layout}`);
 		}
 	});
 }
@@ -479,7 +477,7 @@ export function make_description(desc_process, path) {
 }
 
 /**
- * Checks the argument of register_layout or render_types: a Description or a
+ * Checks the argument of the load of a scope or render_types: a Description or a
  * list of them. Every Description is returned with its origin, the path of its
  * file or its position in the list.
  *
@@ -507,7 +505,7 @@ export function check_descriptions(descriptions, errors) {
 
 /**
  * Decides the layout of a scope for every layout of the descriptions, by the
- * rules of registration (doc/spec-layout.md §3): a layout of the same
+ * rules of loading (doc/spec-layout.md §3): a layout of the same
  * fingerprint and name is reused, of the same fingerprint and another name or
  * of the same name and another fingerprint it is an error, and otherwise a
  * new one is made. Changes nothing.
@@ -559,11 +557,12 @@ function has_ldata(layout, name) {
 }
 
 /**
- * Finds the layout of every block of the descriptions (doc/spec-layout.md
- * §3). Changes nothing.
+ * Finds the layout of every block of the descriptions in the scope loading
+ * them (doc/spec-layout.md §3): the layout its description's layout of that
+ * name becomes. Changes nothing.
  *
  * @param {Array<{ origin: string, description: Description }>} checked
- * @param {Layout_Scope} scope - The scope registering.
+ * @param {Layout_Scope} scope - The scope loading.
  * @param {Record<string, Layout>} layouts - The layouts of this call in the scope, by name.
  * @param {string[]} errors
  * @returns {Array<{ layout: Layout, name: string }>}
@@ -579,21 +578,11 @@ function plan_blocks(checked, scope, layouts, errors) {
 				continue;
 			}
 			origins.set(name, origin);
-			const [scope_name, layout_name] = block.layout.split(".");
-			const target = scope_name === scope.name ? scope : find_scope(scope_name);
-			if (!target) {
-				errors.push(`${origin}: block ${name}: unknown scope ${scope_name}`);
-				continue;
-			}
-			const layout = target === scope && Object.hasOwn(layouts, layout_name)
-				? layouts[layout_name]
-				: layouts_of(target).by_name.get(layout_name);
-			if (!layout) {
-				errors.push(`${origin}: block ${name}: unknown layout ${block.layout}`);
-				continue;
-			}
+			// the layout is missing only when plan_layouts reported it
+			const layout = layouts[block.layout];
+			if (!layout) continue;
 			if (has_ldata(layout, name)) {
-				errors.push(`${origin}: block ${name}: ldata ${block.layout}.${name} already exists`);
+				errors.push(`${origin}: block ${name}: ldata ${scope.name}.${block.layout}.${name} already exists`);
 				continue;
 			}
 			planned.push({ layout, name });
@@ -603,34 +592,34 @@ function plan_blocks(checked, scope, layouts, errors) {
 }
 
 /**
- * The error of a registration, listing every violation.
+ * The error of loading descriptions into a scope, listing every violation.
  *
  * @param {string} scope_name
  * @param {string[]} errors
  * @returns {Error}
  */
-export function registration_error(scope_name, errors) {
-	const error = new Error(`invalid layout descriptions of scope ${scope_name}:\n${errors.join("\n")}`);
+export function load_error(scope_name, errors) {
+	const error = new Error(`invalid descriptions of scope ${scope_name}:\n${errors.join("\n")}`);
 	error.errors = errors;
 	return error;
 }
 
 /**
- * Registers the layouts of the descriptions in a scope, then creates the
- * ldata of their blocks (doc/spec-layout.md §3), all or none. Internal: the
- * register_layout of a scope calls it.
+ * Loads the descriptions into a scope: registers their layouts in it, then
+ * creates the ldata of their blocks (doc/spec-layout.md §3), all or none.
+ * Internal: the load of a scope calls it.
  *
  * @param {Description | Description[]} descriptions
  * @param {Layout_Scope} scope
  * @returns {Registration}
  * @throws {Error} With `errors`, every violation found; the scope is unchanged.
  */
-export function register_descriptions(descriptions, scope) {
+export function load_descriptions(descriptions, scope) {
 	const errors = [];
 	const checked = check_descriptions(descriptions, errors);
 	const { layouts, added } = plan_layouts(checked, layouts_of(scope), scope.name, (desc) => bind_layout(desc, scope), errors);
 	const planned = plan_blocks(checked, scope, layouts, errors);
-	if (errors.length > 0) throw registration_error(scope.name, errors);
+	if (errors.length > 0) throw load_error(scope.name, errors);
 	for (const { layout, fingerprint: print } of added) register(layout, print);
 	const ldata = {};
 	for (const { layout, name } of planned) ldata[name] = layout.create_ldata(name);
