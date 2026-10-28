@@ -29,8 +29,9 @@ Units: a `length` is in bits and a `size` is in bytes, everywhere in this interf
 const data = layout.create_ldata(name);
 ```
 
-- An ldata is made by its layout: `layout.create_ldata(name)` is the only way to create one. `layout` is a registered layout object, which `get_layout(name)` of a scope returns or a registration result holds ([spec-layout.md](spec-layout.md) §3, §4); looking up by name happens only when the layout is got, so the layout object is in hand when a data block is created. Only a registered layout has the method; a copy of one (such as `{ ...layout }`) has not;
-- `name`: the name of the ldata, used in logs and error messages. It must be a string (any string, the empty one included), otherwise `TypeError`; it is given here and cannot be changed afterwards;
+- An ldata is made by its layout: `layout.create_ldata(name)` is the only way to create one, and registration creates the ldata of the `blocks` of a description through it too ([spec-layout.md](spec-layout.md) §3). `layout` is a registered layout object, which `get_layout(name)` of a scope returns or a registration result holds ([spec-layout.md](spec-layout.md) §3, §4); looking up by name happens only when the layout is got, so the layout object is in hand when a data block is created. Only a registered layout creates ldata; a copy of one (such as `{ ...layout }`) has not the method;
+- `name`: the name of the ldata, used in logs and error messages, and the key by which its layout finds it. It must be a string (any string, the empty one included), otherwise `TypeError`; it is unique within its layout, and one used by the layout throws `Error` (`ldata X.Y.Z already exists`); it is given here and cannot be changed afterwards;
+- A layout manages the ldata it creates by name: `layout.get_ldata(name)` finds one, and `layout.delete_ldata(name)` unbinds it, giving the name back ([spec-layout.md](spec-layout.md) §4.1);
 - After creation every tag equals its initial value from the layout, a tag without one is `0` (`false` for a `Bool`), and no change event is emitted;
 - `Ldata` cannot be constructed with `new`: `new Ldata(...)` throws `TypeError`, whose message gives the right usage, `layout.create_ldata(name)`; in the declarations the constructor is private, so TypeScript and a file checked with `checkJs` report it at compile time. `Ldata` is still exported, for `instanceof`, type annotations and `Ldata.on_access` / `off_access` (§2.8);
 - The data blocks of one layout share one class, a subclass of `Ldata`, which cannot be constructed with `new` either.
@@ -199,7 +200,7 @@ An ldata is one object that holds both the tags (as properties) and its own meth
 | EventEmitter (Node.js 20.11) | `addListener`, `emit`, `eventNames`, `getMaxListeners`, `listenerCount`, `listeners`, `off`, `on`, `once`, `prependListener`, `prependOnceListener`, `rawListeners`, `removeAllListeners`, `removeListener`, `setMaxListeners`, `_events`, `_eventsCount`, `_maxListeners` |
 | Object | `constructor`, `hasOwnProperty`, `isPrototypeOf`, `propertyIsEnumerable`, `toLocaleString`, `toString`, `valueOf`, `__proto__`, `__defineGetter__`, `__defineSetter__`, `__lookupGetter__`, `__lookupSetter__` |
 
-- A tag with a reserved name is a violation of the layout ([spec-description.md](spec-description.md) §5.2): registering such a layout throws `Error` ([spec-layout.md](spec-layout.md) §3), so an ldata of it never exists;
+- A tag with a reserved name is a violation of the layout ([spec-description.md](spec-description.md) §5.2): reading such a description, `yaml` or `desc_file` throws `Error` ([spec-description.md](spec-description.md) §1.1), so an ldata of it never exists;
 - Ldata stays a subclass of EventEmitter. A later version of Node.js may add methods to EventEmitter; the list does not follow them, so a tag named like such a method would hide it. The test suite compares the list with the running Node.js;
 - From version 1.0 on, this package adds members to Ldata only as `Symbol`-keyed members or static methods, never as a new string-named member of an instance, so a tag name that is valid in 1.0 stays valid. Before 1.0 the list may still grow;
 - The reserved event names are in §2.7. Whether a name is reserved is not queryable: there is no public function for it;
@@ -278,6 +279,7 @@ The interface throws exceptions on errors. It does not log or exit the process; 
 | Writing `NaN`, `Infinity`, a non-integer or an integer outside the range to an integer tag, or a finite number beyond float32 to a `Real` tag | `RangeError`, the old value is kept, no event and no `write` |
 | A handler throws | the first exception is thrown by the write statement after all events are dispatched; the value stands and `write` is emitted (§4.4) |
 | An ldata created with a name that is not a string | `TypeError` |
+| An ldata created with a name used by its layout | `Error` (`ldata X.Y.Z already exists`, §2.1) |
 | `new` on `Ldata` or on the Ldata subclass of a layout | `TypeError`, whose message gives `layout.create_ldata(name)` (§2.1) |
 | Writes triggered by handlers that do not settle | `Error`, thrown by the write statement after the events are dispatched (§4.4) |
 | Starting another transaction inside a transaction | `Error` |
@@ -286,7 +288,7 @@ The interface throws exceptions on errors. It does not log or exit the process; 
 | `load_tag` / `store_tag` with an unknown tag name | `Error`, the ldata is unchanged and no `write` is emitted |
 | A byte order other than `BE`, `LE`, `BEBS`, `LEBS`, or a tag whose range in `io_buffer` is out of bounds | `RangeError`, the ldata is unchanged and no `write` is emitted |
 
-The errors of registering a layout, getting a layout and rendering type declarations are in [spec-layout.md](spec-layout.md) §6.
+The errors of reading descriptions, registering layouts, getting layouts and ldata, and rendering type declarations are in [spec-layout.md](spec-layout.md) §6.
 
 ## 6. Outside this interface
 
