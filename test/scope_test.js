@@ -3,9 +3,9 @@ import assert from "node:assert/strict";
 import test, { describe } from "node:test";
 import { create_scope, get_scope } from "../src/index.js";
 import { layouts_of } from "../src/registry.js";
-import { fresh_scope } from "./share.js";
+import { fresh_scope, json_desc } from "./share.js";
 
-const pump = (init_value) => ({ layouts: ["Pump"], item_tables: { Pump: [{ name: "a", type: "UInt", offset: 0, init_value }] } });
+const pump = (init_value) => json_desc({ layouts: ["Pump"], item_tables: { Pump: [{ name: "a", type: "UInt", offset: 0, init_value }] } });
 
 describe("6 scopes", () => {
 	test("a scope name is an identifier, used once in the process", () => {
@@ -54,30 +54,21 @@ describe("6 scopes", () => {
 		assert.equal(get_scope(undefined), undefined);
 	});
 
-	test("each scope registers once; the second call throws naming the scope", () => {
+	test("a scope registers any number of times; a failed call changes nothing", () => {
 		const scope = fresh_scope();
 		scope.register_layout(pump(1));
-		assert.throws(() => scope.register_layout(pump(2)), new RegExp(`^Error: register_layout can be called only once in scope ${scope.name}$`));
+		assert.throws(() => scope.register_layout(pump(2)), (error) => Array.isArray(error.errors));
 		assert.equal(scope.get_layout("Pump").items[0].init_value, 1);
-	});
-
-	test("a failed registration registers nothing and does not use up the call", () => {
-		const scope = fresh_scope();
 		assert.throws(() => scope.register_layout("no_such_layout_file.yaml"), (error) => Array.isArray(error.errors));
-		assert.throws(() => scope.register_layout({
-			layouts: ["Good", "Bad"],
-			item_tables: { Good: pump(0).item_tables.Pump, Bad: [{ name: "a", type: "Byte", offset: 0, init_value: 0 }] },
-		}), (error) => Array.isArray(error.errors));
-		assert.throws(() => scope.get_layout("Good"), /unknown layout/);
-		scope.register_layout(pump(9));
-		assert.equal(scope.get_layout("Pump").create_ldata("t").a, 9);
+		scope.register_layout(json_desc({ layouts: ["Valve"], item_tables: { Valve: [{ name: "v", type: "UInt", offset: 0 }] } }));
+		assert.equal(scope.get_layout("Valve").create_ldata("t").v, 0);
 	});
 
-	test("any holder of a scope may register in it, once", () => {
+	test("any holder of a scope may register in it", () => {
 		create_scope("Sc_Open");
 		get_scope("Sc_Open").register_layout(pump(4));
 		assert.equal(get_scope("Sc_Open").get_layout("Pump").create_ldata("t").a, 4);
-		assert.throws(() => get_scope("Sc_Open").register_layout(pump(5)), /can be called only once/);
+		assert.equal(get_scope("Sc_Open").register_layout(pump(4)).layouts.Pump, get_scope("Sc_Open").get_layout("Pump"));
 	});
 
 	test("the same layout name in two scopes is two layouts, each with its own class", () => {
@@ -102,20 +93,9 @@ describe("6 scopes", () => {
 		assert.throws(() => scope.get_layout(`${scope.name}.Pump`), /unknown layout/);
 	});
 
-	test("the item tables of a scope are not seen from another one", () => {
-		create_scope("Sc_Frag_A").register_layout({
-			layouts: ["Pump"],
-			item_tables: { ...pump(0).item_tables, bits: [{ name: "b", type: "Bool", offset: 0 }] },
-		});
-		assert.throws(() => create_scope("Sc_Frag_B").register_layout({
-			layouts: ["W"],
-			item_tables: { W: [{ name: "w", type: "Word", offset: 0, coupling: "bits" }] },
-		}), /unknown item table bits/);
-	});
-
 	test("the errors of the data blocks name the scope of the layout", () => {
 		const scope = fresh_scope();
-		const { layouts } = scope.register_layout({ layouts: ["Osc"], item_tables: { Osc: [{ name: "a", type: "UInt", offset: 0, init_value: 0 }] } });
+		const { layouts } = scope.register_layout(json_desc({ layouts: ["Osc"], item_tables: { Osc: [{ name: "a", type: "UInt", offset: 0, init_value: 0 }] } }));
 		const data = layouts.Osc.create_ldata("d");
 		data.on("change", () => { data.a = data.a + 1; });
 		assert.throws(() => { data.a = 1; }, new RegExp(`^Error: ${scope.name}.Osc: changes do not settle`));

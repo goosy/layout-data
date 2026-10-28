@@ -310,7 +310,7 @@ describe("the layout object (doc/spec-layout.md §4)", () => {
 		const data = layout.create_ldata("d");
 		assert.equal(data.layout, layout);
 		assert.equal(data.name, "d");
-		assert.throws(() => new layout.constructor(layout, {}), /a layout is made by the register_layout of a scope/);
+		assert.throws(() => new layout.constructor(layout, {}), /a layout is made by yaml or desc_file/);
 		assert.match(layout.scope.name, /^Test_\d+$/);
 		assert.equal(layout.scope.get_layout("PUBLIC_SHAPE"), layout);
 	});

@@ -13,15 +13,22 @@ export const LDATA_FACTORY = Symbol("ldata factory");
 
 /**
  * The read-only getter `layout[COMPILED]`: the compiled data of a layout.
- * Defined by layout.js, read by the tests.
+ * Defined by layout.js, read by layout.js to bind a layout and by the tests.
  */
 export const COMPILED = Symbol("compiled");
 
 /**
  * The property `description[ORIGIN]`: the path of the description file a
- * description object was read from, not enumerable. Defined by yaml.js, read
- * by layout.js and dev.js. A registered Symbol, not a Symbol of its own: each
- * entry is bundled with its own copy of yaml.js, and an object read by the
- * yaml_file of one entry is given to the other.
+ * Description was read from, not enumerable. Defined by layout.js for
+ * desc_file, read by layout.js and dev.js. A registered Symbol, not a Symbol
+ * of its own: each entry is bundled with its own copy of layout.js, and a
+ * Description read by the desc_file of one entry is given to the other.
  */
 export const ORIGIN = Symbol.for("layout-data.origin");
+
+/**
+ * The property `description[DESCRIPTION]`, true and not enumerable: marks an
+ * object made by yaml or desc_file. Defined by layout.js, read by layout.js
+ * and dev.js. A registered Symbol, for the same reason as ORIGIN.
+ */
+export const DESCRIPTION = Symbol.for("layout-data.description");

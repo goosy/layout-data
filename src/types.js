@@ -1,4 +1,4 @@
-// Renders TypeScript declarations of registered layouts, for editor completion
+// Renders TypeScript declarations of compiled layouts, for editor completion
 // of the tag accessors (doc/spec-layout.md §5, doc/design.md §4).
 
 /**
@@ -16,7 +16,7 @@ function doc_comment(text, indent) {
 }
 
 /**
- * Renders a declaration file with, for each layout of a scope, an interface of
+ * Renders a declaration file with, for each layout, an interface of
  * its tags (`<Layout>_Tags`, one property per tag) and the type of its data
  * block (`<Layout>_Ldata`). The layout name is used as it is, with the case
  * it has; a layout name is an identifier, so it is always part of a valid
@@ -32,7 +32,7 @@ function doc_comment(text, indent) {
  * ```
  *
  * @param {string} scope_name - The name of the scope, for the example in the header.
- * @param {import("./typedefs.js").Layout[]} layouts - The layouts of the scope.
+ * @param {import("./typedefs.js").Layout_Desc[]} layouts - The layouts, their names distinct.
  * @param {object} [options]
  * @param {string} [options.source] - The layout file, named in the header; the header names none when it is omitted.
  * @returns {string}

@@ -41,14 +41,17 @@ item_tables:
     - { name: fault, type: Bool, offset: 9, comment: Fault latch }
 ```
 
-Create a scope, register the layouts in it once, then get a layout by its name and create data blocks from it. Registration takes description objects; `yaml_file` reads a description file into one, and `yaml` parses YAML text written in code (both work as template tags or as plain calls). Several descriptions are given as a list, for example ``[yaml_file`common.yaml`, yaml_file`pump.yaml`]``. The text of a template is taken raw and read as YAML, not as JavaScript: write an escape such as `\t` in a double-quoted YAML string, since a single-quoted or unquoted one keeps the backslash.
+A description may import the item tables of other description files with `imports: [common.yaml]` (relative to the file), and may list data blocks to create under `blocks`, each with a `name` and a `layout` written `<scope>.<layout>`; their other keys are left to the application.
+
+`desc_file` reads a description file and `yaml` reads YAML text written in code (both work as template tags or as plain calls); both compile it at once, throwing every error they find, and return a `Description`: the parsed root, with `layouts` and `blocks` compiled and the other root keys kept as they are, deeply frozen. Create a scope, register Descriptions in it (any number of times), then get a layout by its name and create data blocks from it. Several descriptions are given as a list, for example ``[desc_file`pump.yaml`, desc_file`valve.yaml`]``. The text of a template is taken raw and read as YAML, not as JavaScript: write an escape such as `\t` in a double-quoted YAML string, since a single-quoted or unquoted one keeps the backslash.
 
 ```js
-import { create_scope, yaml_file } from "layout-data";
+import { create_scope, desc_file } from "layout-data";
 
 const scope = create_scope("app");                 // an identifier, unique in the process
-scope.register_layout(yaml_file`pump.yaml`);       // once per scope
+scope.register_layout(desc_file`pump.yaml`);       // the layouts, and the ldata of the blocks
 const pump = scope.get_layout("Pump").create_ldata("pump_1");
+scope.get_layout("Pump").get_ldata("pump_1");      // the layout finds its ldata by name
 
 pump.on("change", (name, old_value, new_value) => {
 	console.log(name, old_value, "->", new_value);
@@ -78,21 +81,21 @@ pump.transaction(() => {
 | Export | Purpose |
 | --- | --- |
 | `Ldata`, `Ltag` | The data object and the tag handle; an ldata is created by `layout.create_ldata(name)`, never with `new Ldata` |
-| `create_scope(name)` | Create a scope of layout names. A scope has `register_layout(descriptions)`, which registers the layouts of description objects (an object or a list of them), once per scope; and `get_layout(name)`, which looks up a registered layout by name |
+| `create_scope(name)` | Create a scope, which manages a group of layouts. A scope has `register_layout(descriptions)`, which registers the layouts of Descriptions (one or a list of them) and creates the ldata of their blocks, all or nothing; a layout of the same name and structure as one of the scope is reused. It has `get_layout(name)`, which looks up a registered layout by name |
 | `get_scope(name)` | Get a created scope by its name, `undefined` when there is none |
-| `yaml`, `yaml_file` | Turn YAML text, or a description file given by a path or a `file:` URL, into a description object; template tags or plain calls |
+| `yaml`, `desc_file` | Read and compile YAML text, or a description file given by a path or a `file:` URL, into a `Description`; template tags or plain calls |
 
 The development entry `layout-data/dev` exports `render_types(descriptions, options)`, which generates TypeScript interfaces for the layouts of descriptions, for editor completion (see below). It is not needed at run time.
 
-A layout has `create_ldata(name)` and `io_index_table(endian)`, the byte index table for exchanging a whole block with a device (per-tag conversion is `load_tag` / `store_tag` of `Ldata`), and `scope`, the scope it belongs to.
+A layout has `create_ldata(name)` and `get_ldata(name)` (an ldata name is unique within its layout), `io_index_table(endian)`, the byte index table for exchanging a whole block with a device (per-tag conversion is `load_tag` / `store_tag` of `Ldata`), and `scope`, the scope it belongs to.
 
-A library built on layout-data creates a scope of its own and, to keep its layouts from being decided by others, registers in it right away, at the top level of its module:
+A library built on layout-data creates a scope of its own and, to keep conflicting layouts out of it, registers its own right away, at the top level of its module:
 
 ```js
 // lib_a/index.js
-import { create_scope, yaml_file } from "layout-data";
+import { create_scope, desc_file } from "layout-data";
 export const scope = create_scope("lib_a");
-scope.register_layout(yaml_file(new URL("./pump.yaml", import.meta.url)));
+scope.register_layout(desc_file(new URL("./pump.yaml", import.meta.url)));
 ```
 
 The application gets it with `get_scope("lib_a")` or from the export of the library.
@@ -107,15 +110,15 @@ With the command line tool (requires Node.js >= 24.2; only the development envir
 pnpm exec layout-types pump.yaml --scope app -o layout_types.d.ts
 ```
 
-Or in a development script, which also works with layouts given in code (Node.js >= 20.11):
+Or in a development script, which also works with descriptions written in code (Node.js >= 20.11):
 
 ```js
 import { writeFileSync } from "node:fs";
-import { yaml_file } from "layout-data";
+import { desc_file } from "layout-data";
 import { render_types } from "layout-data/dev";
 
 // descriptions as for register_layout; scope is the name used in the header comment
-writeFileSync("layout_types.d.ts", render_types(yaml_file`pump.yaml`, { scope: "app" }));
+writeFileSync("layout_types.d.ts", render_types(desc_file`pump.yaml`, { scope: "app" }));
 ```
 
 The generated file imports `Ldata` from `"layout-data"`, which your project has as a (development) dependency; how you bundle the run-time code does not matter.

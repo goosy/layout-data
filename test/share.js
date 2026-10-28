@@ -4,7 +4,7 @@ import { register_structure } from "../src/layout.js";
 import { create_scope } from "../src/scope.js";
 import { build_structure } from "../src/structure.js";
 
-export { fresh_scope, register, register_items } from "./api/share.js";
+export { fresh_scope, json_desc, register, register_items } from "./api/share.js";
 
 /**
  * Builds a data structure from a fresh copy of items,

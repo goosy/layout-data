@@ -4,17 +4,16 @@
 import { Buffer } from "node:buffer";
 import {
 	Ldata, Ltag,
-	create_scope, get_scope, yaml, yaml_file,
-	type Layout, type Layout_Tag, type Layout_Item,
-	type Tag_Item, type Include_Item, type Layout_Description,
-	type Registered_Layouts, type Endian, type Tag_Type, type Layout_Scope,
+	create_scope, get_scope, yaml, desc_file,
+	type Layout, type Layout_Tag, type Layout_Desc, type Block_Desc, type Description,
+	type Registration, type Endian, type Tag_Type, type Layout_Scope,
 } from "layout-data";
 import { render_types } from "layout-data/dev";
 
 type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends (<T>() => T extends B ? 1 : 2) ? true : false;
 function assert_type<_T extends true>() {}
 
-// scopes: created by name, got by name, each registering once
+// scopes: created by name, got by name
 const scope: Layout_Scope = create_scope("app");
 assert_type<Equal<typeof scope.name, string>>();
 assert_type<Equal<typeof get_scope, (name: string) => Layout_Scope | undefined>>();
@@ -31,29 +30,36 @@ void (await import("layout-data")).register_layout;
 // @ts-expect-error a layout is got from its scope
 void (await import("layout-data")).get_layout;
 
-// registering layouts: a description object or a list of them, read from YAML by yaml and yaml_file
-const compiled: Registered_Layouts = scope.register_layout({ layouts: [] });
-const from_file: Registered_Layouts = scope.register_layout(yaml_file`layout.yaml`);
-const from_list: Registered_Layouts = scope.register_layout([yaml_file("common.yaml"), yaml_file(new URL("file:///pump.yaml")), yaml`layouts: []`, { layouts: [] }]);
-const descriptions: Layout_Description[] = [yaml("layouts: []"), { layouts: [] }];
+// registering layouts: a Description or a list of them, compiled from YAML by yaml and desc_file
+const compiled: Registration = scope.register_layout(yaml`layouts: []`);
+const from_file: Registration = scope.register_layout(desc_file`layout.yaml`);
+const from_list: Registration = scope.register_layout([desc_file("common.yaml"), desc_file(new URL("file:///pump.yaml")), yaml`layouts: []`]);
+const descriptions: Description[] = [yaml("layouts: []"), desc_file("pump.yaml")];
 scope.register_layout(descriptions);
-assert_type<Equal<ReturnType<typeof yaml_file>, Layout_Description>>();
-// @ts-expect-error a path is read by yaml_file, not by register_layout
+assert_type<Equal<ReturnType<typeof desc_file>, Description>>();
+assert_type<Equal<ReturnType<typeof yaml>, Description>>();
+// @ts-expect-error a path is read by desc_file, not by register_layout
 scope.register_layout("layout.yaml");
+// @ts-expect-error a description object is not a Description
+scope.register_layout({ layouts: ["Pump"], item_tables: {} });
 // @ts-expect-error a list of descriptions holds no path
-scope.register_layout(["common.yaml", { layouts: [] }]);
+scope.register_layout(["common.yaml", yaml`layouts: []`]);
 // @ts-expect-error yaml takes text
 yaml(1);
-// @ts-expect-error yaml_file takes a path or a URL
-yaml_file(1);
+// @ts-expect-error desc_file takes a path or a URL
+desc_file(1);
+// @ts-expect-error yaml_file is desc_file now
+void (await import("layout-data")).yaml_file;
 void from_list;
 const layout: Layout = compiled.layouts.any;
-const item_table: Layout_Item[] = from_file.tables.any;
+const block_ldata: Ldata = from_file.ldata.any;
+void block_ldata;
 assert_type<Equal<typeof layout.size, number>>();
 assert_type<Equal<typeof layout.name, string>>();
 assert_type<Equal<typeof layout.scope, Layout_Scope>>();
 assert_type<Equal<typeof layout.items, readonly Layout_Tag[]>>();
 assert_type<Equal<Layout_Tag["coupling"], readonly string[]>>();
+assert_type<Equal<ReturnType<Layout["get_ldata"]>, Ldata>>();
 // @ts-expect-error the compiled entries are not part of a layout
 void layout.entries;
 // @ts-expect-error the lookup table is not part of a layout
@@ -62,55 +68,33 @@ void layout.tags_at_byte;
 layout.name = "x";
 // @ts-expect-error the items are read-only
 layout.items.push({ name: "a", type: "Int", offset: 0, length: 16, init_value: 0, coupling: [] });
-assert_type<Equal<typeof item_table, Layout_Item[]>>();
-// @ts-expect-error a description is a path or a description object, not a number
+// @ts-expect-error the item tables reached are not returned
+void from_file.tables;
+// @ts-expect-error a description is a Description, not a number
 scope.register_layout(1);
 // @ts-expect-error the descriptions are required
 scope.register_layout();
 
-// the items of a description: a tag item, or an include item
-const tag_item: Tag_Item = { name: "a", type: "UInt", offset: 0, init_value: 1, comment: "first", length: 16 };
-const include_item: Include_Item = { includes: "common", offset: 16, name_prefix: "p_" };
-const combined: Tag_Item = {
-	name: "w", type: "Word", offset: 32, is_combined: true,
-	coupling: [{ name: "b", type: "Bool", offset: 0 }],
-};
-const coupled_by_name: Tag_Item = { name: "w2", type: "Word", offset: 48, coupling: "bits" };
-const inline_include: Include_Item = { includes: [tag_item, combined], offset: 0 };
-const either: Layout_Item[] = [tag_item, include_item, combined, coupled_by_name, inline_include];
-// @ts-expect-error an inclusion has no type
-const typed_include: Include_Item = { includes: "common", offset: 0, type: "UInt" };
-// @ts-expect-error an inclusion has no name
-const named_include: Include_Item = { includes: "common", offset: 0, name: "x" };
-// @ts-expect-error a tag item does not include items
-const including_tag: Tag_Item = { name: "a", type: "UInt", offset: 0, includes: "common" };
-// @ts-expect-error the bits of a combined word are items or an item table name, not a list of names
-const named_bits: Tag_Item = { name: "w", type: "Word", offset: 0, coupling: ["a", "b"] };
-// @ts-expect-error a tag needs a name
-const nameless: Layout_Item = { type: "UInt", offset: 0 };
-// @ts-expect-error a tag needs an offset
-const offsetless: Layout_Item = { name: "a", type: "UInt" };
-const description: Layout_Description = { layouts: ["Pump"], item_tables: { Pump: either, common: [tag_item] } };
-scope.register_layout(description);
-scope.register_layout({
-	layouts: ["Pump"],
-	item_tables: { Pump: [{ name: "a", type: "UInt", offset: 0 }], common: [{ name: "b", type: "Byte", offset: 0 }] },
-});
-// other root keys may hold anything: they are not read
-scope.register_layout({ layouts: ["Pump"], item_tables: { Pump: either }, version: 3, settings: { port: 502 } });
-// @ts-expect-error a field of an item is misspelled
-scope.register_layout({ layouts: ["Pump"], item_tables: { Pump: [{ name: "a", type: "UInt", offest: 0 }] } });
-// @ts-expect-error layouts lists layout names
-scope.register_layout({ layouts: { Pump: either } });
-// @ts-expect-error a layout name is a string
-scope.register_layout({ layouts: [1] });
-// @ts-expect-error an item table is a list of items
-scope.register_layout({ layouts: ["Pump"], item_tables: { Pump: 3 } });
-void [typed_include, named_include, including_tag, named_bits, nameless, offsetless];
+// a Description: its layouts, not bound to a scope, and its blocks
+const description: Description = desc_file("pump.yaml");
+const desc: Layout_Desc = description.layouts.Pump;
+const block: Block_Desc = description.blocks[0];
+assert_type<Equal<typeof desc.items, readonly Layout_Tag[]>>();
+assert_type<Equal<typeof block.name, string>>();
+assert_type<Equal<typeof block.layout, string>>();
+// the other keys of a block belong to the application
+void block.unit_id;
+// the other root keys of a description are kept as they are
+assert_type<Equal<typeof description.settings, unknown>>();
+// @ts-expect-error a layout of a Description has no scope
+void desc.scope;
+// @ts-expect-error a Description is read-only
+description.blocks.push(block);
+// @ts-expect-error the types of the items are not public
+type _Item = import("layout-data").Layout_Item;
 
-// items given in code are a description, registered and then used by name
-const items: Layout_Item[] = [{ name: "a", type: "word", offset: 0, init_value: 1 }];
-const same_layout: Layout = scope.register_layout({ layouts: ["s"], item_tables: { s: items } }).layouts.s;
+// a layout of a Description is used through a scope
+const same_layout: Layout = scope.register_layout(yaml`layouts: [s]`).layouts.s;
 assert_type<Equal<typeof same_layout, Layout>>();
 // @ts-expect-error the old compile names are gone
 void (await import("layout-data")).compile_layout;
@@ -118,7 +102,7 @@ void (await import("layout-data")).compile_layout;
 void (await import("layout-data")).register_layout_file;
 // @ts-expect-error a structure is no longer built in steps
 void (await import("layout-data")).build_structure;
-// @ts-expect-error the validation is part of the registration
+// @ts-expect-error the validation is part of the compilation
 void (await import("layout-data")).validate_structure;
 
 // Ldata: created by its layout, never with new
@@ -273,22 +257,24 @@ tag?.load(bytes);
 // @ts-expect-error the entry functions are not exported
 void (await import("layout-data")).load_entry;
 
-// type rendering: from descriptions, in the development entry
-const text: string = render_types(yaml_file`layout.yaml`, { scope: "app", source: "layout.yaml" });
-render_types(yaml_file("layout.yaml"));
-render_types({ layouts: [] });
-render_types([yaml_file("common.yaml"), { layouts: [] }], { scope: "app" });
-assert_type<Equal<Parameters<typeof render_types>[0], Layout_Description | Layout_Description[]>>();
-// @ts-expect-error a path is read by yaml_file
+// type rendering: from Descriptions, in the development entry
+const text: string = render_types(desc_file`layout.yaml`, { scope: "app", source: "layout.yaml" });
+render_types(desc_file("layout.yaml"));
+render_types(yaml`layouts: []`);
+render_types([desc_file("common.yaml"), yaml`layouts: []`], { scope: "app" });
+assert_type<Equal<Parameters<typeof render_types>[0], Description | Description[]>>();
+// @ts-expect-error a path is read by desc_file
 render_types("layout.yaml");
 // @ts-expect-error a scope is not a description
 render_types(scope);
+// @ts-expect-error a description object is not a Description
+render_types({ layouts: [] });
 // @ts-expect-error the source is a string
-render_types({ layouts: [] }, { source: 1 });
+render_types(description, { source: 1 });
 // @ts-expect-error the scope is a name
-render_types({ layouts: [] }, { scope: 1 });
+render_types(description, { scope: 1 });
 // @ts-expect-error the module of Ldata is not an option
-render_types({ layouts: [] }, { ldata_module: "layout-data" });
+render_types(description, { ldata_module: "layout-data" });
 // @ts-expect-error the types are rendered by the development entry, not by a scope
 void scope.render_types;
 // @ts-expect-error the run-time entry does not render types

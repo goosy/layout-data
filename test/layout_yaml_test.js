@@ -5,8 +5,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test, { describe } from "node:test";
 import { COMPILED } from "../src/internal.js";
-import { yaml_file } from "../src/yaml.js";
-import { fresh_scope, register } from "./share.js";
+import { desc_file } from "../src/yaml.js";
+import { fresh_scope } from "./share.js";
 
 const dir = mkdtempSync(join(tmpdir(), "tlms-layout-"));
 let file_seq = 0;
@@ -20,12 +20,13 @@ function write(yaml) {
 
 /** Writes a YAML layout file, reads it and registers it in a scope of its own. */
 function compile(yaml, scope = fresh_scope()) {
-	return scope.register_layout(yaml_file(write(yaml)));
+	return scope.register_layout(desc_file(write(yaml)));
 }
 
-function errors_of(yaml, scope = fresh_scope()) {
+/** The errors of reading a YAML layout file. */
+function errors_of(yaml) {
 	try {
-		compile(yaml, scope);
+		desc_file(write(yaml));
 	} catch (e) {
 		return e.errors;
 	}
@@ -64,8 +65,7 @@ item_tables:
 
 describe("YAML layout file", () => {
 	test("item tables are referenced by name from coupling and includes", () => {
-		const { layouts, tables } = compile(Sample);
-		const { T } = layouts;
+		const { T } = compile(Sample).layouts;
 		const offset_of = (name) => T.items.find((it) => it.name === name).offset;
 		assert.equal(offset_of("f0"), 24);
 		assert.equal(offset_of("f8"), 16);
@@ -75,7 +75,6 @@ describe("YAML layout file", () => {
 		assert.equal(offset_of("p_a"), 112);
 		assert.deepEqual(T.items.find((it) => it.name === "status").coupling, ["f0", "f8"]);
 		assert.equal(T.length, 160);
-		assert.deepEqual(tables.pair.map((it) => it.name), ["a", "b"]);
 	});
 
 	test("an omitted length follows the type, comments are kept", () => {
@@ -143,7 +142,7 @@ item_tables:
 	});
 
 	test("a file without the layouts key defines no layout", () => {
-		assert.deepEqual(errors_of("x: []\n"), ["no layout is listed in the descriptions"]);
+		assert.deepEqual(compile("x: []\n").layouts, {});
 	});
 
 	test("the layouts key must be a list of layout names", () => {
@@ -153,7 +152,7 @@ item_tables:
 	});
 
 	test("a missing file and a YAML syntax error are reported in errors", () => {
-		assert.throws(() => register(yaml_file(join(dir, "missing.yaml"))), (error) => {
+		assert.throws(() => desc_file(join(dir, "missing.yaml")), (error) => {
 			assert.match(error.errors[0], /ENOENT/);
 			return true;
 		});
@@ -162,34 +161,13 @@ item_tables:
 	});
 });
 
-describe("parsed layout description", () => {
-	test("a description object registers the same structure as a file", () => {
-		const { layouts, tables } = register({
-			layouts: ["PARSED"],
-			item_tables: {
-				PARSED: [{ name: "a", type: "UInt", offset: 0, init_value: 3 }, { includes: "tail", offset: 16 }],
-				tail: [{ name: "b", type: "UInt", offset: 0, init_value: 4 }],
-			},
-		});
-		assert.equal(layouts.PARSED.create_ldata("t").b, 4);
-		assert.equal(tables.tail.length, 1);
-	});
-
-	test("errors name the scope", () => {
+describe("errors of a layout file", () => {
+	test("the errors of reading name the file in the title", () => {
 		const file = write("layouts: [Bad]\nitem_tables:\n  Bad:\n    - { name: a, type: Byte, offset: 0, init_value: 0 }\n");
-		const scope = fresh_scope();
-		assert.throws(() => scope.register_layout(yaml_file(file)), new RegExp(`invalid layout descriptions of scope ${scope.name}:`));
-		assert.throws(() => scope.register_layout({ x: [] }), new RegExp(`invalid layout descriptions of scope ${scope.name}:`));
-	});
-});
-
-describe("layout registry", () => {
-	test("an invalid file registers nothing and does not use up the call of the scope", () => {
-		const scope = fresh_scope();
-		assert.throws(() => compile("x: []\n", scope));
-		assert.throws(() => compile("x: []\n", scope));
-		const { layouts } = compile("layouts: [Reg_Later]\nitem_tables:\n  Reg_Later:\n    - { name: a, type: UInt, offset: 0, init_value: 1 }\n", scope);
-		assert.equal(scope.get_layout("Reg_Later"), layouts.Reg_Later);
-		assert.equal(scope.get_layout("Reg_Later").create_ldata("t").a, 1);
+		assert.throws(() => desc_file(file), (error) => {
+			assert.ok(error.message.startsWith(`invalid description file ${file}:\n`), error.message);
+			assert.deepEqual(error.errors, ["Bad: length 8 bits is not a whole number of registers"]);
+			return true;
+		});
 	});
 });

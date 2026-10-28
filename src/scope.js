@@ -1,24 +1,22 @@
-// Scopes of layout names (doc/spec-layout.md §2): every scope holds its own
-// layouts and item tables and registers them once.
+// Scopes (doc/spec-layout.md §2): every scope manages its own layouts, which
+// any number of calls of register_layout register in it.
 import { register_descriptions } from "./layout.js";
 import { add_scope, find_scope, layouts_of } from "./registry.js";
 import { IDENTIFIER } from "./structure.js";
 
-/** @import { Layout, Layout_Description, Registered_Layouts } from "./typedefs.js" */
+/** @import { Description, Layout, Registration } from "./typedefs.js" */
 
 /** The key of the constructor of Layout_Scope, private to this module. */
 const CREATE_KEY = Symbol("create scope");
 
 /**
- * A scope of layout names (doc/spec-layout.md §2): the layouts and item
- * tables registered in it are named apart from those of other scopes. Made
- * by create_scope and frozen; the package exports the type and not the class.
+ * A scope managing a group of layouts (doc/spec-layout.md §2): the layouts
+ * registered in it are named apart from those of other scopes. Made by
+ * create_scope and frozen; the package exports the type and not the class.
  */
 export class Layout_Scope {
 	/** @type {string} */
 	#name;
-	/** Set once a call of register_layout has registered the layouts. */
-	#registered_once = false;
 
 	/**
 	 * Not called by the user: create_scope makes the scopes.
@@ -41,20 +39,17 @@ export class Layout_Scope {
 	}
 
 	/**
-	 * Registers the layouts of the descriptions in this scope, once per scope
-	 * (doc/spec-layout.md §3). Nothing is registered when a description is not
-	 * valid, and such a call does not use up the single call.
+	 * Registers the layouts of the descriptions in this scope, then creates the
+	 * ldata of their blocks (doc/spec-layout.md §3). A layout of the same
+	 * fingerprint and name as one of the scope is reused. Nothing changes when
+	 * any of it is not valid.
 	 *
-	 * @param {Layout_Description | Layout_Description[]} descriptions - A description object or a list of them; yaml and yaml_file make them from YAML.
-	 * @returns {Registered_Layouts}
-	 * @throws {Error} With `errors`, every violation found, when the descriptions are not valid.
-	 * @throws {Error} When the layouts were registered by an earlier call.
+	 * @param {Description | Description[]} descriptions - A Description or a list of them, made by yaml or desc_file.
+	 * @returns {Registration}
+	 * @throws {Error} With `errors`, every violation found: a layout conflicting with one of the scope, a block naming an unknown layout or a used ldata name.
 	 */
 	register_layout(descriptions) {
-		if (this.#registered_once) throw new Error(`register_layout can be called only once in scope ${this.#name}`);
-		const result = register_descriptions(descriptions, this);
-		this.#registered_once = true;
-		return result;
+		return register_descriptions(descriptions, this);
 	}
 
 	/**
@@ -65,14 +60,26 @@ export class Layout_Scope {
 	 * @throws {Error} When no layout of that name is registered in this scope.
 	 */
 	get_layout(name) {
-		const layout = layouts_of(this).get(name);
+		const layout = layouts_of(this).by_name.get(name);
 		if (!layout) throw new Error(`unknown layout ${this.#name}.${name}`);
 		return layout;
 	}
 }
 
 /**
- * Creates a scope of layout names (doc/spec-layout.md §2).
+ * Checks a scope name as create_scope does, creating no scope.
+ *
+ * @param {unknown} name
+ * @throws {TypeError} When name is not a string.
+ * @throws {Error} When name is not an identifier.
+ */
+export function check_scope_name(name) {
+	if (typeof name !== "string") throw new TypeError("the name of a scope must be a string");
+	if (!IDENTIFIER.test(name)) throw new Error(`scope ${JSON.stringify(name)}: the name is not an identifier`);
+}
+
+/**
+ * Creates a scope (doc/spec-layout.md §2).
  *
  * @param {string} name - The scope name: an identifier, unique in the process.
  * @returns {Layout_Scope}
@@ -80,8 +87,7 @@ export class Layout_Scope {
  * @throws {Error} When name is not an identifier, or is the name of another scope.
  */
 export function create_scope(name) {
-	if (typeof name !== "string") throw new TypeError("the name of a scope must be a string");
-	if (!IDENTIFIER.test(name)) throw new Error(`scope ${JSON.stringify(name)}: the name is not an identifier`);
+	check_scope_name(name);
 	return new Layout_Scope(CREATE_KEY, name);
 }
 

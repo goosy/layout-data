@@ -8,7 +8,9 @@ const LAYOUT = register_items("HANDLER_ERRORS", [
 	{ name: "c", type: "UInt", offset: 32, length: 16, init_value: 0 },
 ]);
 
-const create = () => LAYOUT.create_ldata("d");
+let ldata_count = 0;
+/** An ldata of LAYOUT under a name of its own: a name is used once in a layout. */
+const create = (name = "d") => LAYOUT.create_ldata(`${name}_${ldata_count++}`);
 
 describe("4.4 exceptions thrown by handlers", () => {
 	test("the first exception is thrown after every event is dispatched, and the value stands", () => {

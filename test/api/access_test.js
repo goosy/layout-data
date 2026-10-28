@@ -16,9 +16,13 @@ const LAYOUT = register_items("Access_Sample", [
 	{ name: "pressure", type: "Real", offset: 32, init_value: 1.5 },
 ]);
 
+let ldata_count = 0;
+/** An ldata of LAYOUT under a name of its own: a name is used once in a layout. */
+const create = (name = "d") => LAYOUT.create_ldata(`${name}_${ldata_count++}`);
+
 /** A data block that records its accesses as [kind, names]. */
 function watched() {
-	const data = LAYOUT.create_ldata("d");
+	const data = create("d");
 	const seen = [];
 	data.on("access", (kind, tags) => seen.push([kind, tags.map((tag) => tag.name)]));
 	return { data, seen };
@@ -197,7 +201,7 @@ describe("2.8 the access event", () => {
 	});
 
 	test("an access is gathered only while a listener exists, and goes to the listeners of the commit", () => {
-		const data = LAYOUT.create_ldata("d");
+		const data = create("d");
 		const seen = [];
 		const gone = () => seen.push("gone");
 		data.on("access", gone);
@@ -221,7 +225,7 @@ describe("2.8 the access event", () => {
 	});
 
 	test("a transaction inside an access listener gathers nothing", () => {
-		const data = LAYOUT.create_ldata("d");
+		const data = create("d");
 		const seen = [];
 		data.on("access", (kind, tags) => {
 			seen.push([kind, tags.map((tag) => tag.name)]);
@@ -236,7 +240,7 @@ describe("2.8 the access event", () => {
 	});
 
 	test("the accesses of a listener do not emit again", () => {
-		const data = LAYOUT.create_ldata("d");
+		const data = create("d");
 		const seen = [];
 		data.on("access", (kind, tags) => {
 			seen.push([kind, tags[0].name]);
@@ -251,7 +255,7 @@ describe("2.8 the access event", () => {
 	});
 
 	test("an exception of a listener: all listeners run, then the read throws, or the write after its events", () => {
-		const data = LAYOUT.create_ldata("d");
+		const data = create("d");
 		const seen = [];
 		data.on("access", () => { throw new Error("first"); });
 		data.on("access", (kind) => seen.push(`second ${kind}`));
@@ -265,7 +269,7 @@ describe("2.8 the access event", () => {
 	});
 
 	test("without a listener nothing is built, and removing the listener stops it", () => {
-		const data = LAYOUT.create_ldata("d");
+		const data = create("d");
 		const seen = [];
 		const listener = (kind) => seen.push(kind);
 		data.on("access", listener);
@@ -284,8 +288,8 @@ describe("2.8 the access event", () => {
 	});
 
 	test("it sees only the ldata it is subscribed on", () => {
-		const first = LAYOUT.create_ldata("a");
-		const second = LAYOUT.create_ldata("b");
+		const first = create("a");
+		const second = create("b");
 		const seen = [];
 		first.on("access", (kind, tags) => seen.push([kind, tags[0].name]));
 		void second.id;
@@ -312,26 +316,26 @@ describe("2.8 class-level access listeners", () => {
 
 	test("it sees every ldata, including one created afterwards, with the ldata first", (t) => {
 		const { seen } = observe(t);
-		const first = LAYOUT.create_ldata("first");
-		const second = LAYOUT.create_ldata("second");
+		const first = create("first");
+		const second = create("second");
 		void first.id;
 		second.pressure = 2;
 		first.read_bytes(0, 2);
-		assert.deepEqual(seen, [["first", "read", ["id"]], ["second", "write", ["pressure"]], ["first", "read", ["id"]]]);
+		assert.deepEqual(seen, [[first.name, "read", ["id"]], [second.name, "write", ["pressure"]], [first.name, "read", ["id"]]]);
 	});
 
 	test("it needs no subscription on the ldata and cannot be removed through it", (t) => {
 		const { seen } = observe(t);
-		const data = LAYOUT.create_ldata("d");
+		const data = create("d");
 		data.on("access", () => {});
 		data.removeAllListeners();
 		data.removeAllListeners("access");
 		void data.id;
-		assert.deepEqual(seen, [["d", "read", ["id"]]]);
+		assert.deepEqual(seen, [[data.name, "read", ["id"]]]);
 	});
 
 	test("off_access cancels it, and does nothing for a function that is not subscribed", () => {
-		const data = LAYOUT.create_ldata("d");
+		const data = create("d");
 		const seen = [];
 		const listener = () => seen.push("called");
 		Ldata.on_access(listener);
@@ -344,7 +348,7 @@ describe("2.8 class-level access listeners", () => {
 	});
 
 	test("several parties subscribe without overriding each other, and one function twice is one subscription", () => {
-		const data = LAYOUT.create_ldata("d");
+		const data = create("d");
 		const calls = [];
 		const one = () => calls.push("one");
 		const two = () => calls.push("two");
@@ -359,7 +363,7 @@ describe("2.8 class-level access listeners", () => {
 	});
 
 	test("the listeners of the instance are called before those of the class, for the same access", (t) => {
-		const data = LAYOUT.create_ldata("d");
+		const data = create("d");
 		const order = [];
 		data.on("access", () => order.push("instance"));
 		const listener = () => order.push("class");
@@ -370,8 +374,8 @@ describe("2.8 class-level access listeners", () => {
 	});
 
 	test("the accesses made by an access listener, to any ldata, emit nothing", (t) => {
-		const other = LAYOUT.create_ldata("other");
-		const data = LAYOUT.create_ldata("data");
+		const other = create("other");
+		const data = create("data");
 		const seen = [];
 		other.on("access", (kind) => seen.push(`other ${kind}`));
 		const listener = (ldata, kind) => {
@@ -383,12 +387,12 @@ describe("2.8 class-level access listeners", () => {
 		Ldata.on_access(listener);
 		t.after(() => Ldata.off_access(listener));
 		void data.status;
-		assert.deepEqual(seen, ["class data read"]);
+		assert.deepEqual(seen, [`class ${data.name} read`]);
 		assert.equal(other.pressure, 4);
 	});
 
 	test("an exception of a class listener: all listeners run, the first exception is thrown after the events", (t) => {
-		const data = LAYOUT.create_ldata("d");
+		const data = create("d");
 		const seen = [];
 		data.on("access", () => { throw new Error("instance"); });
 		const bad = () => { throw new Error("class"); };
@@ -408,7 +412,7 @@ describe("2.8 class-level access listeners", () => {
 	});
 
 	test("the guard is released after an exception", (t) => {
-		const data = LAYOUT.create_ldata("d");
+		const data = create("d");
 		const seen = [];
 		const bad = () => { throw new Error("bad"); };
 		Ldata.on_access(bad);
@@ -423,14 +427,14 @@ describe("2.8 class-level access listeners", () => {
 
 	test("a transaction defers it as well, to the commit", (t) => {
 		const { seen } = observe(t);
-		const data = LAYOUT.create_ldata("d");
+		const data = create("d");
 		data.transaction(() => {
 			data.id = 1;
 			data.id = 2;
 			void data.pressure;
 			assert.deepEqual(seen, []);
 		});
-		assert.deepEqual(seen, [["d", "read", ["pressure"]], ["d", "write", ["id"]]]);
+		assert.deepEqual(seen, [[data.name, "read", ["pressure"]], [data.name, "write", ["id"]]]);
 	});
 
 	test("a listener must be a function", () => {
@@ -440,7 +444,7 @@ describe("2.8 class-level access listeners", () => {
 	});
 
 	test("it is a static member: no tag name and no instance member is affected", () => {
-		const data = LAYOUT.create_ldata("d");
+		const data = create("d");
 		assert.equal("on_access" in data, false);
 		assert.equal(typeof Ldata.on_access, "function");
 		assert.equal(typeof Ldata.off_access, "function");

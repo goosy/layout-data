@@ -15,7 +15,10 @@ const ITEMS = [
 ];
 
 const LAYOUT = register_items("Sample", ITEMS);
-const create = () => LAYOUT.create_ldata("sample");
+
+let ldata_count = 0;
+/** An ldata of LAYOUT under a name of its own: a name is used once in a layout. */
+const create = (name = "d") => LAYOUT.create_ldata(`${name}_${ldata_count++}`);
 
 const record = (data) => {
 	const events = [];
