@@ -1,12 +1,12 @@
 # 描述规范
 
-> 本文规定描述，即布局和 ldata 实例在注册之前的形式：描述文件与 YAML 文本，`yaml` 与 `desc_file` 编译出的 `Description`，`imports`、`layouts`、`item_tables`、`blocks` 四个根键，条目，引入与遍历，以及描述必须满足的规则，是 [spec.zh-cn.md](spec.zh-cn.md) 的细化。注册和注册得到的布局对象见 [spec-layout.zh-cn.md](spec-layout.zh-cn.md)，实现见 [design.zh-cn.md](design.zh-cn.md) §3。
+> 本文规定描述，即布局和 ldata 实例在装入登记域之前的形式：描述文件与 YAML 文本，`yaml` 与 `desc_file` 编译出的 `Description`，`imports`、`layouts`、`item_tables`、`blocks` 四个根键，条目，引入与遍历，以及描述必须满足的规则，是 [spec.zh-cn.md](spec.zh-cn.md) 的细化。装入和由此登记的布局对象见 [spec-layout.zh-cn.md](spec-layout.zh-cn.md)，实现见 [design.zh-cn.md](design.zh-cn.md) §3。
 
 ## 1. 形式与编译
 
 描述只有一种形式：**YAML 1.2 文本**，写在**描述文件**里，或写在代码里。JSON 是合法的 YAML 1.2，所以 JSON 文本和 `.json` 文件也是合法的描述。
 
-一份描述连同它引入的描述（§4）是完整的：编译它只需要它自己和它的 `imports`，结果只由这些内容决定，与它和谁一起注册无关。运行时入口 `layout-data` 的 `yaml` 和 `desc_file` 读取一份描述并编译，返回 `Description`（§1.2），交给登记域的 `register_layout` 注册（[spec-layout.zh-cn.md](spec-layout.zh-cn.md) §3）。
+一份描述连同它引入的描述（§4）是完整的：编译它只需要它自己和它的 `imports`，结果只由这些内容决定，与它和谁一起装入、装入哪个登记域无关。运行时入口 `layout-data` 的 `yaml` 和 `desc_file` 读取一份描述并编译，返回 `Description`（§1.2），由登记域的 `load` 装入（[spec-layout.zh-cn.md](spec-layout.zh-cn.md) §3）。
 
 ### 1.1 yaml 与 desc_file
 
@@ -14,7 +14,7 @@
 import { create_scope, desc_file, yaml } from "layout-data";
 
 const scope = create_scope("app");
-scope.register_layout([
+scope.load([
   desc_file`pump.yaml`,
   yaml`
 imports:
@@ -55,13 +55,13 @@ item_tables:
  */
 ```
 
-- `layouts` 是这份描述的布局名到尚未绑定登记域的布局的映射，键就是根键 `layouts` 列出的名字，顺序也相同。这些布局已经遍历、校验、编译，只差登记域：它们有布局对象的 `name`、`length`、`size`、`items` 和 `io_index_table`（[spec-layout.zh-cn.md](spec-layout.zh-cn.md) §4），但不属于任何登记域，所以不能创建 ldata，`create_ldata` 抛出 `Error`。使用的布局只从登记域取得（注册的结果或 `get_layout`）；
-- `blocks` 是解析出的根键 `blocks` 本身，经过检查（§2、§5.3），不复制也不改动，保留应用自己的键。原文没有 `blocks` 时它是 `[]`，这是 `layouts` 之外唯一的改变。应用读取自己的键时，用这里的值还是自己解析描述，由应用决定；
+- `layouts` 是这份描述的布局名到尚未绑定登记域的布局的映射，键就是根键 `layouts` 列出的名字，顺序也相同。这些布局已经遍历、校验、编译，只差登记域：它们有布局对象的 `name`、`length`、`size`、`items` 和 `io_index_table`（[spec-layout.zh-cn.md](spec-layout.zh-cn.md) §4），但不属于任何登记域，所以不能创建 ldata，`create_ldata` 抛出 `Error`。使用的布局只从登记域取得（装入的结果或 `get_layout`）；
+- `blocks` 是解析出的根键 `blocks` 本身，经过检查（§2、§5.3），不复制也不改动，保留应用自己的键；块的 `layout` 仍是布局名字符串，读入时只检查它在本描述的 `layouts` 中，不替换为布局。原文没有 `blocks` 时它是 `[]`，这是 `layouts` 之外唯一的改变。应用读取自己的键时，用这里的值还是自己解析描述，由应用决定；
 - 其余根键原样保留：`imports`、`item_tables` 和应用自己的根键都是 YAML 解析出的值，`imports` 是原文中的路径，`item_tables` 是未展开的条目。应用读取自己的根键不必再解析一次 YAML。只保留被读入的描述自己的根键，被引入描述的根键不并入。本包只读 `layouts` 和 `blocks`，不读其他根键；
-- `Description` 及其中的一切都是深度冻结的，原样保留的根键也是如此。注册从不改动它（[spec-layout.zh-cn.md](spec-layout.zh-cn.md) §3），所以同一个 `Description` 可以缓存，并注册进任意多个登记域；
+- `Description` 及其中的一切都是深度冻结的，原样保留的根键也是如此。装入从不改动它（[spec-layout.zh-cn.md](spec-layout.zh-cn.md) §3），所以同一个 `Description` 可以缓存，并装入任意多个登记域；
 - 编译出的布局与描述的内容在内存上无关，一份描述编译出的布局不受其他描述影响；
-- `desc_file` 返回的 `Description` 记得它的文件，所以注册的错误和生成的类型的头部（[spec-layout.zh-cn.md](spec-layout.zh-cn.md) §5）用路径称呼它；
-- `Description` 只由 `yaml` 和 `desc_file` 产生：手写的同样形状的对象不是 `Description`，注册时是违规。
+- `desc_file` 返回的 `Description` 记得它的文件，所以装入的错误和生成的类型的头部（[spec-layout.zh-cn.md](spec-layout.zh-cn.md) §5）用路径称呼它；
+- `Description` 只由 `yaml` 和 `desc_file` 产生：手写的同样形状的对象不是 `Description`，装入时是违规。
 
 ## 2. 结构
 
@@ -70,7 +70,7 @@ item_tables:
 - **`imports`**：被引入的描述文件的路径列表（§4）。被引入的描述只提供条目表；
 - **`layouts`**：布局名的列表。列出的每个名字都是一个条目表的名字，这个条目表编译为同名的布局；
 - **`item_tables`**：条目表名到条目表的映射。**条目表**是条目的列表（§3），供 `layouts` 列为布局，或供条目的 `includes`、`coupling` 按名引用；
-- **`blocks`**：这份描述的 ldata 实例的列表。每个块是一个映射，本包只读其中的 `name`（实例名）和 `layout`（`<登记域名>.<布局名>`）；块的 ldata 在注册时创建（[spec-layout.zh-cn.md](spec-layout.zh-cn.md) §3）。
+- **`blocks`**：这份描述的 ldata 实例的列表。每个块是一个映射，本包只读其中的 `name`（实例名）和 `layout`（本描述的布局名）；块的 ldata 在装入时创建在描述装入的登记域中（[spec-layout.zh-cn.md](spec-layout.zh-cn.md) §3）。
 
 ```yaml
 imports:
@@ -95,11 +95,11 @@ item_tables:
     - { name: max_pressure, type: Real, offset: 0, init_value: 10 }
 
 blocks:
-  - { name: node_1, layout: app.NODE, unit_id: 1 }   # unit_id is read by the application
+  - { name: node_1, layout: NODE, unit_id: 1 }   # unit_id is read by the application
 ```
 
 - 布局和被引用的条目表是同一种东西，差别只在用法：一个条目表可以既列在 `layouts` 里，又被别的条目表引用；
-- 四个根键都可以省略。没有 `layouts` 的描述没有布局，例如只放公共条目表、供别的描述引入的文件，或只有 `blocks`、引用别的描述的布局的描述；
+- 四个根键都可以省略。没有 `layouts` 的描述没有布局，例如只放公共条目表、供别的描述引入的文件。块只引用本描述的布局（§5.3），所以有 `blocks` 的描述也要有列出这些布局的 `layouts`；
 - 其余根键都归调用方：本包不读取、不校验，原样留在 `Description` 中（§1.2），条目表名也不会与它们冲突。块条目中 `name`、`layout` 以外的键同样归调用方，例如设备模拟器的 Modbus 地址；
 - `item_tables` 中，本包只读取从 `layouts` 出发遍历到的条目表（§4）；
 - 根键的顺序不影响含义。**建议按 `imports`、`layouts`、`item_tables`、`blocks` 的顺序写**：读者先看到依赖和有哪些布局，再按名字找到各条目表，最后是实例。本文的示例都按这个顺序写。
@@ -154,7 +154,7 @@ item_tables:
 
 ## 5. 合法性
 
-违反下列任何一条都是违规。§5.1 至 §5.3 的违规由 `yaml` 和 `desc_file` 在读入时报告（§1.1）；注册时只检查与登记域状态有关的规则（[spec-layout.zh-cn.md](spec-layout.zh-cn.md) §3）。
+违反下列任何一条都是违规。§5.1 至 §5.3 的违规由 `yaml` 和 `desc_file` 在读入时报告（§1.1）；装入时只检查与登记域状态有关的规则（[spec-layout.zh-cn.md](spec-layout.zh-cn.md) §3）。
 
 ### 5.1 描述
 
@@ -184,5 +184,4 @@ item_tables:
 
 - `blocks` 缺省时视为 `[]`；给出时必须是列表，每个块是映射；
 - 块的 `name` 必须给出且是字符串，在一份描述内唯一；
-- 块的 `layout` 必须是形如 `<登记域名>.<布局名>` 的字符串，两部分都是 JavaScript 的标识符。它是配置，只能是字符串：域名与布局名都不含 `.`，所以写法没有歧义，与 `get_layout` 的错误信息 `unknown layout X.Y` 的写法一致。它必须写出登记域名：本包不设默认登记域（[spec-layout.zh-cn.md](spec-layout.zh-cn.md) §2），引用本描述的布局时，写出它将注册进的登记域名；
-- 布局要注册后才能按登记域名找到，所以登记域和布局是否存在在注册时检查，不在读入时检查（[spec-layout.zh-cn.md](spec-layout.zh-cn.md) §3）。
+- 块的 `layout` 必须是字符串，且是本描述 `layouts` 列出的布局名之一，否则是违规，例如 `block pump_1: unknown layout Pump`。块不写登记域名，也不引用别的描述（包括被引入的描述）的布局：块建在描述装入的那个登记域中（[spec-layout.zh-cn.md](spec-layout.zh-cn.md) §3），所以描述不依赖它和谁一起装入、装入哪个登记域，读入时就能确定每个块用哪个布局。

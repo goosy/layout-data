@@ -27,7 +27,7 @@ tag 的类型：`Bool`、`Byte`、`SInt`、`USInt`、`Int`、`UInt`、`Word`、`
 const data = layout.create_ldata(name);
 ```
 
-- ldata 由布局产生：`layout.create_ldata(name)` 是创建 ldata 的唯一方式，注册时由描述的 `blocks` 创建 ldata 也是经由它（[spec-layout.zh-cn.md](spec-layout.zh-cn.md) §3）。`layout` 是已登记的布局对象，由登记域的 `get_layout(name)` 返回，或来自注册的返回值（[spec-layout.zh-cn.md](spec-layout.zh-cn.md) §3、§4）；按名查找只发生在取得布局的那一步，所以创建时手里已经有布局对象。只有已登记的布局能创建 ldata，复制出来的对象（如 `{ ...layout }`）没有这个方法；
+- ldata 由布局产生：`layout.create_ldata(name)` 是创建 ldata 的唯一方式，装入描述时由其 `blocks` 创建 ldata 也是经由它（[spec-layout.zh-cn.md](spec-layout.zh-cn.md) §3）。`layout` 是已登记的布局对象，由登记域的 `get_layout(name)` 返回，或来自装入的返回值（[spec-layout.zh-cn.md](spec-layout.zh-cn.md) §3、§4）；按名查找只发生在取得布局的那一步，所以创建时手里已经有布局对象。只有已登记的布局能创建 ldata，复制出来的对象（如 `{ ...layout }`）没有这个方法；
 - `name`：ldata 的名称，用于日志和错误信息，也是布局按名找到它的键。必须是字符串（任何字符串，空字符串也可以），否则抛出 `TypeError`；在它的布局内唯一，已被该布局使用时抛出 `Error`（`ldata X.Y.Z already exists`）；名称在这里给定，以后不能修改；
 - 布局按名管理它创建的 ldata：`layout.get_ldata(name)` 找到它，`layout.delete_ldata(name)` 解除绑定、交还这个名字（[spec-layout.zh-cn.md](spec-layout.zh-cn.md) §4.1）；
 - 创建后每个 tag 的值等于布局中的初值，没有初值的 tag 为 `0`（`Bool` 为 `false`），此时不发出变化事件；
@@ -285,7 +285,7 @@ Ltag 不保存值，读写都直接作用于所属 ldata。
 | `load_tag` / `store_tag` 的 tag 名不存在 | `Error`，ldata 不变，不发出 `write` |
 | 字节序不是 `BE`、`LE`、`BEBS`、`LEBS`，或 tag 在 `io_buffer` 中的范围越界 | `RangeError`，ldata 不变，不发出 `write` |
 
-读入描述、注册布局、取得布局和 ldata、生成类型声明的错误见 [spec-layout.zh-cn.md](spec-layout.zh-cn.md) §6。
+读入描述、装入描述、取得布局和 ldata、生成类型声明的错误见 [spec-layout.zh-cn.md](spec-layout.zh-cn.md) §6。
 
 ## 6. 不在本接口内
 

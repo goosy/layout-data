@@ -2,13 +2,13 @@
 
 > English version of [spec-description.zh-cn.md](spec-description.zh-cn.md), the primary Chinese version. When the two differ, update both.
 >
-> This document defines the description, the form of layouts and ldata instances before they are registered: description files and YAML text, the `Description` compiled by `yaml` and `desc_file`, the four root keys `imports`, `layouts`, `item_tables` and `blocks`, items, imports and traversal, and the rules a description must follow. It refines [spec.md](spec.md). The registration and the layout objects it makes are in [spec-layout.md](spec-layout.md), the implementation in §3 of [design.md](design.md).
+> This document defines the description, the form of layouts and ldata instances before they are loaded into a scope: description files and YAML text, the `Description` compiled by `yaml` and `desc_file`, the four root keys `imports`, `layouts`, `item_tables` and `blocks`, items, imports and traversal, and the rules a description must follow. It refines [spec.md](spec.md). Loading and the layout objects it registers are in [spec-layout.md](spec-layout.md), the implementation in §3 of [design.md](design.md).
 
 ## 1. Form and compilation
 
 A description has one form only: **YAML 1.2 text**, written in a **description file** or in code. JSON is valid YAML 1.2, so JSON text and `.json` files are valid descriptions too.
 
-A description together with the descriptions it imports (§4) is complete: compiling it needs only itself and its `imports`, and the result depends only on them, not on what it is registered with. `yaml` and `desc_file` of the run-time entry `layout-data` read one description and compile it, returning a `Description` (§1.2), which `register_layout` of a scope registers ([spec-layout.md](spec-layout.md) §3).
+A description together with the descriptions it imports (§4) is complete: compiling it needs only itself and its `imports`, and the result depends only on them, not on what it is loaded with or into which scope. `yaml` and `desc_file` of the run-time entry `layout-data` read one description and compile it, returning a `Description` (§1.2), which `load` of a scope loads ([spec-layout.md](spec-layout.md) §3).
 
 ### 1.1 yaml and desc_file
 
@@ -16,7 +16,7 @@ A description together with the descriptions it imports (§4) is complete: compi
 import { create_scope, desc_file, yaml } from "layout-data";
 
 const scope = create_scope("app");
-scope.register_layout([
+scope.load([
   desc_file`pump.yaml`,
   yaml`
 imports:
@@ -57,13 +57,13 @@ item_tables:
  */
 ```
 
-- `layouts` maps the layout names of the description to layouts not yet bound to a scope, its keys being the names listed by the root key `layouts`, in the same order. These layouts are traversed, validated and compiled, and lack only a scope: they have the `name`, `length`, `size`, `items` and `io_index_table` of a layout object ([spec-layout.md](spec-layout.md) §4), but belong to no scope, so they create no ldata, `create_ldata` throwing `Error`. The layouts that are used are got from a scope only (the result of registering, or `get_layout`);
-- `blocks` is the parsed root key `blocks` itself, checked (§2, §5.3), neither copied nor changed, with the keys of the application kept. When the description has no `blocks` it is `[]`, the only change beside `layouts`. Whether an application reads its own keys from here or parses the description itself is for the application to decide;
+- `layouts` maps the layout names of the description to layouts not yet bound to a scope, its keys being the names listed by the root key `layouts`, in the same order. These layouts are traversed, validated and compiled, and lack only a scope: they have the `name`, `length`, `size`, `items` and `io_index_table` of a layout object ([spec-layout.md](spec-layout.md) §4), but belong to no scope, so they create no ldata, `create_ldata` throwing `Error`. The layouts that are used are got from a scope only (the result of loading, or `get_layout`);
+- `blocks` is the parsed root key `blocks` itself, checked (§2, §5.3), neither copied nor changed, with the keys of the application kept; the `layout` of a block stays a layout name string, which reading only checks to be in `layouts` of the description, and is not replaced by a layout. When the description has no `blocks` it is `[]`, the only change beside `layouts`. Whether an application reads its own keys from here or parses the description itself is for the application to decide;
 - The other root keys are kept as they are: `imports`, `item_tables` and the root keys of the application hold the values parsed from the YAML, `imports` the paths as written and `item_tables` the items not expanded. An application reads its own root keys without parsing the YAML again. Only the root keys of the description read are kept; those of imported descriptions are not merged in. The package reads only `layouts` and `blocks`, never the other root keys;
-- A `Description` and all it holds are deeply frozen, the root keys kept as they are among them. Registration never changes it ([spec-layout.md](spec-layout.md) §3), so one `Description` can be cached and registered in any number of scopes;
+- A `Description` and all it holds are deeply frozen, the root keys kept as they are among them. Loading never changes it ([spec-layout.md](spec-layout.md) §3), so one `Description` can be cached and loaded into any number of scopes;
 - The compiled layouts share no memory with the content of the description, and the layouts compiled from one description are not affected by any other description;
-- The `Description` returned by `desc_file` remembers its file, so that the errors of registration and the header of rendered types ([spec-layout.md](spec-layout.md) §5) name it by its path;
-- A `Description` is made only by `yaml` and `desc_file`: a hand-written object of the same shape is not a `Description`, and registering it is a violation.
+- The `Description` returned by `desc_file` remembers its file, so that the errors of loading and the header of rendered types ([spec-layout.md](spec-layout.md) §5) name it by its path;
+- A `Description` is made only by `yaml` and `desc_file`: a hand-written object of the same shape is not a `Description`, and loading it is a violation.
 
 ## 2. Structure
 
@@ -72,7 +72,7 @@ The root of a description is a mapping, and the package reads only four root key
 - **`imports`**: a list of the paths of imported description files (§4). An imported description only provides item tables;
 - **`layouts`**: a list of layout names. Every name listed is the name of an item table, and that item table is compiled into the layout of the same name;
 - **`item_tables`**: a mapping from item table names to item tables. An **item table** is a list of items (§3); it is listed as a layout by `layouts`, or referenced by name by the `includes` and `coupling` of items;
-- **`blocks`**: a list of the ldata instances of the description. Each block is a mapping, of which the package reads only `name` (the instance name) and `layout` (`<scope>.<layout>`); the ldata of a block is created at registration ([spec-layout.md](spec-layout.md) §3).
+- **`blocks`**: a list of the ldata instances of the description. Each block is a mapping, of which the package reads only `name` (the instance name) and `layout` (a layout name of the description); the ldata of a block is created at loading, in the scope the description is loaded into ([spec-layout.md](spec-layout.md) §3).
 
 ```yaml
 imports:
@@ -97,11 +97,11 @@ item_tables:
     - { name: max_pressure, type: Real, offset: 0, init_value: 10 }
 
 blocks:
-  - { name: node_1, layout: app.NODE, unit_id: 1 }   # unit_id is read by the application
+  - { name: node_1, layout: NODE, unit_id: 1 }   # unit_id is read by the application
 ```
 
 - A layout and a referenced item table are the same kind of thing and differ only in use: one item table may be listed in `layouts` and referenced by other item tables as well;
-- Each of the four root keys may be omitted. A description without `layouts` has no layouts, for example a file of common item tables that other descriptions import, or a description of `blocks` only, referencing the layouts of other descriptions;
+- Each of the four root keys may be omitted. A description without `layouts` has no layouts, for example a file of common item tables that other descriptions import. A block references only a layout of its own description (§5.3), so a description with `blocks` also has the `layouts` listing those layouts;
 - All the other root keys belong to the caller: the package neither reads nor validates them, keeps them as they are in the `Description` (§1.2), and item table names never collide with them. The keys of a block other than `name` and `layout` belong to the caller too, for example the Modbus address of a device simulator;
 - Of `item_tables`, the package reads only the item tables reached by traversal from `layouts` (§4);
 - The order of the root keys does not change the meaning. **Write `imports`, `layouts`, `item_tables`, `blocks` in this order**: the reader sees the dependencies and which layouts there are, then finds each item table by its name, and the instances last. The examples of this document follow this order.
@@ -156,7 +156,7 @@ item_tables:
 
 ## 5. Validity
 
-Breaking any of the rules below is a violation. The violations of §5.1 to §5.3 are reported by `yaml` and `desc_file` when reading (§1.1); registration checks only the rules that depend on the state of a scope ([spec-layout.md](spec-layout.md) §3).
+Breaking any of the rules below is a violation. The violations of §5.1 to §5.3 are reported by `yaml` and `desc_file` when reading (§1.1); loading checks only the rules that depend on the state of a scope ([spec-layout.md](spec-layout.md) §3).
 
 ### 5.1 Description
 
@@ -186,5 +186,4 @@ An item table only referenced and not listed in `layouts` is not validated as a 
 
 - `blocks` is taken as `[]` when absent; when given, it is a list, and every block is a mapping;
 - The `name` of a block is given and is a string, unique within a description;
-- The `layout` of a block is a string of the form `<scope>.<layout>`, both parts identifiers of JavaScript. It is configuration, and only a string: neither a scope name nor a layout name holds a `.`, so the form is not ambiguous, and it is written as the error `unknown layout X.Y` of `get_layout` writes it. The scope name is required: the package has no default scope ([spec-layout.md](spec-layout.md) §2), and a block that references a layout of its own description writes the name of the scope it will be registered in;
-- A layout is found by its scope name only once registered, so whether the scope and the layout exist is checked at registration, not when reading ([spec-layout.md](spec-layout.md) §3).
+- The `layout` of a block is a string, one of the layout names listed by `layouts` of the description; otherwise it is a violation, for example `block pump_1: unknown layout Pump`. A block names no scope and references no layout of another description, an imported one included: a block is created in the scope the description is loaded into ([spec-layout.md](spec-layout.md) §3), so a description does not depend on what it is loaded with or into which scope, and the layout of every block is known when reading.
