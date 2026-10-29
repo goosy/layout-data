@@ -4,7 +4,7 @@ opened: 2026-10-28T14:40:53.409Z
 closed: 2026-10-28T15:34:47.336Z
 title: 块的 layout 只写布局名，块所属注册域由代码决定
 status: fixed       # open | accepted | fixed | rejected | wontfix
-fixed_in: []        # commit IDs, backfilled at version commit time
+fixed_in: [a0b149c, 011b91d]  # commit IDs, backfilled at version commit time
 labels: []
 remote:
 problem_title: 问题描述

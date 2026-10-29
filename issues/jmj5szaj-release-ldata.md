@@ -4,7 +4,7 @@ opened: 2026-10-28T10:41:19.825Z
 closed: 2026-10-28T11:47:16.000Z
 title: 布局解除 ldata 的名字绑定，交还它在布局中占用的名字
 status: fixed       # open | accepted | fixed | rejected | wontfix
-fixed_in: []        # commit IDs, backfilled at version commit time
+fixed_in: [56712e7, aa42ca7]  # commit IDs, backfilled at version commit time
 labels: []
 remote:
 problem_title: 问题描述

@@ -4,7 +4,7 @@ opened: 2026-10-28T04:48:53.930Z
 closed: 2026-10-28T11:46:43.000Z
 title: 描述只用 YAML，每份描述自包含并用 imports 引入依赖，yaml 与 desc_file 编译成 Description，blocks 描述 ldata 实例
 status: fixed       # open | accepted | fixed | rejected | wontfix
-fixed_in: []        # commit IDs, backfilled at version commit time
+fixed_in: [56712e7, ebbc1d9]  # commit IDs, backfilled at version commit time
 labels: []
 remote:
 problem_title: 问题描述
