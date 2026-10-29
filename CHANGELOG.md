@@ -1,5 +1,41 @@
 # Changelog
 
+## v0.6.0
+
+### Breaking changes
+
+- **Descriptions are YAML only, compiled when read.** `yaml` and `desc_file` (renamed from `yaml_file`) read a description, its imports included, then traverse, validate and compile it. They throw every error at the call, as an `Error` with `errors`. They return a deeply frozen `Description`: the parsed root, with `layouts` replaced by the compiled layouts, not yet bound to a scope, and `blocks` made `[]` when absent; the other root keys are kept as they are. Description objects are no longer taken, and the types `Layout_Description`, `Tag_Item`, `Include_Item` and `Layout_Item` are no longer exported. Write descriptions as YAML (JSON is valid YAML), and `Description`, `Layout_Desc` and `Block_Desc` type the results.
+- **Every description is self-contained.** A description uses only its own item tables and those it imports with `imports`; descriptions given together are no longer merged. Item table names need to be unique only within a description and its imports.
+- **`scope.register_layout` becomes `scope.load`, callable any number of times.** A layout of the same structure and name as one in the scope is reused. The same name with another structure, or the same structure under another name, is an error. A call takes effect all or none. The result is `{ layouts, ldata }`; `tables` is gone. The error title is `invalid descriptions of scope X`.
+- **An ldata name is unique within its layout.** `create_ldata` throws `ldata X.Y.Z already exists` for a name the layout already uses.
+- **`render_types` of `layout-data/dev` takes Descriptions.** It combines their layouts by the rules of `load` into one empty scope, and creates no scope.
+- Migration: ``scope.register_layout(yaml_file`pump.yaml`)`` becomes ``scope.load(desc_file`pump.yaml`)``. Common item tables are imported where they are used (`imports: [common.yaml]`) instead of being registered in the same call.
+
+### Features
+
+- **`imports`** lists the description files whose item tables a description uses. Imports are transitive, a file counts once, and only the item tables reached from `layouts` are read. A relative path is relative to the importing file; YAML text written in code imports by absolute path or `file:` URL.
+- **`blocks`** lists the ldata of a description, each with a `name` and a `layout`, a layout name of the same description. `load` creates them in the scope the description is loaded into and returns them as `ldata`. Their other keys are left to the application.
+- **A layout manages its ldata by name.** `layout.get_ldata(name)` finds one, and `layout.delete_ldata(name)` gives the name back so that it can be used again, for example by an application that rebuilds its instances in the same process.
+- A description may list no layout, for example a file of common item tables.
+
+## v0.6.0 (中文)
+
+### 破坏性变更
+
+- **描述只用 YAML，读入时即编译。** `yaml` 和 `desc_file`（由 `yaml_file` 改名）读取一份描述及其引入的描述，并完成遍历、校验和编译。所有错误都在调用处一并抛出，是带 `errors` 的 `Error`。返回深度冻结的 `Description`：即解析出的根对象，其中 `layouts` 换成编译好、尚未绑定登记域的布局，`blocks` 缺省时补为 `[]`，其余根键原样保留。不再接受描述对象，类型 `Layout_Description`、`Tag_Item`、`Include_Item` 和 `Layout_Item` 不再导出。描述改用 YAML 编写（JSON 也是合法的 YAML），结果的类型是 `Description`、`Layout_Desc` 和 `Block_Desc`。
+- **每份描述自包含。** 一份描述只使用自己的条目表，以及用 `imports` 引入的条目表；一起给出的多份描述不再合并。条目表名只需在一份描述及其引入范围内唯一。
+- **`scope.register_layout` 改名为 `scope.load`，可以多次调用。** 登记域中已有结构和名字都相同的布局时复用它；名字相同而结构不同，或结构相同而名字不同，都是错误。一次调用要么全部生效，要么全不生效。返回值是 `{ layouts, ldata }`，不再有 `tables`。错误标题改为 `invalid descriptions of scope X`。
+- **ldata 名在它的布局内唯一。** 名字已被该布局使用时，`create_ldata` 抛出 `ldata X.Y.Z already exists`。
+- **`layout-data/dev` 的 `render_types` 接受 `Description`。** 它按 `load` 装入同一个空登记域的规则合并各描述的布局，不创建登记域。
+- 迁移：``scope.register_layout(yaml_file`pump.yaml`)`` 改为 ``scope.load(desc_file`pump.yaml`)``。公共条目表在使用它的描述中引入（`imports: [common.yaml]`），不再放在同一次调用里一起注册。
+
+### 功能
+
+- **`imports`** 列出一份描述要使用其条目表的描述文件。引入可以传递，同一个文件只算一次，只读取从 `layouts` 出发遍历到的条目表。相对路径相对于引入方文件；写在代码里的 YAML 文本用绝对路径或 `file:` URL 引入。
+- **`blocks`** 列出一份描述的 ldata，每个块有 `name` 和 `layout`（本描述的布局名）。`load` 在描述装入的登记域中创建它们，并以 `ldata` 返回。块的其他键留给应用。
+- **布局按名管理它的 ldata。** `layout.get_ldata(name)` 按名找到 ldata，`layout.delete_ldata(name)` 交还名字，使它可以再次使用，例如供在同一进程里重建实例的应用使用。
+- 描述可以不列出布局，例如只放公共条目表的文件。
+
 ## v0.5.0
 
 ### Breaking changes

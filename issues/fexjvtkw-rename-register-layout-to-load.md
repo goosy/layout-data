@@ -4,7 +4,7 @@ opened: 2026-10-28T14:56:11.517Z
 closed: 2026-10-28T15:34:47.336Z
 title: Rename scope.register_layout to scope.load
 status: fixed       # open | accepted | fixed | rejected | wontfix
-fixed_in: []        # commit IDs, backfilled at version commit time
+fixed_in: [6e3c56b, 090f47f]  # commit IDs, backfilled at version commit time
 labels: []
 remote:
 problem_title:

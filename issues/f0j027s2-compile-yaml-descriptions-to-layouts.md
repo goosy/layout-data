@@ -4,7 +4,7 @@ opened: 2026-10-28T04:48:53.930Z
 closed: 2026-10-28T11:46:43.000Z
 title: Descriptions are YAML only, each self-contained with dependencies brought in by imports, yaml and desc_file compile them to a Description, and blocks describe ldata instances
 status: fixed       # open | accepted | fixed | rejected | wontfix
-fixed_in: []        # commit IDs, backfilled at version commit time
+fixed_in: [53db335, 215df85]  # commit IDs, backfilled at version commit time
 labels: []
 remote:
 problem_title:

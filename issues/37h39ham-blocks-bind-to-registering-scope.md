@@ -4,7 +4,7 @@ opened: 2026-10-28T14:40:53.409Z
 closed: 2026-10-28T15:34:47.336Z
 title: The layout of a block gives only the layout name, and the scope a block belongs to is decided by code
 status: fixed       # open | accepted | fixed | rejected | wontfix
-fixed_in: []        # commit IDs, backfilled at version commit time
+fixed_in: [6e3c56b, 090f47f]  # commit IDs, backfilled at version commit time
 labels: []
 remote:
 problem_title:

@@ -4,7 +4,7 @@ opened: 2026-10-28T10:41:19.825Z
 closed: 2026-10-28T11:47:16.000Z
 title: A layout unbinds the name of an ldata, giving back the name it occupies in the layout
 status: fixed       # open | accepted | fixed | rejected | wontfix
-fixed_in: []        # commit IDs, backfilled at version commit time
+fixed_in: [53db335, b07b4ba]  # commit IDs, backfilled at version commit time
 labels: []
 remote:
 problem_title:
