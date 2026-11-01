@@ -2,59 +2,59 @@
 id: jt0zxgth
 opened: 2026-10-24T02:34:21.133Z
 closed: 2026-10-24T05:06:41.000Z
-title: 把 access 纳入 transaction
+title: Include access in transaction
 status: fixed       # open | accepted | fixed | rejected | wontfix
 fixed_in: [00a5925]  # commit IDs, backfilled at version commit time
 labels: []
 remote:
-problem_title: 问题描述
-proposal_title: 解决提案
-decision_title: 裁定
+problem_title:
+proposal_title:
+decision_title:
 ---
 
-## 问题描述
+## Problem
 
-spec-data-api §2.8 规定：事务内的读写"emit it at once, as usual"，即 `access` 在每次调用时立即发出；§4.2 的事务只推迟 `change` 和 `write`。由此产生两个问题：
+spec-data-api §2.8 specifies that reads and writes inside a transaction "emit it at once, as usual", i.e. `access` is emitted on every call; the transaction of §4.2 defers only `change` and `write`. This causes two problems:
 
-- 次数：一个事务内调用几次读写方法，就发出几次 `access`，同一个 tag 会重复出现。事务表示一个逻辑步骤，`change` 和 `write` 已经按步骤合并，`access` 却仍暴露步骤内部的每一次调用，三者口径不一致。
-- 回滚：被回滚的写入并没有生效，但它的 `access write` 已经发出。诊断会报告一个不存在的写依赖。
+- Count: a transaction emits as many `access` events as read/write methods are called in it, and the same tag appears repeatedly. A transaction represents one logical step; `change` and `write` are already merged per step, but `access` still exposes every call inside the step, so the three are inconsistent.
+- Rollback: a rolled-back write never took effect, but its `access write` has already been emitted. Diagnostics report a write dependency that does not exist.
 
-实测：事务内分两次 `write_bytes` 写一个 Real 的两半，再 `read_bytes` 一次，依次发出 `access write`、`access write`、`access read`，提交时才发出一次 `change` 和一次 `write`；事务内写入后抛出异常回滚，`access write` 仍已发出。
+Observed: in a transaction, writing the two halves of a Real with two `write_bytes` calls, then one `read_bytes`, emits `access write`, `access write`, `access read` in turn, and only on commit one `change` and one `write`; when an exception is thrown after a write in a transaction and it is rolled back, `access write` has still been emitted.
 
-实例：modbus_emulator 处理主站的一次请求，对每个块用一个事务读写。主站的一次请求是一次逻辑访问，但现在一次 FC1 读 16 个线圈会发出 16 次 `access`。
+Example: modbus_emulator handles one request of the master with one transaction per block for the reads and writes. One request of the master is one logical access, but now one FC1 read of 16 coils emits 16 `access` events.
 
-## 解决提案
+## Proposal
 
-事务内的 `access` 先不发出：按 `read` / `write` 分别累积涉及的 tag（取并集），事务结束时每种至多发出一次。
+Inside a transaction, `access` is not emitted right away: the tags involved are accumulated separately for `read` and `write` (as a union), and at the end of the transaction each kind is emitted at most once.
 
-意义：
+Rationale:
 
-- 与事务的含义一致：事务把一组读写变成一个整体，`change` 和 `write` 已按整体发出，`access` 也应如此。观察者看到的是一个逻辑步骤访问了哪些 tag，而不是它内部调用了几次方法。
-- 诊断准确：被回滚的写入不再报告。
-- 精确与次数可以兼得：调用方可以用细粒度的精确方法（逐字节 `write_bit`、逐位 `read_bit`，见 issue#dy6d5xgj）得到精确的 tag 集合，而 `access` 次数不随调用次数增加。现在调用方只能二选一：要么调用多次（精确但重复），要么一次 `read_bytes` / `write_bytes` 覆盖整段（一次但把同字节的 Bool 都算进来）。
-- 开销：监听器每个事务每种只被调用一次。
+- Consistent with the meaning of a transaction: a transaction makes a group of reads and writes one whole; `change` and `write` are already emitted per whole, and `access` should be too. Observers see which tags one logical step accessed, not how many method calls it made internally.
+- Accurate diagnostics: rolled-back writes are no longer reported.
+- Precision and count no longer conflict: callers can use fine-grained precise methods (byte-wise `write_bit`, bit-wise `read_bit`, see issue#dy6d5xgj) to get a precise tag set, while the number of `access` events does not grow with the number of calls. Now callers must choose one: call many times (precise but repeated), or one `read_bytes` / `write_bytes` covering the whole range (once, but counting in all Bools of the same bytes).
+- Cost: a listener is called only once per kind per transaction.
 
-语义：
+Semantics:
 
-- 提交：先发出累积的 `access`（先 `read` 后 `write`，`tags` 按布局顺序、不重复），再进行检测、发出 `change`，最后发出 `write`，与事务外"`access` 在检测之前"的顺序一致。
-- 回滚：`access write` 丢弃，因为写入已撤销；`access read` 照常发出，因为读取确实发生过。原异常照常重新抛出；此时 `access` 监听器抛出的异常丢弃，以 `fn` 的异常为准（§4.4 "其他异常丢弃"）。
-- 监听器的异常：在事务内，`access` 监听器的异常改为在提交时由 `transaction` 抛出，与提交时 `change` / `write` 监听器的异常规则（§4.2、§4.4）一致；事务已提交，不回滚。事务外的行为不变：读取抛出监听器的异常，不返回值。
-- 不变的部分：`access` 监听器运行期间的访问不发出事件；类级监听器（`Ldata.on_access`）按同样规则推迟；事务只管本 ldata，事务内访问其他 ldata 照常发出。
+- Commit: first emit the accumulated `access` (`read` before `write`, `tags` in layout order without duplicates), then detect and emit `change`, finally emit `write`, consistent with the order outside a transaction where "`access` comes before detection".
+- Rollback: `access write` is discarded, since the writes are undone; `access read` is emitted as usual, since the reads did happen. The original exception is rethrown as usual; an exception thrown by an `access` listener at that point is discarded, and the exception of `fn` prevails (§4.4 "other exceptions are discarded").
+- Listener exceptions: inside a transaction, an exception of an `access` listener is instead thrown by `transaction` at commit, consistent with the rule for exceptions of `change` / `write` listeners at commit (§4.2, §4.4); the transaction is already committed and is not rolled back. Behavior outside transactions is unchanged: the read throws the listener's exception and returns no value.
+- Unchanged: accesses made while an `access` listener runs emit no events; class-level listeners (`Ldata.on_access`) are deferred by the same rules; a transaction concerns only its own ldata, and accesses to other ldata inside it are emitted as usual.
 
-监听器否决读取的能力：推迟之后，事务内的 `access read` 监听器不能再通过抛出异常让一次读取失败。认为这种能力没有必要：
+The ability of a listener to veto a read: after deferring, an `access read` listener inside a transaction can no longer make a read fail by throwing. This ability is considered unnecessary:
 
-- `access` 的定位是诊断（§2.8），不是控制读取的手段；读取抛出监听器的异常，是 §4.4 统一异常规则的结果，不是专门设计的否决功能。
-- 需要在读取前介入时，本仓库的计划是单独设计一个同步的读钩子（如 `before_read`，`read` 事件名已为此保留），不应依赖 `access`。
+- `access` is positioned as diagnostics (§2.8), not a means to control reads; a read throwing a listener's exception is a consequence of the uniform exception rule of §4.4, not a deliberately designed veto feature.
+- When intervention before a read is needed, this repository's plan is to design a separate synchronous read hook (such as `before_read`; the event name `read` is reserved for it), which should not rely on `access`.
 
-这是对已发布版本的行为变化，需修改 §2.8、§4.2、§4.4 并写入 CHANGELOG。
+This is a behavior change to a released version; §2.8, §4.2 and §4.4 must be changed and it must go into the CHANGELOG.
 
-## 裁定
+## Decision
 
-接受，按提案实现。事务内立即发出 `access` 与事务按整体发出 `change`、`write` 不一致，回滚后仍报告写依赖是错误的诊断。推迟后 `access read` 监听器不能再否决事务内的读取：`access` 定位于诊断，读前介入另设读钩子，所以放弃这种能力。
+Accepted, implemented as proposed. Emitting `access` immediately inside a transaction is inconsistent with the transaction emitting `change` and `write` as a whole, and still reporting write dependencies after a rollback is wrong diagnostics. After deferring, an `access read` listener can no longer veto a read inside a transaction: `access` is positioned as diagnostics, and intervention before a read gets a separate read hook, so this ability is given up.
 
-提案未写明的两点，一并确定：
+Two points the proposal left open are settled as well:
 
-- 只有访问发生时有 `access` 监听器（实例的或类级的），这次访问才累积，所以没有监听器时每次访问仍只多一次检查；提交时发给当时已订阅的监听器，与提交时的 `change`、`write` 相同。
-- `access` 监听器运行期间的访问不发出事件，也不累积；监听器内开启的事务，提交时不发出 `access`。
+- An access is accumulated only when an `access` listener (instance or class level) exists at the time of the access, so without listeners each access still costs just one extra check; at commit the events go to the listeners subscribed at that time, as for `change` and `write` at commit.
+- Accesses made while an `access` listener runs emit no events and are not accumulated either; a transaction opened inside a listener emits no `access` at commit.
 
-提交时 `access` 监听器写同一个 ldata 会提前触发检测，这在事务外已是如此，不属于本 issue。
+An `access` listener at commit writing the same ldata triggers detection early; that is already the case outside transactions and does not belong to this issue.
